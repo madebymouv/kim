@@ -17,13 +17,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The tools in the mirror, with the crates their packages need.
-const TOOLS: [(&str, &[&str]); 4] = [
-    ("kim", &["kim", "kim-manager", "kim-setup"]),
-    ("subak", &["subak"]),
-    ("noeul", &["noeul"]),
-    ("ddalgak", &["ddalgak", "ddalgak-editor"]),
-];
-
 fn file_url(p: &Path) -> String {
     kim::start::file_url(p)
 }
@@ -47,7 +40,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let mut c = Command::new(cargo);
         c.args(["build", "--release"]).current_dir(root);
-        for (_, crates) in TOOLS {
+        for (_, crates) in crate::package::tool_crates() {
             for k in crates {
                 c.args(["-p", k]);
             }
@@ -76,7 +69,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let today = format!("{}T00:00:00Z", kim::time::format_date(now));
     let expires = format!("{}T00:00:00Z", kim::time::format_date(now + 90 * 86_400));
     let dist = root.join("target").join("dist");
-    for (id, _) in TOOLS {
+    for (id, _) in crate::package::tool_crates() {
         crate::package::run(root, &[id.to_string(), "--skip-build".into()])?;
         let manifest = std::fs::read_dir(&dist)
             .map_err(|e| e.to_string())?

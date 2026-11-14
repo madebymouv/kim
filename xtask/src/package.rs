@@ -26,6 +26,12 @@ struct Tool {
     summary: &'static str,
 }
 
+/// `(tool id, crates its package builds)` for every packaged tool, so `local-mirror` builds
+/// exactly what `package --skip-build` then expects (ADR 0093 added `noeul-settings`).
+pub fn tool_crates() -> impl Iterator<Item = (&'static str, &'static [&'static str])> {
+    TOOLS.iter().map(|t| (t.id, t.crates))
+}
+
 const TOOLS: [Tool; 4] = [
     Tool {
         id: "kim",
