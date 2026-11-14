@@ -211,6 +211,8 @@ pub enum Hit {
     /// `‹` / `›`: scroll the tabs.
     Left,
     Right,
+    /// ADR 0095: the gear at the right end of the bar: Subak's settings.
+    Settings,
 }
 
 /// The rename field shown in place of the active tab's name.
@@ -249,6 +251,48 @@ impl Bar {
 /// Tab widths in cells (DESIGN_SYSTEM §2.4: 96–220 px at the UI size).
 pub const TAB_MIN: usize = 12;
 pub const TAB_MAX: usize = 28;
+
+/// ADR 0095: how the tabs are sized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sizing {
+    /// The narrowest and widest tab, in cells.
+    pub min: usize,
+    pub max: usize,
+    /// Every tab the same width, filling the bar before the tabs scroll; otherwise each tab
+    /// is as wide as its name (Step 17).
+    pub uniform: bool,
+    /// The settings gear at the right end of the bar.
+    pub gear: bool,
+}
+
+impl Sizing {
+    /// Step 17: each tab as wide as its name, 12–28 cells; no gear.
+    pub const BY_NAME: Sizing = Sizing {
+        min: TAB_MIN,
+        max: TAB_MAX,
+        uniform: false,
+        gear: false,
+    };
+
+    /// ADR 0095: the design tokens' 96–220 logical pixels at `scale` (DPI × the window's zoom)
+    /// for cells `cell_w` device pixels wide, every tab the same width, the gear shown. The
+    /// widths follow the real scale and font, never fixed cell counts.
+    pub fn from_tokens(cell_w: u32, scale: f32) -> Sizing {
+        let c = cell_w.max(1) as f32;
+        let min = ((kim_design::size::TAB_MIN_WIDTH * scale) / c).ceil() as usize;
+        let max = ((kim_design::size::TAB_MAX_WIDTH * scale) / c).floor() as usize;
+        let min = min.max(10);
+        Sizing {
+            min,
+            max: max.max(min),
+            uniform: true,
+            gear: true,
+        }
+    }
+}
+
+/// The gear's cells (` ⚙ `).
+const GEAR: &str = " \u{2699} ";
 /// The rename field's widest extent.
 const EDIT_MAX: usize = 40;
 
@@ -345,14 +389,47 @@ pub fn layout_hover(
     first: usize,
     hover: Option<usize>,
 ) -> Bar {
+    layout_sized(items, active, edit, cols, first, hover, Sizing::BY_NAME)
+}
+
+/// [`layout_hover`] with the tabs sized by `sizing` (ADR 0095): uniform tabs share the bar
+/// (`(cols - + - gear) / n`, within `min`–`max`), so they grow and shrink with the window and
+/// scroll only below their minimum; the `×` stays at each tab's right end; the gear sits at the
+/// bar's right end.
+pub fn layout_sized(
+    items: &[Item<'_>],
+    active: Option<usize>,
+    edit: Option<&Edit<'_>>,
+    cols: u16,
+    first: usize,
+    hover: Option<usize>,
+    sizing: Sizing,
+) -> Bar {
     let cols = usize::from(cols);
+    const PLUS: usize = 3;
+    const ARROW: usize = 2;
+    let gear_w = if sizing.gear { width(GEAR) } else { 0 };
+    let share = if items.is_empty() {
+        sizing.max
+    } else {
+        (cols.saturating_sub(PLUS + gear_w) / items.len()).clamp(sizing.min, sizing.max)
+    };
     let widths: Vec<usize> = items
         .iter()
         .enumerate()
-        .map(|(i, it)| tab_width(it, edit.filter(|_| Some(i) == active)))
+        .map(|(i, it)| {
+            let e = edit.filter(|_| Some(i) == active);
+            if sizing.uniform && e.is_none() {
+                // At least the state, a few letters of the name and the `×`.
+                share.max(9 + marks_width(it))
+            } else if e.is_some() {
+                tab_width(it, e)
+            } else {
+                (width(it.name) + 6).clamp(sizing.min, sizing.max) + marks_width(it)
+            }
+        })
         .collect();
-    const PLUS: usize = 3;
-    const ARROW: usize = 2;
+    let cols = cols.saturating_sub(gear_w);
     let total: usize = widths.iter().sum::<usize>() + PLUS;
     // Which tabs are visible.
     let (first, last) = if total <= cols || items.is_empty() {
@@ -513,6 +590,18 @@ pub fn layout_hover(
         put(&mut vt, &mut col, &format!("{} + {RESET}", fg(ACCENT)));
         spans.push((cell(at), cell(col), Hit::New));
     }
+    if gear_w > 0 {
+        // The gear at the right end (the bar's `cols` above already left room for it).
+        let pad = cols.saturating_sub(col);
+        put(&mut vt, &mut col, &" ".repeat(pad));
+        let at = col;
+        put(
+            &mut vt,
+            &mut col,
+            &format!("{}{GEAR}{RESET}", fg(TEXT_MUTED)),
+        );
+        spans.push((cell(at), cell(col), Hit::Settings));
+    }
     Bar {
         vt: vt.into_bytes(),
         spans,
@@ -556,6 +645,68 @@ mod tests {
         let mut v = TermView::new(cols, 1, 0);
         v.feed(&bar.vt);
         v.row_at(0).text().trim_end().to_string()
+    }
+
+    /// ADR 0095: tabs sized from the tokens are all the same width, share the bar within
+    /// 96–220 logical pixels at the bar's scale, keep their `×` at their right end, scroll only
+    /// below the minimum with the active tab visible, and the gear takes the bar's last cells.
+    #[test]
+    fn token_sized_tabs_share_the_bar_and_the_gear_ends_it() {
+        // 100 %: an 8 px cell; 175 %: a 14 px cell (the cell grows with the scale too).
+        for (cell_w, scale) in [(8u32, 1.0f32), (14, 1.75)] {
+            let sz = Sizing::from_tokens(cell_w, scale);
+            let px = |cells: usize| cells as f32 * cell_w as f32 / scale;
+            assert!(
+                px(sz.min) >= 96.0 && px(sz.min) < 96.0 + cell_w as f32,
+                "{sz:?}"
+            );
+            assert!(
+                px(sz.max) <= 220.0 && px(sz.max) > 220.0 - cell_w as f32,
+                "{sz:?}"
+            );
+            let list = items(&["claude", "server", "a much longer name of a terminal"]);
+            for cols in [60u16, 120, 240] {
+                let bar = layout_sized(&list, Some(0), None, cols, 0, None, sz);
+                let tabs: Vec<(u16, u16)> = (0..list.len())
+                    .filter_map(|i| {
+                        let a = bar.spans.iter().find(|s| s.2 == Hit::Tab(i))?.0;
+                        let b = bar.spans.iter().find(|s| s.2 == Hit::Close(i))?.1;
+                        Some((a, b))
+                    })
+                    .collect();
+                if tabs.len() == list.len() {
+                    let w: Vec<u16> = tabs.iter().map(|(a, b)| b - a).collect();
+                    assert!(w.iter().all(|x| *x == w[0]), "same width: {w:?} at {cols}");
+                    assert!(
+                        (sz.min..=sz.max).contains(&usize::from(w[0])),
+                        "{w:?} within {sz:?}"
+                    );
+                }
+                let gear = bar.spans.iter().find(|s| s.2 == Hit::Settings).unwrap();
+                assert_eq!(gear.1, cols, "the gear ends the bar at {cols}");
+                let line = text(&bar, cols);
+                assert!(line.trim_end().ends_with('\u{2699}'), "{line}");
+            }
+            // Wider window, wider tabs (until the maximum).
+            let narrow = layout_sized(&list, Some(0), None, 70, 0, None, sz);
+            let wide = layout_sized(&list, Some(0), None, 200, 0, None, sz);
+            let w = |b: &Bar| {
+                let a = b.spans.iter().find(|s| s.2 == Hit::Tab(0)).unwrap().0;
+                let e = b.spans.iter().find(|s| s.2 == Hit::Close(0)).unwrap().1;
+                e - a
+            };
+            assert!(w(&wide) >= w(&narrow), "{} vs {}", w(&wide), w(&narrow));
+            // Many tabs: they scroll, the active one stays visible.
+            let many: Vec<String> = (0..30).map(|i| format!("t{i}")).collect();
+            let refs: Vec<&str> = many.iter().map(String::as_str).collect();
+            let list = items(&refs);
+            let bar = layout_sized(&list, Some(25), None, 100, 0, None, sz);
+            assert!(
+                bar.spans.iter().any(|s| s.2 == Hit::Tab(25)),
+                "active visible"
+            );
+            assert!(bar.spans.iter().any(|s| s.2 == Hit::Left), "scrolls");
+        }
     }
 
     fn items<'a>(names: &[&'a str]) -> Vec<Item<'a>> {
@@ -712,6 +863,7 @@ mod tests {
                 Hit::Close(_) => assert_eq!(under.trim(), "×"),
                 Hit::New => assert_eq!(under.trim(), "+"),
                 Hit::Left | Hit::Right => panic!("no scrolling"),
+                Hit::Settings => panic!("no gear in the Step 17 layout"),
             }
         }
         let (a, b) = bar.active.unwrap();

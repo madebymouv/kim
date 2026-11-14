@@ -743,6 +743,28 @@ fn profiles_the_settings_menu_and_mouse_and_keyboard_choices() {
             .any(|o| o["verb"] == "edit" && o["target"].as_str().unwrap().ends_with("config.toml")),
         "{d}"
     );
+    // ADR 0095: Default shell is the first settings item, the current choice checked; the
+    // gear at the right end of the tab bar opens the same settings.
+    let items = open_menu(&gui);
+    find_item(
+        &items,
+        "Settings/Default shell/Windows default (first found)",
+    );
+    let shells: Vec<&(String, u64, bool)> = items
+        .iter()
+        .filter(|i| i.0.starts_with("Settings/Default shell/"))
+        .collect();
+    assert_eq!(
+        shells.iter().filter(|i| i.2).count(),
+        1,
+        "exactly the current shell is checked: {shells:?}"
+    );
+    let d = gui.refocus();
+    let (lp, _) = bar_lparam(&d, "settings");
+    gui.post(WM_LBUTTONDOWN, MK_LBUTTON, lp);
+    gui.post(WM_LBUTTONUP, 0, lp);
+    let ev = gui.wait("menu", |_| true);
+    assert!(ev["items"].to_string().contains("Default shell"), "{ev}");
 }
 
 #[test]

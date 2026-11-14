@@ -1075,6 +1075,28 @@ Profiles are local programs only (no SSH, serial or Telnet: Step 33). A profile 
 never a shell command line; the arguments are passed as separate words. Names ignore case. A
 default profile that does not exist is a warning; new Terminals then run the Host's shell.
 
+### 13.3.1 Linux commands (`ls`, `vim`, `cat`, `grep`, …) — ADR 0095
+
+Subak is a terminal: the commands come from the shell a tab runs, never from Subak. To use the
+familiar Linux commands, start a tab with a shell that has them; Subak finds the shells already
+on the PC (§13.3) and installs nothing, changes no `PATH` and no system setting.
+
+| Shell (profile) | `ls` `cat` `pwd` `mkdir` `mv` `cp` | `grep` | `vim` |
+| --- | --- | --- | --- |
+| **Git Bash** (Git for Windows: `C:\Program Files\Git\bin\bash.exe --login -i`) | the GNU tools of Git for Windows | yes | yes (`usr\bin\vim.exe`) |
+| **WSL: <distro>** (one per installed distribution) | the distribution's own tools | yes | when the distribution has it (`sudo apt install vim`, yours to run) |
+| Windows PowerShell / PowerShell 7 | aliases with PowerShell's own options: `ls` → `Get-ChildItem`, `cat` → `Get-Content`, `pwd` → `Get-Location`, `mkdir` → `New-Item -Type Directory`, `mv` → `Move-Item`, `cp` → `Copy-Item` (`ls -la` does not work; `ls -Force` does) | no — `Select-String` (`sls`) or `findstr` | no (unless installed separately) |
+| Command Prompt | no — `dir`, `type`, `cd`, `md`, `move`, `copy` | no — `findstr` | no |
+
+**Make it the default:** Settings (the gear at the right end of the tab bar, or right-click the
+tab bar → Settings) → **Default shell** → *Git Bash* (or a WSL distribution). New tabs (`+`,
+`Ctrl+Shift+T`) then start it; `Ctrl+B N` or the tab menu still offers every shell for one tab.
+The choice is `terminal.default_profile` in `config.toml`. A shell that is not installed is not
+listed (Git for Windows: <https://git-scm.com>; WSL: `wsl --install`, both the user's own
+decision). Full-screen programs such as `vim` work through the pseudo console (ConPTY): keys,
+the cursor, colours, resizing and the alternate screen; checked on the real desktop with Git
+Bash (ADR 0095).
+
 ### 13.4 The settings menu
 
 The tab menu (right click on the bar) and the pane menu (the Menu key, `Ctrl+right click`, or a

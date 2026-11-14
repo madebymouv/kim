@@ -158,9 +158,9 @@ const NOTICE_MS: u32 = 15_000;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The tab bar's text size (DESIGN_SYSTEM §2.3: UI body 12) and height (§2.4: 32), logical px.
 const BAR_FONT: f32 = 12.0;
-const BAR_HEIGHT: f32 = 32.0;
+const BAR_HEIGHT: f32 = kim_design::size::TABBAR_HEIGHT;
 /// #98 T1 (`appearance.density = "compact"`).
-const BAR_HEIGHT_COMPACT: f32 = 24.0;
+const BAR_HEIGHT_COMPACT: f32 = kim_design::size::CONTROL_COMPACT;
 /// The tab menu's commands.
 const CMD_RENAME: u32 = 1;
 const CMD_HIDE: u32 = 2;
@@ -1836,9 +1836,12 @@ impl App {
         } else {
             BAR_HEIGHT
         };
-        let height =
-            (layout::px(bar_height * self.screen_zoom, self.dpi).max(1) as u32).max(m.height + 2);
-        let pad_x = layout::px(4.0, self.dpi).max(0) as u32;
+        // ADR 0095: every metric of the bar follows the same scale as its text (DPI × the
+        // window's zoom): its height (and at least the text's line plus 4 px on each side),
+        // its padding and the active tab's marker.
+        let height = (layout::px(bar_height * self.screen_zoom, self.dpi).max(1) as u32)
+            .max(m.height + 2 * (layout::px(4.0 * self.screen_zoom, self.dpi).max(1) as u32));
+        let pad_x = layout::px(4.0 * self.screen_zoom, self.dpi).max(0) as u32;
         let cols = (self.client.0.saturating_sub(2 * pad_x) / m.width.max(1)).max(1);
         let cols = u16::try_from(cols).unwrap_or(u16::MAX);
         let connected = self.model.connected();
@@ -1931,13 +1934,14 @@ impl App {
             text: &e.text,
             cursor: e.cursor,
         });
-        let bar = tabs::layout_hover(
+        let bar = tabs::layout_sized(
             &items,
             active,
             edit.as_ref(),
             cols,
             self.bar.first,
             self.hover,
+            tabs::Sizing::from_tokens(m.width, scale),
         );
         drop(items);
         self.arm_claude_timer(claude_motion::earliest(marks, mode));
@@ -1967,7 +1971,7 @@ impl App {
                 active_fill: Some(c.bg_raised.mix(c.bg_base, t)),
                 marker: Some((
                     c.bg_raised.mix(c.accent, t),
-                    layout::px(2.0, self.dpi).max(1) as u32,
+                    layout::px(2.0 * self.screen_zoom, self.dpi).max(1) as u32,
                 )),
                 border: Some(c.border_subtle),
             }
@@ -2897,7 +2901,26 @@ impl App {
             )
         })
         .collect();
+        // ADR 0095: the shell new Terminals start (configured profiles and the shells found on
+        // this PC: PowerShell, Command Prompt, Git Bash, each WSL distribution).
+        let current = t.default_profile.trim().to_lowercase();
+        let mut shells = vec![pick(
+            "terminal.default_profile",
+            String::new(),
+            "Windows default (first found)".into(),
+            current.is_empty(),
+        )];
+        for p in self.settings.all_profiles().iter().take(40) {
+            shells.push(pick(
+                "terminal.default_profile",
+                p.name.clone(),
+                p.name.clone(),
+                p.name.to_lowercase() == current,
+            ));
+        }
         let items = vec![
+            MenuItem::sub("Default shell", shells),
+            MenuItem::separator(),
             MenuItem::sub("Theme", themes),
             MenuItem::sub(format!("Text size ({size} px)"), sizes),
             MenuItem::sub("Terminal font", fonts),
@@ -2934,6 +2957,18 @@ impl App {
         ];
         self.menu_choices = choices;
         MenuItem::sub("Settings", items)
+    }
+
+    /// ADR 0095: the gear's menu: Subak's settings at the top level.
+    fn open_settings_menu(&mut self, at: (i32, i32)) {
+        let items = self.settings_menu().items;
+        if self.opts.test {
+            // The test window never shows a menu (it would appear on the real desktop).
+            self.event(&json!({"event": "menu", "tab": -1, "items": items.iter()
+                .map(MenuItem::to_json).collect::<Vec<_>>()}));
+            return;
+        }
+        self.after.push(After::Menu { items, at, tab: -1 });
     }
 
     /// A choice of the settings menu: applied at once and saved in `config.toml`.
@@ -5730,6 +5765,10 @@ impl App {
             (WM_RBUTTONUP, Some(Hit::Tab(i) | Hit::Close(i))) => {
                 self.open_menu(Some(i), Some((x, self.bar.height as i32)));
             }
+            // ADR 0095: the gear opens Subak's settings (the same menu as in the tab menu).
+            (WM_LBUTTONUP, Some(Hit::Settings)) => {
+                self.open_settings_menu((x, self.bar.height as i32));
+            }
             (WM_RBUTTONUP, _) => self.open_menu(None, Some((x, self.bar.height as i32))),
             _ => {}
         }
@@ -6373,6 +6412,7 @@ impl App {
                     Hit::New => "new".into(),
                     Hit::Left => "left".into(),
                     Hit::Right => "right".into(),
+                    Hit::Settings => "settings".into(),
                 };
                 json!([a, b, what])
             })

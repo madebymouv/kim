@@ -230,6 +230,10 @@ assets — is in [SUBAK_BRAND](SUBAK_BRAND.md) (Step 44).
   (Subak, Step 20: every tab keeps its `×`, dim unless hovered or active, so the click targets
   never move).
 - `+` button after the last tab (new Terminal), overflow chevron when tabs exceed width.
+- ADR 0095: every tab has the same width, the bar shared by the tabs within 96–220 logical
+  pixels at the bar's scale (DPI × zoom), scrolling only below the minimum; the bar's height,
+  padding and marker use the same scale; a gear at the bar's right end opens the settings
+  (Subak's place for the gear: a lower-right gear would cover terminal output).
 - Terminal surface: `terminal.background`, 8 px inner padding (configurable 0–16), no border.
 - Status line (optional, tmux-style, Step 25): 22 px at the bottom, `bg.raised`, mono caption.
 
