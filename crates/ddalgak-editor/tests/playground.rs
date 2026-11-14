@@ -69,8 +69,10 @@ fn harness(sb: &Sandbox, launcher: Arc<FakeLauncher>) -> Harness<'static, Editor
 }
 
 fn click(h: &mut Harness<'static, EditorApp>, label: &str) {
-    h.get_all_by_role_and_label(Role::Button, label)
+    // A button, or one of the rail's sections (ADR 0096: tabs of the navigation rail).
+    h.query_all_by_role_and_label(Role::Button, label)
         .next()
+        .or_else(|| h.query_all_by_role_and_label(Role::Tab, label).next())
         .unwrap_or_else(|| panic!("no button {label}"))
         .click();
     h.run();

@@ -75,7 +75,6 @@ impl EditorApp {
             return;
         };
         ui.add_space(6.0);
-        ui.label(egui::RichText::new(lang.t("macro.title")).strong());
         ui.label(small(lang.t("macro.note"), c.text_muted));
         let mut start = false;
         let mut start_mouse = false;

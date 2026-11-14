@@ -39,15 +39,39 @@ impl Lang {
     }
 
     /// The label for `key`; the key itself when it is missing (a test keeps that from happening).
+    /// ADR 0092: names — the sections, buttons, steps and action tiles — stay English in both
+    /// languages; explanations, hints and messages follow the language.
     pub fn t(self, key: &str) -> &'static str {
         match LABELS.iter().find(|(k, _, _)| *k == key) {
             Some((_, en, ko)) => match self {
                 Lang::En => en,
+                Lang::Ko if is_name(key) => en,
                 Lang::Ko => ko,
             },
             None => "?",
         }
     }
+}
+
+/// Whether `key` is a name (English in every language, ADR 0092): a section, a button, a form
+/// step or an action tile's name (not its example).
+pub fn is_name(key: &str) -> bool {
+    key.starts_with("nav.")
+        || key.starts_with("btn.")
+        || key.starts_with("form.step.")
+        || key == "list.new"
+        || key == "form.new"
+        || key == "form.edit"
+        || matches!(
+            key,
+            "profiles.add"
+                | "profiles.import"
+                | "profiles.export_all"
+                | "macro.add"
+                | "macro.add_wait"
+        )
+        || key == "app.title"
+        || (key.starts_with("tile.") && key.matches('.').count() == 1)
 }
 
 /// `(key, English, 한국어)`.
@@ -58,6 +82,74 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ("nav.modes", "Modes", "모드"),
     ("nav.profiles", "Profiles", "프로필"),
     ("nav.playground", "Playground", "연습장"),
+    (
+        "engine.state_running",
+        "On: rules are working",
+        "켜짐: 규칙이 동작합니다",
+    ),
+    (
+        "engine.state_paused",
+        "Paused: only engine rules work",
+        "일시 정지: 엔진 규칙만 동작합니다",
+    ),
+    (
+        "engine.state_off",
+        "Off: no rule works",
+        "꺼짐: 규칙이 동작하지 않습니다",
+    ),
+    (
+        "settings.theme",
+        "Follows Windows, or always dark or light.",
+        "Windows 설정을 따르거나 항상 어둡게 또는 밝게 표시합니다.",
+    ),
+    (
+        "settings.language",
+        "For descriptions and messages; names of buttons and features stay English.",
+        "설명과 안내 메시지의 언어입니다. 버튼과 기능 이름은 영어로 표시됩니다.",
+    ),
+    (
+        "settings.engine_note",
+        "The switch at the top of the left rail turns Ddalgak on or off; it always shows the engine's real state.",
+        "왼쪽 위의 스위치로 딸깍을 켜고 끕니다. 스위치는 항상 엔진의 실제 상태를 보여 줍니다.",
+    ),
+    (
+        "settings.transfer",
+        "Rules are exported to a file you choose; an import shows what changes first.",
+        "규칙을 원하는 파일로 내보냅니다. 가져오기는 바뀌는 내용을 먼저 보여 줍니다.",
+    ),
+    (
+        "list.filters_hint",
+        "Show or hide the filters",
+        "필터 보이기/숨기기",
+    ),
+    (
+        "play.hint_rule",
+        "Try this rule in the Playground: nothing leaves the window.",
+        "연습장에서 이 규칙을 시험합니다. 창 밖으로는 아무것도 나가지 않습니다.",
+    ),
+    ("form.combo", "Keys", "키 조합"),
+    (
+        "form.combo_together_hint",
+        "Press them at the same time, e.g. Ctrl+Shift+K or RCtrl+CapsLock (left and right keys stay apart).",
+        "동시에 누릅니다. 예: Ctrl+Shift+K, RCtrl+CapsLock (왼쪽/오른쪽 키는 구분됩니다).",
+    ),
+    (
+        "form.combo_sequence_hint",
+        "Press one after the other, e.g. Ctrl+K then U (up to four steps).",
+        "차례로 누릅니다. 예: Ctrl+K 다음 U (최대 네 단계).",
+    ),
+    (
+        "form.combo_hold_hint",
+        "Hold the first key (any key, e.g. CapsLock) and press the second. The held key then opens a layer and no longer acts alone.",
+        "첫 키(예: CapsLock)를 누른 채 둘째 키를 누릅니다. 누르는 키는 레이어 키가 되어 단독으로는 동작하지 않습니다.",
+    ),
+    ("form.hold_key", "Hold", "누른 채로"),
+    ("form.press_key", "Press", "누를 키"),
+    (
+        "form.hold_key_missing",
+        "Choose the key to hold.",
+        "누른 채로 둘 키를 고르세요.",
+    ),
     (
         "macro.title",
         "Several steps (a macro)",
@@ -473,10 +565,10 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ("btn.reload", "Load the newer rules", "새 규칙 불러오기"),
     ("form.new", "New rule", "새 규칙"),
     ("form.edit", "Edit rule", "규칙 편집"),
-    ("form.step.keys", "1 Keys", "1 키"),
-    ("form.step.effect", "2 Effect", "2 동작"),
-    ("form.step.details", "3 Details", "3 세부 설정"),
-    ("form.step.try", "4 Try", "4 시험"),
+    ("form.step.keys", "1 Trigger", "1 Trigger"),
+    ("form.step.effect", "2 Action", "2 Action"),
+    ("form.step.details", "3 Details", "3 Details"),
+    ("form.step.try", "4 Test", "4 Test"),
     ("form.when_press", "When I press", "이 키를 누르면"),
     ("form.when_type", "When I type", "이렇게 입력하면"),
     ("form.capture", "Press the keys…", "키를 누르세요…"),
@@ -1312,8 +1404,10 @@ mod tests {
             assert!(seen.insert(*k), "duplicate key {k}");
             assert!(!en.trim().is_empty() && !ko.trim().is_empty(), "{k}");
         }
-        assert_eq!(Lang::Ko.t("nav.rules"), "규칙");
+        // ADR 0092: names stay English; explanations follow the language.
+        assert_eq!(Lang::Ko.t("nav.rules"), "Rules");
         assert_eq!(Lang::En.t("nav.rules"), "Rules");
+        assert_eq!(Lang::Ko.t("form.when_press"), "이 키를 누르면");
         assert_eq!(Lang::En.t("no.such.key"), "?");
     }
 
@@ -1337,7 +1431,14 @@ mod tests {
             ("nav.playground", "Playground", "연습장"),
         ] {
             assert_eq!(Lang::En.t(key), en);
-            assert_eq!(Lang::Ko.t(key), ko);
+            // ADR 0092: a name shows in English in both languages; the glossary's Korean word
+            // stays in the table (and in the docs) for the explanations around it.
+            let want = if is_name(key) { en } else { ko };
+            assert_eq!(Lang::Ko.t(key), want, "{key}");
+            assert!(
+                LABELS.iter().any(|(k, _, k_ko)| *k == key && *k_ko == ko),
+                "{key}: the glossary word"
+            );
         }
         assert!(Lang::Ko.t("header.emergency").contains("긴급 끄기"));
     }

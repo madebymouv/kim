@@ -99,6 +99,46 @@ pub enum Page {
     Profiles,
     /// Step 76: the test playground (J5).
     Playground,
+    /// ADR 0096: the gear's page.
+    Settings,
+}
+
+/// ADR 0096: the editor's own preferences (`editor.json` next to `rules.json`): its theme and
+/// the language of its descriptions.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct EditorPrefs {
+    pub theme: kim_ui::ThemePref,
+    pub lang: kim_ui::LangPref,
+}
+
+impl EditorPrefs {
+    pub const FILE: &'static str = "editor.json";
+
+    pub fn load(dir: &std::path::Path) -> EditorPrefs {
+        let v: serde_json::Value = std::fs::read(dir.join(Self::FILE))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        EditorPrefs {
+            theme: v["theme"]
+                .as_str()
+                .and_then(kim_ui::ThemePref::parse)
+                .unwrap_or_default(),
+            lang: v["language"]
+                .as_str()
+                .and_then(kim_ui::LangPref::parse)
+                .unwrap_or_default(),
+        }
+    }
+
+    pub fn save(&self, dir: &std::path::Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(dir)?;
+        let doc = serde_json::json!({
+            "theme": self.theme.as_str(),
+            "language": self.lang.as_str(),
+        });
+        std::fs::write(dir.join(Self::FILE), doc.to_string())
+    }
 }
 
 /// What a confirmed Discard leads to.
@@ -189,6 +229,8 @@ struct Toast {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum CaptureTarget {
     Trigger,
+    /// ADR 0096: the held key of a "hold + press" trigger.
+    HoldKey,
     RemapTo,
     RemapTap,
     SendKeys,
@@ -218,7 +260,6 @@ enum Act {
     Export(Vec<String>),
     Import,
     Help,
-    SwitchLang,
     Page(Page),
     Discard(AfterDiscard),
     Allow,
@@ -292,6 +333,14 @@ pub struct EditorApp {
     focus_title: bool,
     new_mode_title: String,
     themed: bool,
+    /// ADR 0096: Settings → Theme and Language, and the theme last applied.
+    prefs: EditorPrefs,
+    applied_theme: Option<kim_ui::Theme>,
+    /// ADR 0096: the rule list's filters are shown (otherwise only the search and New).
+    show_filters: bool,
+    /// ADR 0096: the key picker, open for this field.
+    key_picker: Option<(CaptureTarget, kim_ui::keys::KeyPicker)>,
+    config_dir: std::path::PathBuf,
     visible: Vec<usize>,
     /// Close the window on the next frame (a confirmed discard on close).
     close_now: bool,
@@ -335,9 +384,15 @@ impl EditorApp {
         let loaded = repo.read();
         let rows = listing::rows(&loaded);
         let shortcuts = Shortcuts::load(&opts.paths, opts.no_hotkeys);
+        let prefs = EditorPrefs::load(&opts.paths.config);
+        let lang = match prefs.lang {
+            kim_ui::LangPref::System => opts.lang,
+            kim_ui::LangPref::En => Lang::En,
+            kim_ui::LangPref::Ko => Lang::Ko,
+        };
         let mut app = EditorApp {
             repo,
-            lang: opts.lang,
+            lang,
             layout: opts.layout,
             cursor: opts.cursor,
             link,
@@ -375,6 +430,11 @@ impl EditorApp {
             focus_title: false,
             new_mode_title: String::new(),
             themed: false,
+            prefs,
+            applied_theme: None,
+            show_filters: false,
+            key_picker: None,
+            config_dir: opts.paths.config.clone(),
             visible: Vec::new(),
             close_now: false,
             doc_check: None,
@@ -527,6 +587,75 @@ impl EditorApp {
     }
 
     // --- Model updates ---------------------------------------------------------------------------
+
+    /// ADR 0096: the key picker dialog: keys chosen by clicking (left/right modifiers, CapsLock,
+    /// Tab, Space, arrows, mouse buttons) instead of pressed.
+    pub(crate) fn key_picker_dialog(&mut self, ctx: &egui::Context) {
+        let Some((target, mut picker)) = self.key_picker.take() else {
+            return;
+        };
+        let lang = match self.lang {
+            Lang::Ko => kim_ui::Lang::Ko,
+            Lang::En => kim_ui::Lang::En,
+        };
+        let keys = view::trigger_keys();
+        let mut picked = kim_ui::keys::Picked::None;
+        let r = kim_ui::dialog(ctx, "ddalgak-key-picker", "Pick keys", |ui| {
+            picked = picker.ui(ui, &keys, true, lang);
+        });
+        match picked {
+            kim_ui::keys::Picked::Confirm(chord) => {
+                self.capture_target = target;
+                self.set_capture_value(chord);
+            }
+            kim_ui::keys::Picked::Cancel => {}
+            kim_ui::keys::Picked::None if r.should_close() => {}
+            kim_ui::keys::Picked::None => self.key_picker = Some((target, picker)),
+        }
+    }
+
+    /// ADR 0096: Settings changed: saved in `editor.json`.
+    fn save_prefs(&mut self) {
+        if let Err(e) = self.prefs.save(&self.config_dir) {
+            self.banner = Some(Banner::Error {
+                code: "io".into(),
+                message: format!("the settings could not be saved: {e}"),
+                details: Vec::new(),
+            });
+        }
+    }
+
+    /// The editor's preferences (tests).
+    pub fn prefs(&self) -> EditorPrefs {
+        self.prefs
+    }
+
+    /// ADR 0096: a rule's keys as the list shows them: `CapsLock + J` for a rule limited to a
+    /// hold layer that a hold rule opens (a "hold, then press" combination), else its trigger.
+    fn trigger_display(&self, r: &Row) -> String {
+        if let [m] = r.modes.as_slice()
+            && let Some(hold) = self.hold_key_of(m)
+        {
+            return format!("{hold} + {}", r.trigger);
+        }
+        r.trigger.clone()
+    }
+
+    /// The key of the rule that holds layer `mode` (`mode` with `op: hold`), when there is one.
+    pub(crate) fn hold_key_of(&self, mode: &str) -> Option<String> {
+        let doc = self.doc()?;
+        doc.profiles
+            .iter()
+            .flat_map(|p| p.rules.iter())
+            .find_map(|e| {
+                let r = e.rule()?;
+                let holds = r.steps.iter().any(|st| {
+                    matches!(st, ddalgak::model::Action::Mode(m)
+                    if m.op == ModeOp::Hold && m.mode.as_deref() == Some(mode))
+                });
+                holds.then(|| r.trigger.keys_text().to_string())
+            })
+    }
 
     fn t(&self, key: &str) -> &'static str {
         self.lang.t(key)
@@ -762,7 +891,16 @@ impl EditorApp {
                     Some((d.profiles[pi].id.clone(), r))
                 });
                 if let Some((p, r)) = found {
-                    self.form = Some(RuleForm::edit(&p, &r));
+                    let mut f = RuleForm::edit(&p, &r);
+                    // ADR 0096: a rule limited to a hold layer is shown as "hold + press".
+                    if let [m] = f.fields.modes.as_slice()
+                        && let Some(key) = self.hold_key_of(m)
+                    {
+                        f.fields.trigger.combo = form::Combo::Hold;
+                        f.fields.trigger.hold_key = key;
+                        f.pristine = f.fields.clone();
+                    }
+                    self.form = Some(f);
                     self.external_change = false;
                     self.test = None;
                     self.selected = vec![id.clone()];
@@ -945,7 +1083,6 @@ impl EditorApp {
                 self.dialog = Some(Dialog::Help);
                 self.dialog_focus = true;
             }
-            Act::SwitchLang => self.lang = self.lang.other(),
             Act::Page(p) => self.page = p,
             Act::Discard(then) => {
                 self.dialog = None;
@@ -1072,10 +1209,43 @@ impl EditorApp {
 
     /// Saves the open form (J2 step 4). `allow`: consent the user just gave.
     fn save_form(&mut self, allow: &[Permission]) {
-        let Some(f) = self.form.clone() else {
+        let Some(mut f) = self.form.clone() else {
             return;
         };
-        let profile = self.profile(&f.profile).cloned();
+        // ADR 0096: "hold + press" is this rule limited to the held key's layer.
+        let layer = (f.fields.trigger.combo == form::Combo::Hold
+            && !f.fields.trigger.hotstring
+            && !f.fields.trigger.scheduled
+            && !f.fields.trigger.hold_key.trim().is_empty())
+        .then(|| {
+            let key = f.fields.trigger.hold_key.trim().to_string();
+            (form::hold_mode_id(&key), key)
+        });
+        if let Some((id, _)) = &layer {
+            f.fields.modes = vec![id.clone()];
+        } else if let [m] = f.fields.modes.as_slice()
+            && self.hold_key_of(m).is_some()
+            && f.fields.trigger.combo != form::Combo::Hold
+        {
+            // No longer "hold + press": the rule leaves the layer.
+            f.fields.modes.clear();
+        }
+        let mut profile = self.profile(&f.profile).cloned();
+        // The layer is made in the same commit: the rule is checked as if it existed already.
+        if let (Some((id, key)), Some(p)) = (&layer, profile.as_mut())
+            && !p.modes.iter().any(|m| &m.id == id)
+            && let Ok(m) = serde_json::from_value::<ddalgak::model::Mode>(
+                serde_json::json!({ "id": id, "title": format!("Hold {key}") }),
+            )
+        {
+            p.modes.push(m);
+        }
+        // The automatic title follows the finished rule (not the first half of it).
+        let before = f.fields.title.clone();
+        f.refresh_title(profile.as_ref(), self.lang);
+        if f.fields.title.trim().is_empty() {
+            f.fields.title = before;
+        }
         let mut rule = match f.build("new-rule", profile.as_ref()) {
             Ok(r) => r,
             Err(p) => {
@@ -1113,13 +1283,23 @@ impl EditorApp {
             (Some(id), Some(base)) => {
                 let id = id.clone();
                 let base = base.to_value();
+                let layer = layer.clone();
+                let pid = pid.clone();
                 self.commit(
                     format!("Edited \"{}\"", rule.title),
                     "rule.edit",
-                    move |d| repo::replace_rule(d, &id, rule, &base),
+                    move |d| {
+                        if let Some((m, key)) = &layer {
+                            repo::ensure_hold_layer(d, &pid, m, key)?;
+                        }
+                        repo::replace_rule(d, &id, rule, &base)
+                    },
                 )
             }
             _ => self.commit(format!("Added \"{}\"", rule.title), "rule.add", move |d| {
+                if let Some((m, key)) = &layer {
+                    repo::ensure_hold_layer(d, &pid, m, key)?;
+                }
                 repo::add_rule(d, &pid, rule)
             }),
         };
@@ -1333,6 +1513,7 @@ impl EditorApp {
         };
         match self.capture_target {
             CaptureTarget::Trigger => f.fields.trigger.keys.clone(),
+            CaptureTarget::HoldKey => f.fields.trigger.hold_key.clone(),
             CaptureTarget::RemapTo => f.fields.remap.to.clone(),
             CaptureTarget::RemapTap => f.fields.remap.tap.clone(),
             CaptureTarget::SendKeys => f.fields.keys.keys.clone(),
@@ -1344,6 +1525,7 @@ impl EditorApp {
         if let Some(f) = self.form.as_mut() {
             match target {
                 CaptureTarget::Trigger => f.fields.trigger.keys = v,
+                CaptureTarget::HoldKey => f.fields.trigger.hold_key = v,
                 CaptureTarget::RemapTo => f.fields.remap.to = v,
                 CaptureTarget::RemapTap => f.fields.remap.tap = v,
                 CaptureTarget::SendKeys => f.fields.keys.keys = v,

@@ -304,6 +304,50 @@ pub fn add_rule(doc: &mut Document, profile: &str, mut rule: Rule) -> Result<Cha
     )
 }
 
+/// ADR 0096: makes sure profile `profile` has the hold layer `mode` (titled `Hold <key>`) and a
+/// rule that holds it while `key` is down (`mode` step with `op: hold`); both are added only
+/// when missing, so editing a "hold + press" rule again changes nothing else.
+pub fn ensure_hold_layer(
+    doc: &mut Document,
+    profile: &str,
+    mode: &str,
+    key: &str,
+) -> Result<(), EditError> {
+    let pi = doc
+        .profiles
+        .iter()
+        .position(|p| p.id == profile)
+        .ok_or_else(|| EditError::ProfileNotFound(profile.to_string()))?;
+    if !doc.profiles[pi].modes.iter().any(|m| m.id == mode) {
+        let m: ddalgak::model::Mode = serde_json::from_value(serde_json::json!({
+            "id": mode,
+            "title": format!("Hold {key}"),
+        }))
+        .map_err(|e| EditError::Usage(e.to_string()))?;
+        doc.profiles[pi].modes.push(m);
+    }
+    let held = doc.profiles[pi].rules.iter().any(|e| {
+        e.rule().is_some_and(|r| {
+            r.steps.iter().any(|st| {
+                matches!(st, ddalgak::model::Action::Mode(s)
+                    if s.op == ddalgak::model::ModeOp::Hold && s.mode.as_deref() == Some(mode))
+            })
+        })
+    });
+    if !held {
+        let rule: Rule = serde_json::from_value(serde_json::json!({
+            "id": "",
+            "title": format!("Hold {key} for its layer"),
+            "enabled": true,
+            "trigger": { "keys": key },
+            "steps": [ { "type": "mode", "op": "hold", "mode": mode } ],
+        }))
+        .map_err(|e| EditError::Usage(e.to_string()))?;
+        add_rule(doc, profile, rule)?;
+    }
+    Ok(())
+}
+
 /// Replaces rule `id` with `rule`, if the rule on disk is still `base` (what the form opened);
 /// otherwise `rule_conflict` and nothing changes.
 pub fn replace_rule(

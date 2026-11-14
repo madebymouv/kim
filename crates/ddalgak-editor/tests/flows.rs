@@ -13,7 +13,7 @@ use ddalgak_editor::form::Effect;
 use ddalgak_editor::i18n::Lang;
 use ddalgak_editor::listing::{Grouping, StateFilter};
 use ddalgak_editor::repo::Repo;
-use ddalgak_editor::sync::{Engine, FakeEngine, NoEngine, SaveState};
+use ddalgak_editor::sync::{Engine, EngineView, FakeEngine, NoEngine, SaveState};
 use ddalgak_editor::{EditorApp, Options};
 use eframe::egui::{self, Key, Modifiers, accesskit::Role};
 use egui_kittest::Harness;
@@ -150,7 +150,13 @@ fn j1_first_start_is_safe_and_a_starter_is_only_a_draft() {
         h.query_by_label_contains("Emergency off: Ctrl+Alt+Shift+Esc")
             .is_some()
     );
-    assert!(h.query_by_label("○ Ddalgak is not running").is_some());
+    // ADR 0096: the rail's engine switch shows the real state: no app, so it is off and
+    // disabled, its description saying why.
+    assert_eq!(h.state().engine_view(), &EngineView::NotRunning);
+    assert!(
+        h.query_all_by_label("Ddalgak").count() >= 2,
+        "the switch is on the rail"
+    );
     assert!(
         !sb.paths.rules().exists(),
         "opening the editor writes nothing"
@@ -206,7 +212,7 @@ fn j2_create_a_rule_with_capture_tile_form_simulation_and_consent() {
             .next()
             .is_some()
     );
-    click(&mut h, "4 Try");
+    click(&mut h, "4 Test");
     click(&mut h, "▶ Simulate");
     let sim = h.state().simulation().expect("simulated").clone();
     assert!(sim.fires);
@@ -253,11 +259,7 @@ fn a_save_is_acknowledged_only_after_the_engine_reload() {
     settle(&mut h);
     assert_eq!(h.state().save_state(), &SaveState::Active { revision: 1 });
     fake.with(|s| s.delay_ms = 400);
-    click(
-        &mut h,
-        "Ctrl+Alt+Shift+F13  →  Pauses all rules, or resumes them when paused",
-    );
-    click(&mut h, "Disable");
+    click(&mut h, "Enabled: F13 pauses");
     let rev = sb.rules()["revision"].as_u64().unwrap();
     assert_eq!(rev, 2);
     assert_eq!(h.state().save_state(), &SaveState::Waiting { revision: 2 });
@@ -276,7 +278,7 @@ fn a_save_is_acknowledged_only_after_the_engine_reload() {
         s.delay_ms = 0;
         s.engine = "off".into();
     });
-    click(&mut h, "Enable");
+    click(&mut h, "Enabled: F13 pauses");
     settle(&mut h);
     assert_eq!(
         h.state().save_state(),
@@ -287,7 +289,7 @@ fn a_save_is_acknowledged_only_after_the_engine_reload() {
     );
     // Ddalgak is not running.
     fake.with(|s| s.running = false);
-    click(&mut h, "Disable");
+    click(&mut h, "Enabled: F13 pauses");
     settle(&mut h);
     assert_eq!(
         h.state().save_state(),
@@ -311,13 +313,12 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
         &mut h,
         "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
     );
-    click(&mut h, "Edit");
     assert!(h.state().form().unwrap().id.is_some());
     h.get_by_label("Name")
         .set_text_value_accesskit("Caps is Ctrl");
     h.run();
     assert!(h.state().has_unsaved_changes());
-    click(&mut h, "4 Try");
+    click(&mut h, "4 Test");
     click(&mut h, "Save");
     let d = sb.rules();
     assert_eq!(rule(&d, "caps")["title"], "Caps is Ctrl");
@@ -327,7 +328,7 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
         "consent kept"
     );
     // Duplicate: a disabled copy right after the original.
-    click(&mut h, "Duplicate");
+    click(&mut h, "Duplicate: Caps is Ctrl");
     let d = sb.rules();
     let all = ids(&d);
     assert_eq!(all.len(), 4);
@@ -335,12 +336,11 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
     assert_eq!(rule(&d, &copy)["title"], "Caps is Ctrl (copy)");
     assert_eq!(rule(&d, &copy)["enabled"], false);
     // Enabling the disabled snippet needs consent: Cancel keeps it off, Allow enables it.
-    click(&mut h, "Ctrl+Shift+F2  →  Types 6 characters on 1 line");
-    click(&mut h, "Enable");
+    click(&mut h, "Enabled: Thanks");
     assert!(h.query_by_label("Allow this rule?").is_some());
     click_last_button(&mut h, "Cancel");
     assert_eq!(rule(&sb.rules(), "thanks")["enabled"], false);
-    click(&mut h, "Enable");
+    click(&mut h, "Enabled: Thanks");
     click_last_button(&mut h, "Allow");
     let d = sb.rules();
     assert_eq!(rule(&d, "thanks")["enabled"], true);
@@ -349,7 +349,7 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
         "gui"
     );
     // Delete asks first, Cancel focused; then an Undo toast that stays until dismissed.
-    click(&mut h, "Delete");
+    click(&mut h, "Delete: Thanks");
     assert!(h.query_by_label("Delete rules").is_some());
     assert!(
         h.get_all_by_role_and_label(Role::Button, "Cancel")
@@ -384,17 +384,12 @@ fn a_later_change_retires_the_undo_toast_of_a_delete() {
     sb.write_rules(&three_rules());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(&mut h, "Ctrl+Shift+F2  →  Types 6 characters on 1 line");
-    click(&mut h, "Delete");
+    click(&mut h, "Delete: Thanks");
     click_last_button(&mut h, "Delete (1)");
     assert!(h.query_by_label_contains("Deleted 1 rule(s)").is_some());
     let before = ids(&sb.rules()).len();
     // Another change: duplicate the remaining first rule.
-    click(
-        &mut h,
-        "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
-    );
-    click(&mut h, "Duplicate");
+    click(&mut h, "Duplicate: CapsLock acts as Ctrl");
     settle(&mut h);
     assert_eq!(ids(&sb.rules()).len(), before + 1);
     assert!(
@@ -439,7 +434,7 @@ fn every_action_form_validates_in_the_window() {
             "{tile}"
         );
         let needs_input = !matches!(effect, Effect::Engine | Effect::Block | Effect::Mouse);
-        click(&mut h, "4 Try");
+        click(&mut h, "4 Test");
         let blocked = !h
             .get_by_role_and_label(Role::Button, "Save and enable")
             .accesskit_node()
@@ -525,6 +520,8 @@ fn search_filter_group_and_bulk_enable() {
     h.state_mut().filter_mut().query = "private".into();
     h.run();
     assert!(h.state().visible_ids().is_empty());
+    // ADR 0096: the filters are behind "Filters".
+    click(&mut h, "Filters");
     click(&mut h, "Also search snippet text");
     assert_eq!(h.state().visible_ids(), ["sig"]);
     h.state_mut().filter_mut().query.clear();
@@ -546,8 +543,9 @@ fn search_filter_group_and_bulk_enable() {
     assert!(h.query_by_label("Code.exe").is_some());
     h.state_mut().set_grouping(Grouping::None);
     h.run();
-    // Bulk: select two with Ctrl+click, enable both at once.
-    h.get_by_label_contains("Ctrl+Alt+Shift+F14").click();
+    // Bulk: select two with Ctrl+click (a plain click opens the rule), enable both at once.
+    h.get_by_label_contains("Ctrl+Alt+Shift+F14")
+        .click_modifiers(Modifiers::CTRL);
     h.run();
     h.get_by_label_contains("Ctrl+Alt+Shift+F15")
         .click_modifiers(Modifiers::CTRL);
@@ -575,10 +573,10 @@ fn reorder_with_keys_and_drag() {
     sb.write_rules(&three_rules());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(
-        &mut h,
-        "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
-    );
+    // Ctrl+click selects without opening the rule.
+    h.get_by_label("CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape")
+        .click_modifiers(Modifiers::CTRL);
+    h.run();
     h.key_press_modifiers(Modifiers::ALT, Key::ArrowDown);
     h.run();
     assert_eq!(ids(&sb.rules()), ["pause", "caps", "thanks"]);
@@ -705,13 +703,10 @@ fn draft_safety_and_undo() {
         &mut h,
         "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
     );
-    click(&mut h, "Edit");
     h.get_by_label("Name").set_text_value_accesskit("Changed");
     h.run();
-    click(
-        &mut h,
-        "Ctrl+Alt+Shift+F13  →  Pauses all rules, or resumes them when paused",
-    );
+    // ADR 0096: the rule has the page; going back to the list asks first.
+    click(&mut h, "← Rules");
     assert!(h.query_by_label("Discard your changes?").is_some());
     assert!(
         h.get_by_role_and_label(Role::Button, "Keep editing")
@@ -751,7 +746,6 @@ fn a_cli_change_appears_and_is_never_overwritten() {
         &mut h,
         "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
     );
-    click(&mut h, "Edit");
     h.get_by_label("Name").set_text_value_accesskit("Mine");
     h.run();
     let reloads = fake.with(|s| s.calls.iter().filter(|c| *c == "rules.reload").count());
@@ -786,7 +780,7 @@ fn a_cli_change_appears_and_is_never_overwritten() {
         h.query_by_label("The rules changed outside the editor.")
             .is_some()
     );
-    click(&mut h, "4 Try");
+    click(&mut h, "4 Test");
     click(&mut h, "Save");
     assert!(
         matches!(h.state().banner(), Some(ddalgak_editor::app::Banner::Error { code, .. }) if code == "rule_conflict"),
@@ -796,7 +790,8 @@ fn a_cli_change_appears_and_is_never_overwritten() {
     assert_eq!(rule(&sb.rules(), "caps")["title"], "Renamed by the CLI");
 }
 
-/// Korean labels (DDALGAK-FR-053) and the language switch.
+/// Korean labels (DDALGAK-FR-053, ADR 0092): names (sections, buttons, steps, action tiles) stay
+/// English, explanations are Korean; the language is chosen in Settings and saved.
 #[test]
 fn korean_labels() {
     let sb = Sandbox::new("ko");
@@ -805,32 +800,42 @@ fn korean_labels() {
     opts.lang = Lang::Ko;
     let mut h = harness(EditorApp::new(opts));
     settle(&mut h);
-    for label in ["규칙", "모드", "+ 새 규칙", "가져오기…", "English"] {
+    for label in ["Rules", "Modes", "+ New rule"] {
         assert!(
-            h.query_by_role_and_label(Role::Button, label).is_some(),
-            "{label}"
+            h.query_all_by_label(label).count() >= 1,
+            "{label} stays English"
         );
     }
-    assert!(h.query_by_label("● 실행 중").is_some());
-    click(&mut h, "+ 새 규칙");
-    assert!(h.query_by_label("이 키를 누르면").is_some());
+    click(&mut h, "+ New rule");
+    assert!(
+        h.query_all_by_label("이 키를 누르면").count() >= 1,
+        "the explanation is Korean"
+    );
     h.key_press(Key::Escape);
     h.run();
-    click(&mut h, "2 동작");
+    click(&mut h, "2 Action");
     for tile in [
-        "다른 키로 바꾸기",
-        "글자 입력",
-        "프로그램 열기",
-        "웹사이트 열기",
-        "마우스",
-        "모드 전환",
-        "딸깍 일시 정지",
+        "Act as another key",
+        "Type text",
+        "Open a program",
+        "Open a website",
+        "Mouse",
+        "Switch mode",
+        "Pause Ddalgak",
     ] {
         assert!(h.query_by_label(tile).is_some(), "{tile}");
     }
-    click(&mut h, "취소");
+    assert!(h.query_by_label_contains("이렇게 하기").is_some());
+    click(&mut h, "Cancel");
+    click(&mut h, "Settings");
     click(&mut h, "English");
-    assert!(h.query_by_label("+ New rule").is_some());
+    assert_eq!(h.state().prefs().lang, kim_ui::LangPref::En);
+    let saved: Value =
+        serde_json::from_slice(&std::fs::read(sb.paths.config.join("editor.json")).unwrap())
+            .unwrap();
+    assert_eq!(saved["language"], "en");
+    click(&mut h, "Light");
+    assert_eq!(h.state().prefs().theme, kim_ui::ThemePref::Light);
 }
 
 /// Many rules and modes: 1000 rules (a profile's limit) over 32 modes open, filter and scroll
@@ -891,6 +896,8 @@ fn export_and_import_never_open_or_run_anything() {
     let fake = sb.fake();
     let mut h = harness(app(&sb, fake.clone()));
     settle(&mut h);
+    // ADR 0096: Import and Export are in Settings (the gear).
+    click(&mut h, "Settings");
     click(&mut h, "Export…");
     let file = sb.root.join("shared.json");
     h.get_by_label("File")
@@ -905,6 +912,7 @@ fn export_and_import_never_open_or_run_anything() {
     let other = Sandbox::new("io-target");
     let mut h2 = harness(app(&other, other.fake()));
     settle(&mut h2);
+    click(&mut h2, "Settings");
     click(&mut h2, "Import…");
     h2.get_by_label("File")
         .set_text_value_accesskit(&file.display().to_string());
@@ -915,6 +923,7 @@ fn export_and_import_never_open_or_run_anything() {
         "the target is named"
     );
     click(&mut h2, "Add them turned off");
+    click(&mut h2, "Rules");
     let d = other.rules();
     let r = &d["profiles"][0]["rules"][0];
     assert_eq!(r["enabled"], false);
@@ -926,12 +935,7 @@ fn export_and_import_never_open_or_run_anything() {
             .is_some()
     );
     // Enabling it asks for consent naming the exact website.
-    h2.get_all_by_label_contains("Opens example.com")
-        .next()
-        .unwrap()
-        .click();
-    h2.run();
-    click(&mut h2, "Enable");
+    click(&mut h2, "Enabled: Open example");
     assert!(
         h2.query_by_label("Let this rule open this program or website?")
             .is_some()
@@ -958,15 +962,29 @@ fn test_start_uses_the_simulation() {
     ])));
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    h.get_by_label_contains("Opens notepad.exe").click();
+    // ADR 0096: a click opens the rule; its page offers the Playground test.
+    h.get_all_by_label_contains("Opens notepad.exe")
+        .next()
+        .unwrap()
+        .click();
     h.run();
-    click(&mut h, "Test");
+    click(&mut h, "Test in Playground");
     let sim = h.state().simulation().unwrap().clone();
     assert!(
         sim.lines.iter().any(|l| l.contains("nothing was opened")),
         "{sim:?}"
     );
-    h.get_by_label_contains("Ctrl+Alt+Shift+F19").click();
+    click(&mut h, "← Rules");
+    // Ctrl+click: Notepad's rule out of the selection, the pointer rule in.
+    h.get_all_by_label_contains("Ctrl+Alt+Shift+F18")
+        .next()
+        .unwrap()
+        .click_modifiers(Modifiers::CTRL);
+    h.run();
+    h.get_all_by_label_contains("Ctrl+Alt+Shift+F19")
+        .next()
+        .unwrap()
+        .click_modifiers(Modifiers::CTRL);
     h.run();
     h.key_press(Key::F5);
     h.run();
@@ -1064,10 +1082,12 @@ fn the_header_follows_engine_changes_made_elsewhere() {
         h.query_by_label("Mode: nav").is_some(),
         "the new mode is shown"
     );
+    // ADR 0096: the rail's switch stays on and offers Resume while the engine is paused.
     assert!(
-        h.query_by_label_contains("Paused").is_some(),
+        matches!(h.state().engine_view(), EngineView::Running { state, .. } if state == "paused"),
         "the new state is shown"
     );
+    assert!(h.query_by_label("Resume").is_some());
 }
 
 /// #77 (seen in the real editor): a mode without notes drew its rule count over its name.
@@ -1343,9 +1363,12 @@ fn the_active_profile_is_never_deleted_and_the_page_speaks_korean() {
         first.accesskit_node().is_disabled(),
         "the active profile's Delete is disabled"
     );
+    // ADR 0096: the language is chosen in Settings; button names stay English.
+    click(&mut h, "Settings");
     click(&mut h, "한국어");
+    click(&mut h, "Profiles");
     assert!(h.query_by_label("● 사용 중").is_some());
-    assert!(h.query_by_label("프로필 가져오기…").is_some());
+    assert!(h.query_by_label("Import profile…").is_some());
 }
 
 /// Step 78 (DDALGAK-FR-018, DDALGAK-FR-074, J4 *Several steps*): a macro built in the form — one step from the
@@ -1367,6 +1390,8 @@ fn a_macro_is_built_recorded_reordered_and_saved() {
     click(&mut h, "Type text");
     h.get_by_label("Text").set_text_value_accesskit("안녕");
     h.run();
+    // ADR 0096: several steps are folded under their own heading.
+    click(&mut h, "Several steps (a macro)");
     click(&mut h, "Add to macro");
     click(&mut h, "Add a wait");
     click(&mut h, "● Record keys");
@@ -1413,7 +1438,7 @@ fn a_macro_is_built_recorded_reordered_and_saved() {
         h.query_by_label_contains("Runs 3 steps in order, 2 times")
             .is_some()
     );
-    click(&mut h, "4 Try");
+    click(&mut h, "4 Test");
     click(&mut h, "▶ Simulate");
     assert!(h.state().simulation().expect("simulated").fires);
     assert!(!sb.paths.rules().exists(), "nothing written before saving");
@@ -1495,4 +1520,118 @@ fn an_autohotkey_script_is_imported_through_the_preview_without_running() {
         assert_eq!(r["enabled"], false);
         assert!(r.get("consent").is_none());
     }
+}
+
+/// ADR 0096: the rail's switch is the engine's real state, and turning it off or on sends the
+/// request to the app; the rail has no top bar above it.
+#[test]
+fn the_engine_switch_follows_and_drives_the_real_state() {
+    let sb = Sandbox::new("switch");
+    sb.write_rules(&three_rules());
+    let fake = sb.fake();
+    let mut h = harness(app(&sb, fake.clone()));
+    settle(&mut h);
+    let on = |h: &Harness<'static, EditorApp>| matches!(h.state().engine_view(), EngineView::Running { state, .. } if state != "off");
+    assert!(on(&h), "the fake app runs");
+    h.get_all_by_role_and_label(Role::Switch, "Ddalgak")
+        .next()
+        .unwrap()
+        .click();
+    settle(&mut h);
+    std::thread::sleep(Duration::from_millis(1100));
+    settle(&mut h);
+    assert_eq!(fake.with(|s| s.engine.clone()), "off");
+    assert!(!on(&h), "the switch shows the engine turned off");
+    h.get_all_by_role_and_label(Role::Switch, "Ddalgak")
+        .next()
+        .unwrap()
+        .click();
+    settle(&mut h);
+    std::thread::sleep(Duration::from_millis(1100));
+    settle(&mut h);
+    assert_eq!(fake.with(|s| s.engine.clone()), "running");
+    assert!(on(&h));
+}
+
+/// ADR 0096: "Hold + press" saves a hold layer (a mode the held key opens), the rule that holds
+/// it and the rule limited to it, in one change; the list shows `CapsLock + J`; opening the rule
+/// again shows it as Hold + press; keys can be picked (side-specific modifiers kept apart).
+#[test]
+fn hold_and_press_is_saved_as_a_layer_and_keys_can_be_picked() {
+    let sb = Sandbox::new("hold");
+    sb.write_rules(&three_rules());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    click(&mut h, "+ New rule");
+    click(&mut h, "Hold + press");
+    // The held key, picked: Tab (CapsLock already has a rule here; a held key must be free).
+    h.get_all_by_label("Pick…").next().unwrap().click();
+    h.run();
+    click(&mut h, "Tab");
+    click(&mut h, "Confirm");
+    // The pressed key, picked too: RCtrl+J (a side-specific modifier stays RCtrl).
+    h.get_all_by_label("Pick…").last().unwrap().click();
+    h.run();
+    // RCtrl as a modifier (the first row; the key list also offers RCtrl alone).
+    h.get_all_by_role_and_label(Role::Button, "RCtrl")
+        .next()
+        .unwrap()
+        .click();
+    h.run();
+    h.get_by_label("Search keys").click();
+    h.run();
+    h.get_by_label("Search keys").type_text("J");
+    h.run();
+    click_last_button(&mut h, "J");
+    click(&mut h, "Confirm");
+    {
+        let t = &h.state().form().unwrap().fields.trigger;
+        assert_eq!(t.hold_key, "Tab");
+        assert_eq!(t.keys, "RCtrl+J");
+    }
+    click(&mut h, "Next ▸");
+    click(&mut h, "Act as another key");
+    h.state_mut().form_mut().unwrap().fields.remap.to = "Down".into();
+    h.run();
+    click(&mut h, "4 Test");
+    click(&mut h, "Save and enable");
+    click_last_button(&mut h, "Allow");
+    let d = sb.rules();
+    let p = &d["profiles"][0];
+    assert!(
+        p["modes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["id"] == "hold-tab" && m["title"] == "Hold Tab"),
+        "{p:#}"
+    );
+    let rules = p["rules"].as_array().unwrap();
+    assert!(rules.iter().any(|r| r["trigger"]["keys"] == "Tab"
+        && r["steps"][0] == json!({ "type": "mode", "op": "hold", "mode": "hold-tab" })));
+    let mine = rules
+        .iter()
+        .find(|r| r["trigger"]["keys"] == "RCtrl+J")
+        .unwrap();
+    assert_eq!(mine["modes"], json!(["hold-tab"]));
+    assert_eq!(mine["steps"][0]["to"], "Down");
+    settle(&mut h);
+    // The list names the combination; opening it again shows Hold + press.
+    let id = mine["id"].as_str().unwrap().to_string();
+    let label = h
+        .state()
+        .rows()
+        .iter()
+        .find(|r| r.id == id)
+        .map(|r| format!("{}  →  {}", r.trigger, r.summary))
+        .unwrap();
+    h.get_by_label(&label).click();
+    h.run();
+    let t = &h.state().form().unwrap().fields.trigger;
+    assert_eq!(t.combo, ddalgak_editor::form::Combo::Hold);
+    assert_eq!(t.hold_key, "Tab");
+    assert!(
+        !h.state().has_unsaved_changes(),
+        "reading it back is no change"
+    );
 }

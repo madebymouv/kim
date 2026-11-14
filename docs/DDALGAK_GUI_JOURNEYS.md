@@ -57,6 +57,15 @@ cycles them (DESIGN_SYSTEM §4.1).
   characters of a snippet, a program's file name).
 - **Status line**: counts, problems and the save state: *draft*, *saved*, *saved and active*.
 
+**Since ADR 0096** the header is gone: the rail starts with *Ddalgak* and one switch that turns
+the engine on or off and always shows its real state (disabled, with the reason, while the tray
+app does not run), a Pause/Resume button, the profile and the mode; the sections follow. The
+status line ends with the settings gear (Theme, Language, Import/Export, keyboard help). Rule
+rows are one line (switch, name, keys as keycaps, effect in short, problem marks, Edit,
+Duplicate, Delete); a click opens the rule in the page itself with the steps Trigger → Action →
+Details → Test; the trigger step offers *Together*, *One after another* and *Hold + press*
+(saved as a hold layer) and a key picker. The layout above is the Step 74 record.
+
 ## 3. Journeys
 
 ### J1. First start: safe and empty
@@ -443,6 +452,9 @@ All of them except the fixed ones are rebindable in Settings → Keyboard shortc
 §11); the list comes from Ddalgak's [hotkey manifest](contracts/examples/kim-hotkey-manifest-v1/ddalgak.json).
 
 ## 5. Labels (Korean and English)
+
+Since ADR 0092/0096 names — sections, buttons, steps and action tiles — show in English in both
+languages; the Korean words below remain the glossary for the explanations around them.
 
 | Concept | English | 한국어 |
 | --- | --- | --- |

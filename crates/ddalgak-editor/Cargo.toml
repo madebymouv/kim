@@ -25,6 +25,8 @@ workspace = true
 ddalgak = { version = "0.0.1", path = "../ddalgak" }
 # Key names of the hotkey contract (capture) and the editor's in-window shortcuts from hotkeys.json.
 kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
+kim-ui = { version = "0.0.1", path = "../kim-ui" }
+kim-design = { version = "0.0.1", path = "../kim-design" }
 # ADR 0014: egui + glow for GUI chrome, AccessKit for UI Automation, the same pin as Kim Manager.
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
 serde_json = "1.0.154"

@@ -196,6 +196,37 @@ pub struct TriggerFields {
     pub days: [bool; 7],
     /// #102: a time missed while the computer slept runs once on waking.
     pub catch_up: bool,
+    /// ADR 0096: how the keys are combined (together, one after another, hold and press).
+    pub combo: Combo,
+    /// ADR 0096: with [`Combo::Hold`], the key held down (a layer key such as `CapsLock`).
+    pub hold_key: String,
+}
+
+/// ADR 0096: how a key trigger's keys are combined. *Together* is one chord (modifiers with a
+/// key, left/right modifiers kept apart); *One after another* is a sequence (`Ctrl+K Ctrl+U`);
+/// *Hold + press* holds one key (any key, e.g. `CapsLock`) while another is pressed — saved as
+/// a hold layer (a mode that the held key opens) with this rule limited to it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Combo {
+    #[default]
+    Together,
+    Sequence,
+    Hold,
+}
+
+/// The id of the hold layer that `key` opens (`hold-capslock`).
+pub fn hold_mode_id(key: &str) -> String {
+    let slug: String = key
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    format!("hold-{}", slug.trim_matches('-'))
 }
 
 impl Default for TriggerFields {
@@ -212,6 +243,8 @@ impl Default for TriggerFields {
             at: "09:00".into(),
             days: [true; 7],
             catch_up: false,
+            combo: Combo::Together,
+            hold_key: String::new(),
         }
     }
 }
