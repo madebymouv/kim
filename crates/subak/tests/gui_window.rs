@@ -74,7 +74,18 @@ impl Gui {
     }
 
     fn start_with(ep: &str, target: Option<&str>, appdata: &Path, extra: &[&str]) -> Self {
+        Self::start_env(ep, target, appdata, extra, &[])
+    }
+
+    fn start_env(
+        ep: &str,
+        target: Option<&str>,
+        appdata: &Path,
+        extra: &[&str],
+        env: &[(&str, &str)],
+    ) -> Self {
         let mut cmd = Command::new(gui_exe());
+        cmd.envs(env.iter().copied());
         cmd.args([
             "--test-offscreen",
             "--test-max-seconds",
@@ -3878,4 +3889,42 @@ fn keyword_rules_change_the_drawing() {
     let plain = shot("without.bmp");
     assert_ne!(coloured, plain, "the rule changed the drawing");
     println!("EVIDENCE keyword rules: `standin` in red changed the frame ({coloured} vs {plain})");
+}
+
+/// ADR 0098: on a large screen (the test pretends Subak's screen zoom 1.75, as on a
+/// 5120 × 1410 work area) the terminal text grows, but the tab bar keeps the design system's
+/// height (32 logical px at 96 DPI) — the same as on a normal screen.
+#[test]
+fn the_tab_bar_keeps_its_size_on_a_large_screen() {
+    let host = Host::start("gui-bigscreen", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_terminal(&ep, "big");
+    let bar_and_font = |zoom: &str| {
+        let appdata = sandbox(&format!("bigscreen-{zoom}"));
+        let mut gui = Gui::start_env(
+            &ep,
+            Some("big"),
+            &appdata,
+            &[],
+            &[("SUBAK_TEST_SCREEN_ZOOM", zoom)],
+        );
+        gui.state("attached");
+        let d = gui.until("a bar", |d| {
+            d["bar"]["height"].as_u64().is_some_and(|h| h > 0)
+        });
+        (
+            d["bar"]["height"].as_u64().unwrap(),
+            d["bar"]["cell"][1].as_u64().unwrap(),
+            d["font_size"].as_f64().unwrap(),
+        )
+    };
+    let (bar1, bar_cell1, font1) = bar_and_font("1.0");
+    let (bar2, bar_cell2, font2) = bar_and_font("1.75");
+    assert!((32..=40).contains(&bar1), "normal screen bar {bar1}");
+    assert_eq!(bar2, bar1, "the bar is not larger on a large screen");
+    assert_eq!(bar_cell2, bar_cell1, "the tab text is not larger");
+    assert!(
+        font2 > font1,
+        "the terminal text still grows: {font1} -> {font2}"
+    );
 }

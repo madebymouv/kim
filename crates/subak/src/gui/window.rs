@@ -1820,8 +1820,9 @@ impl App {
     /// Lays out and renders the tab bar (the tabs, their states, the rename field) and composes
     /// its strip.
     fn rebuild_bar(&mut self) {
-        // ADR 0091: on a large screen the tab bar grows with the default text.
-        let scale = self.scale() * self.screen_zoom;
+        // ADR 0098 (supersedes ADR 0091 for the bar): the tab bar keeps the design system's size
+        // at the monitor's DPI on every screen; only the terminal text grows on a large screen.
+        let scale = self.scale();
         let hc = self.hc_theme();
         let theme = self.bar_theme();
         let mut r = match self.bar.renderer.take() {
@@ -1836,12 +1837,12 @@ impl App {
         } else {
             BAR_HEIGHT
         };
-        // ADR 0095: every metric of the bar follows the same scale as its text (DPI × the
-        // window's zoom): its height (and at least the text's line plus 4 px on each side),
-        // its padding and the active tab's marker.
-        let height = (layout::px(bar_height * self.screen_zoom, self.dpi).max(1) as u32)
-            .max(m.height + 2 * (layout::px(4.0 * self.screen_zoom, self.dpi).max(1) as u32));
-        let pad_x = layout::px(4.0 * self.screen_zoom, self.dpi).max(0) as u32;
+        // ADR 0095: every metric of the bar follows the same scale as its text (the DPI): its
+        // height (and at least the text's line plus 4 px on each side), its padding and the
+        // active tab's marker.
+        let height = (layout::px(bar_height, self.dpi).max(1) as u32)
+            .max(m.height + 2 * (layout::px(4.0, self.dpi).max(1) as u32));
+        let pad_x = layout::px(4.0, self.dpi).max(0) as u32;
         let cols = (self.client.0.saturating_sub(2 * pad_x) / m.width.max(1)).max(1);
         let cols = u16::try_from(cols).unwrap_or(u16::MAX);
         let connected = self.model.connected();
@@ -1971,7 +1972,7 @@ impl App {
                 active_fill: Some(c.bg_raised.mix(c.bg_base, t)),
                 marker: Some((
                     c.bg_raised.mix(c.accent, t),
-                    layout::px(2.0 * self.screen_zoom, self.dpi).max(1) as u32,
+                    layout::px(2.0, self.dpi).max(1) as u32,
                 )),
                 border: Some(c.border_subtle),
             }
@@ -7601,7 +7602,16 @@ pub fn run(o: Options) -> ExitCode {
     // ADR 0091: on a large screen the default text is larger (the primary monitor; not for
     // the off-screen test window or the drop-down).
     let screen_zoom = if o.test || o.dropdown {
-        1.0
+        // Debug builds: a test may pretend a large screen (ADR 0098), never a release build.
+        #[cfg(debug_assertions)]
+        let z = std::env::var("SUBAK_TEST_SCREEN_ZOOM")
+            .ok()
+            .filter(|_| o.test)
+            .and_then(|v| v.parse::<f32>().ok())
+            .map_or(1.0, |z| z.clamp(1.0, 2.0));
+        #[cfg(not(debug_assertions))]
+        let z = 1.0;
+        z
     } else {
         let all = monitors();
         all.iter()

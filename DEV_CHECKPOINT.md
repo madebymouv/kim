@@ -20,6 +20,8 @@ checkpoint."*
 
 ## Verification log (latest first)
 
+- 2026-11-15: ADR 0098 — Subak's tab bar keeps the design-system size on a large screen (was ×1.75 on 5120 × 1410); off-screen test with `SUBAK_TEST_SCREEN_ZOOM` (fails with the old code); subak 0.0.3; real desktop not tested (the maintainer was using it). `cargo xtask ci` EXIT 0.
+
 - 2026-11-15: ADR 0097 — `cargo xtask bump --changed` / `version-check` (in ci); kim, subak, noeul, ddalgak raised to 0.0.2 (Cargo.toml, path requirements, capabilities/hotkey manifests, contract examples, Kim golden files re-blessed: version lines only); dev profile without incremental cache and dependency debug info: `target/` 111 GB → 5.9 GB after a full `cargo xtask ci` (EXIT 0).
 
 - 2026-11-15: ADR 0095 (Subak: uniform tabs from tokens, gear, Default shell; real Git Bash Linux commands) and ADR 0096 (Ddalgak editor: rail with the real engine switch, Settings behind the gear, one-line rule list, rule page Trigger → Action → Details → Test, Together / One after another / Hold + press saved as a hold layer, key picker). Editor unit 43, flows 25, playground 3; e2e scenario adr0096 compiled and its commands checked by hand; real desktop (sandbox ddalgak-ds): Hold CapsLock + J → Down built with the picker and real keys, consent dialog, saved; Settings, light theme saved in editor.json.

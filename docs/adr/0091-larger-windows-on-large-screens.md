@@ -35,7 +35,7 @@ taskbar), in steps of 25 %, never smaller than before:
 2. Subak keeps restoring the size the user left it at (`gui.json`); the rule only sets the
    first window. Its text follows the same factor unless `config.toml` sets a size (that value
    always wins; *Reset zoom* returns to the screen's default, `Ctrl+=` / `Ctrl+-` save a size as
-   before). The tab bar grows by the same factor. Noeul's settings window multiplies its DPI layout
+   before). The tab bar grows by the same factor (superseded by ADR 0098: the bar keeps the design system's size). Noeul's settings window multiplies its DPI layout
    by the zoom (and now paints its dark background, which it did not).
 3. Kim moves a window that grows for Settings or Information (or a larger Size) up or left so
    that it stays within the work area of its screen, and back when it shrinks.
