@@ -38,6 +38,12 @@ impl Lang {
 
     /// Windows' display language: Korean when it is Korean, English otherwise.
     pub fn system() -> Lang {
+        // ADR 0099: a UI audit fixes the language of the run (`KIM_UI_LANG=en|ko`).
+        match std::env::var("KIM_UI_LANG").as_deref() {
+            Ok("en") => return Lang::En,
+            Ok("ko") => return Lang::Ko,
+            _ => {}
+        }
         if crate::system::ui_language_is_korean() {
             Lang::Ko
         } else {
@@ -87,6 +93,12 @@ impl LangPref {
 
     /// The language to show now.
     pub fn resolve(self) -> Lang {
+        // ADR 0099: a UI audit fixes the language of the run (`KIM_UI_LANG=en|ko`).
+        match std::env::var("KIM_UI_LANG").as_deref() {
+            Ok("en") => return Lang::En,
+            Ok("ko") => return Lang::Ko,
+            _ => {}
+        }
         match self {
             LangPref::System => Lang::system(),
             LangPref::En => Lang::En,

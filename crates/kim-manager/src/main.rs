@@ -20,18 +20,22 @@ fn main() -> eframe::Result {
         .position(|a| a == "--catalog")
         .and_then(|i| args.get(i + 1))
         .cloned();
-    // ADR 0091: everything is drawn larger on a large screen (Settings → General → Size).
-    #[cfg(windows)]
-    let work = kim_manager::work_area();
-    #[cfg(not(windows))]
-    let work = None;
-    let auto = work.map_or(1.0, kim_manager::auto_scale);
+    // ADR 0099: the UI zoom every Kim program shares (Settings → General → Size, or Auto).
+    // A UI audit's fixed zoom (`KIM_UI_ZOOM`) is what Auto means for that run.
+    let auto = match std::env::var(kim_ui::design::scale::ENV_ZOOM) {
+        Ok(_) => kim_ui::design::scale::startup_zoom(),
+        Err(_) => kim_ui::design::system::work_area_logical()
+            .map_or(1.0, |(w, h)| kim_manager::auto_scale(egui::vec2(w, h))),
+    };
     let backend = Backend::real().map_err(|e| eframe::Error::AppCreation(e.to_string().into()))?;
-    let zoom = backend
-        .settings_path
-        .as_deref()
-        .map_or(Prefs::default(), Prefs::load_beside)
-        .scale_or(auto);
+    let zoom = match std::env::var(kim_ui::design::scale::ENV_ZOOM) {
+        Ok(_) => kim_ui::design::scale::startup_zoom(),
+        Err(_) => backend
+            .settings_path
+            .as_deref()
+            .map_or(Prefs::default(), Prefs::load_beside)
+            .scale_or(auto),
+    };
     let [w, h] = kim_manager::BASE_SIZE;
     let [mw, mh] = kim_manager::MIN_SIZE;
     let mut viewport = egui::ViewportBuilder::default()
@@ -39,6 +43,7 @@ fn main() -> eframe::Result {
         // ADR 0090: a small launcher: three tiles and the gear, generous space around them.
         .with_inner_size([w * zoom, h * zoom])
         .with_min_inner_size([mw * zoom, mh * zoom]);
+    viewport = kim_ui::inspect::audit_viewport(viewport);
     if let Ok(icon) = eframe::icon_data::from_png_bytes(ICON_PNG) {
         viewport = viewport.with_icon(icon);
     }
@@ -59,6 +64,10 @@ fn main() -> eframe::Result {
             }
             if let Some(url) = &catalog {
                 app.use_mirror(url);
+            }
+            // ADR 0099: the view a UI audit asks for.
+            if let Ok(s) = std::env::var(kim_ui::design::inspect::ENV_SCREEN) {
+                app.audit_screen(&s);
             }
             Ok(Box::new(app))
         }),

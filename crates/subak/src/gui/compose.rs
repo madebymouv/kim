@@ -25,20 +25,6 @@ pub struct BannerLayer<'a> {
     pub rise: u32,
 }
 
-/// How the tab bar strip is painted around its one row of cells (DESIGN_SYSTEM §3.5).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BarStyle {
-    /// The bar's fill (`bg.raised`; the system window colour in High Contrast).
-    pub fill: Rgb,
-    /// The active tab's fill, carried over the strip's full height so it joins the pane
-    /// (`bg.base`); `None` in High Contrast (reverse video marks it there).
-    pub active_fill: Option<Rgb>,
-    /// The active tab's top marker (lilac) and its height; `None` in High Contrast.
-    pub marker: Option<(Rgb, u32)>,
-    /// The hairline under the inactive part of the bar.
-    pub border: Option<Rgb>,
-}
-
 fn blit(out: &mut Frame, f: &Frame, x0: u32, y0: u32) {
     let (w, h) = (out.width, out.height);
     for y in 0..f.height.min(h.saturating_sub(y0)) {
@@ -47,38 +33,6 @@ fn blit(out: &mut Frame, f: &Frame, x0: u32, y0: u32) {
         let n = f.width.min(w.saturating_sub(x0)) as usize;
         out.pixels[dst..dst + n].copy_from_slice(&f.pixels[src..src + n]);
     }
-}
-
-/// The tab bar strip: `row` (the bar's one row of cells, `cell_w` wide each) at `x0`, centred
-/// in a `width × height` band; the active tab's columns `active` get the full-height fill and
-/// the marker.
-pub fn bar_strip(
-    width: u32,
-    height: u32,
-    row: &Frame,
-    x0: u32,
-    cell_w: u32,
-    active: Option<(u16, u16)>,
-    style: &BarStyle,
-) -> Frame {
-    let (w, h) = (width.max(1), height.max(1));
-    let mut out = Frame::new(w, h, style.fill);
-    let y0 = h.saturating_sub(row.height) / 2;
-    let span = active.map(|(a, b)| (x0 + u32::from(a) * cell_w, x0 + u32::from(b) * cell_w));
-    if let (Some((a, b)), Some(fill)) = (span, style.active_fill) {
-        out.fill(a, 0, b.saturating_sub(a), h, fill);
-    }
-    blit(&mut out, row, x0, y0);
-    if let Some(c) = style.border {
-        out.fill(0, h - 1, w, 1, c);
-        if let (Some((a, b)), Some(fill)) = (span, style.active_fill) {
-            out.fill(a, h - 1, b.saturating_sub(a), 1, fill);
-        }
-    }
-    if let (Some((a, b)), Some((c, mh))) = (span, style.marker) {
-        out.fill(a, 0, b.saturating_sub(a), mh, c);
-    }
-    out
 }
 
 /// Composes a `client` area: the tab bar strip `bar` at the top (if any), the pane or state
@@ -423,78 +377,61 @@ mod tests {
                 color: None,
             },
         ];
-        for (scale, pct) in [(1.0f32, 100), (2.0, 200)] {
-            // The bar's own renderer: the UI size (12 px), no padding, bg.raised.
-            let mut theme = Theme::kim_dark();
-            theme.background = tokens::BG_RAISED;
-            theme.foreground = tokens::TEXT_SECONDARY;
-            let mut br = Renderer::builtin(
-                theme,
-                RenderOptions {
-                    scale,
-                    font_size: 12.0,
-                    padding: 0.0,
-                    ..RenderOptions::default()
-                },
-            );
-            let bm = br.metrics();
-            let cols = 60u16;
-            let bar = tabs::layout(&items, Some(1), None, cols, 0);
-            let mut bv = TermView::new(cols, 1, 0);
-            bv.feed(&bar.vt);
-            br.render(&bv);
-            let x0 = (4.0 * scale) as u32;
-            let width = x0 * 2 + u32::from(cols) * bm.width;
-            let height = ((32.0 * scale) as u32).max(bm.height + 2);
-            let marker = (2.0 * scale) as u32;
-            let strip = bar_strip(
+        // ADR 0099: the bar is laid out in pixels and painted with the UI font (GDI); the fills
+        // are checked here, the text by the window's geometry report.
+        for scale in [1.0f32, 2.0] {
+            let mt = tabs::Metrics::new(scale, false);
+            let width = (900.0 * scale) as u32;
+            let mut ui = super::super::uitext::UiText::new();
+            let bar = tabs::layout(
+                &items,
+                Some(1),
+                None,
                 width,
-                height,
-                br.frame(),
-                x0,
-                bm.width,
-                bar.active,
-                &BarStyle {
-                    fill: tokens::BG_RAISED,
-                    active_fill: Some(tokens::BG_BASE),
-                    marker: Some((tokens::ACCENT, marker)),
-                    border: Some(tokens::BORDER_SUBTLE),
-                },
+                0,
+                None,
+                &mt,
+                &tabs::Colors::DARK,
+                &mut ui,
             );
+            let height = mt.height;
+            let mut strip = Frame::new(width, height, tokens::BG_RAISED);
+            ui.paint(&mut strip, &bar.ops);
             let (a, b) = bar.active.unwrap();
-            let ax = x0 + u32::from(a) * bm.width + 1;
-            let bx = x0 + u32::from(b) * bm.width - 1;
-            assert_eq!(strip.pixel(ax, 0), tokens::ACCENT, "the active marker");
-            assert_eq!(strip.pixel(ax, marker), tokens::BG_BASE, "the active fill");
+            let mid = ((a + b) / 2) as u32;
             assert_eq!(
-                strip.pixel(bx, height - 1),
+                strip.pixel(mid, mt.tab_top),
+                tokens::ACCENT,
+                "the active marker"
+            );
+            assert_eq!(
+                strip.pixel(a as u32 + mt.radius + 1, mt.tab_top + mt.marker + 1),
+                tokens::BG_BASE,
+                "the active fill"
+            );
+            assert_eq!(
+                strip.pixel((b - 2) as u32, height - 1),
                 tokens::BG_BASE,
                 "joins the pane"
             );
             assert_eq!(strip.pixel(1, height - 1), tokens::BORDER_SUBTLE);
             assert_eq!(strip.pixel(1, 1), tokens::BG_RAISED);
+            assert!(
+                strip.pixel(a as u32, mt.tab_top) != tokens::BG_BASE,
+                "the rounded corner leaves the bar's fill"
+            );
             // Under the bar, the pane starts.
             let mut r = renderer(scale, 8.0);
-            let mut pane = TermView::new(cols, 4, 0);
+            let mut pane = TermView::new(60, 4, 0);
             pane.feed(b"C:\\>dir\r\n");
             r.render(&pane);
             let client = (width.max(r.frame().width), height + r.frame().height);
             let f = compose(client, tokens::BG_BASE, Some(&strip), r.frame(), None, None);
-            assert_eq!(f.pixel(ax, 0), tokens::ACCENT);
+            assert_eq!(f.pixel(mid, mt.tab_top), tokens::ACCENT);
             assert_eq!(
                 f.pixel(1, height),
                 tokens::BG_BASE,
                 "the pane under the bar"
-            );
-            check(
-                &format!("tabs_{pct}"),
-                &golden(
-                    &format!("tabs_{pct}"),
-                    br.frame(),
-                    (bm.width, bm.height),
-                    0,
-                    (cols, 1),
-                ),
             );
         }
     }

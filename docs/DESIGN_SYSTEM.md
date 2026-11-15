@@ -5,7 +5,9 @@ Noeul and Ddalgak ·
 Tokens: [design/tokens.json](../design/tokens.json) (checked by `cargo xtask design-check`) ·
 Code: `kim-design` (tokens, language, Windows preferences; no toolkit) and `kim-ui` (the egui
 theme and components) · Toolkit: [ADR 0014](adr/0014-gui-technology.md) ·
-Decision: [ADR 0092](adr/0092-unified-design-system.md)
+Decision: [ADR 0092](adr/0092-unified-design-system.md), scale model and measured audit
+[ADR 0099](adr/0099-one-scale-model-measured-ui-audit.md) · Quality loop:
+[UI_QUALITY_PIPELINE](UI_QUALITY_PIPELINE.md) (`cargo xtask ui-audit`)
 
 Kim looks like a quiet instrument: a nearly black surface, compact type, very little chrome, and
 one controlled lilac accent that marks *where you are* and *what needs you*. Terminal content is
@@ -34,7 +36,7 @@ the hero; everything else steps back.
 ## 2. Tokens
 
 The token file is the source of truth; this section explains intent. Sizes are logical pixels
-(device-independent), multiplied by the monitor's DPI scale.
+(device-independent), multiplied by the monitor's DPI scale and the UI zoom (§2.7).
 
 ### 2.1 Color — theme `kim-dark` (default)
 
@@ -106,8 +108,9 @@ on an assumed dark background stay readable.
   a settings view 640 × 480.
 - Radius `4` (controls, chips), `6` (menus, tabs), `10` (dialogs, floating icon). No radius on
   terminal panes.
-- Key sizes: tab bar 32, tab 96–220 wide, control 28 (compact 24), status dot 8, floating icon
-  40, progress bar 4, minimum hit target 24×24.
+- Key sizes: tab bar 36 (compact 28; tabs 32 / 24 high below a 4 px inset), tab 96–220 wide,
+  control 28 (compact 24), text fields 28, buttons ≥ 72 wide (compact ≥ 48), status dot 8,
+  floating icon 40, progress bar 4, minimum hit target 24×24.
 
 ### 2.5 Motion
 
@@ -138,6 +141,22 @@ Noeul's floating pins (Step 54, [ADR 0044](adr/0044-noeul-pin-transforms-and-con
 shadow is also the band that resizes it; the overlay's 24-pixel blur would make a ring around
 every pin catch clicks meant for the program below. The shadow is painted once into the pin's
 retained surface, never animated.
+
+### 2.7 Scale model (ADR 0099)
+
+Physical pixels = logical × **DPI scale** × **zoom**, each factor applied exactly once
+(`kim_design::scale`):
+
+| Factor | Source | Applies to |
+|---|---|---|
+| DPI scale | Windows' per-monitor setting (`dpi / 96`); Kim never changes it | everything |
+| UI zoom | one value for all programs: `%APPDATA%\mouv\ui.json` (`zoom`, written by Kim → Settings → General → Size: Auto, 100–200 % in 25 % steps) or Auto = work-area height ÷ 900, limited by width ÷ 1200, of the work area in **logical** pixels | egui windows (egui zoom factor), first window sizes, Subak's default text |
+| Terminal text | Subak `appearance.font_size` (the user's); unset = `13 × UI zoom` | the terminal grid only |
+| Chrome zoom | `min(UI zoom, terminal text ÷ 13)` in whole steps, ≥ 100 % | Subak's tab bar: proportional to the text it frames |
+
+On this PC (5120 × 1410 work area at 100 %) Auto is 150 % for every program. A test or audit
+fixes the zoom with `KIM_UI_ZOOM`. Never compute a zoom from physical pixels, and never scale a
+part of a window by a factor its neighbours do not use.
 
 ## 3. Components
 
@@ -231,9 +250,16 @@ assets — is in [SUBAK_BRAND](SUBAK_BRAND.md) (Step 44).
   never move).
 - `+` button after the last tab (new Terminal), overflow chevron when tabs exceed width.
 - ADR 0095: every tab has the same width, the bar shared by the tabs within 96–220 logical
-  pixels at the bar's scale (DPI × zoom), scrolling only below the minimum; the bar's height,
-  padding and marker use the same scale; a gear at the bar's right end opens the settings
-  (Subak's place for the gear: a lower-right gear would cover terminal output).
+  pixels at the bar's scale, scrolling only below the minimum; a gear at the bar's right end
+  opens the settings (Subak's place for the gear: a lower-right gear would cover terminal output).
+- ADR 0099 (current geometry): laid out in pixels at DPI × chrome zoom (§2.7) and drawn in the UI
+  font (GDI Segoe UI, Korean through font linking) with Windows' icon font for ×, +, the gear and
+  the chevrons — never in terminal cells. Bar 36, tabs 32 high below a 4 px inset, label body 12
+  (semibold when active), padding 12, close target 24 × 24 with a 10 px glyph at the tab's right
+  end, `+` and gear 28, rounded top corners (6) on the active and hovered tab, a 2 px accent marker
+  inset by the radius, hairline separators between plain tabs. A running Terminal has no mark;
+  stopped ■, failed ▲, starting ◐, gone ○, Claude, pinned ◆, unseen output •, bell ♪ and progress
+  keep their shapes. Hit areas are exactly the painted rectangles.
 - Terminal surface: `terminal.background`, 8 px inner padding (configurable 0–16), no border.
 - Status line (optional, tmux-style, Step 25): 22 px at the bottom, `bg.raised`, mono caption.
 
@@ -380,7 +406,12 @@ Subak's setting is `appearance.motion` (`system` follows Windows, `reduced` neve
   GUI toolkit, so the Win32 programs (Subak's window, Noeul, Ddalgak's tray app) use it.
   `kim-ui` is the egui theme and components for the egui windows (Kim Manager, the Ddalgak
   rule editor, Noeul's settings window). Headless binaries never depend on `kim-ui`.
-- Visual regression: GUIs render headlessly in tests (ADR 0014) and compare snapshots of key
-  components at 100 % and 200 %.
+- Visual regression and geometry (ADR 0099): every program can write a geometry report of what it
+  laid out (`KIM_UI_INSPECT`, schema `kim.ui-geometry`, `kim_design::inspect`) and a screenshot of
+  the same frame; `kim_design::audit` checks it against these tokens; `cargo xtask ui-audit` runs
+  the fixture matrix on the real executables and compares curated screenshots with
+  `design/ui-baselines/` ([UI_QUALITY_PIPELINE](UI_QUALITY_PIPELINE.md)).
+- Settings rows (`kim_ui::setting_row`) stack their control under the text when the text would
+  get narrower than 160 px; text fields are 28 high.
 - Mock-ups: `design/mockups/*.png` are produced from the tokens by the reproducible generator
   described in [design/README.md](../design/README.md).

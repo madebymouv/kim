@@ -2,17 +2,20 @@
 //! Host that this window shows, in order, with its state, its name, a close `×` that **hides**
 //! the tab (a detach; the Terminal keeps running, ADR 0020 §7) and a `+` that creates a Terminal.
 //!
-//! The bar is one row of cells drawn by the window's own renderer (the terminal font chain, so a
-//! Korean name looks as it does in the pane), from VT text built here. This module is pure: it
-//! lays the tabs out in columns, scrolls them when they do not fit (the active tab always stays
-//! visible, `‹`/`›` say that more tabs are hidden on that side), and returns the clickable spans,
-//! so the layout is unit-tested without a window. State is never colour-only (DESIGN_SYSTEM
-//! §3.8): every state has its own shape, the active tab is bold with its own fill (and a lilac
-//! marker drawn by the window), and High Contrast turns fills into reverse video.
+//! ADR 0099: the bar is laid out in device pixels from the design tokens at the bar's scale and
+//! drawn in the UI font (Segoe UI, Korean through Windows' font linking) and Windows' icon font,
+//! not as a row of terminal cells: the cell grid forced the chrome into the monospace terminal
+//! font and cell-quantised sizes. This module is pure: it measures text through [`Measure`],
+//! scrolls the tabs when they do not fit (the active tab always stays visible, `‹`/`›` scroll),
+//! and returns drawing operations, clickable rectangles and the parts of a geometry report, so
+//! the layout is unit-tested without a window. State is never colour-only (DESIGN_SYSTEM §3.8):
+//! every non-normal state has its own shape; the active tab is semibold with its own fill and a
+//! lilac marker.
 
+use super::screens::tokens::{ACCENT, DANGER, SUCCESS, TEXT_MUTED, WARNING};
+#[cfg(test)]
 use super::screens::tokens::{
-    ACCENT, BG_BASE, BG_HOVER, BG_OVERLAY, BORDER_SUBTLE, DANGER, SUCCESS, TEXT_MUTED,
-    TEXT_PRIMARY, TEXT_SECONDARY, WARNING,
+    BG_BASE, BG_HOVER, BG_OVERLAY, BG_RAISED, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY,
 };
 use subak_term::render::Rgb;
 
@@ -170,14 +173,6 @@ pub fn alert_mark(a: Option<crate::gui::model::Alert>) -> Option<(char, Rgb, &'s
     })
 }
 
-/// The columns of a tab's marks (Claude and alert), each with its space.
-fn marks_width(it: &Item<'_>) -> usize {
-    mark_width(it.claude)
-        + if it.pinned { 2 } else { 0 }
-        + alert_mark(it.alert).map_or(0, |(g, _, _)| width(&g.to_string()) + 1)
-        + progress_mark(it.progress).map_or(0, |(t, _)| width(&t) + 1)
-}
-
 pub use crate::gui::float::art::Claude;
 
 /// Step 28: the tab's Claude mark — a shape and a colour per state (never colour alone,
@@ -194,12 +189,7 @@ pub fn claude_mark(c: Claude) -> Option<(char, Rgb, &'static str)> {
     })
 }
 
-/// The columns a tab's Claude mark takes (the glyph and a space).
-fn mark_width(c: Claude) -> usize {
-    claude_mark(c).map_or(0, |(g, _, _)| width(&g.to_string()) + 1)
-}
-
-/// What a click on a column of the bar means.
+/// What a click on the bar means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
     /// The tab: select it (double click: rename; middle click: hide; right click: its menu).
@@ -223,491 +213,795 @@ pub struct Edit<'a> {
     pub cursor: usize,
 }
 
+/// A rectangle in device pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Px {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl Px {
+    pub const fn new(x: i32, y: i32, w: u32, h: u32) -> Px {
+        Px { x, y, w, h }
+    }
+    pub fn right(&self) -> i32 {
+        self.x + self.w as i32
+    }
+    pub fn bottom(&self) -> i32 {
+        self.y + self.h as i32
+    }
+    pub fn contains(&self, x: i32, y: i32) -> bool {
+        x >= self.x && x < self.right() && y >= self.y && y < self.bottom()
+    }
+    pub fn inspect(&self) -> kim_design::inspect::Rect {
+        kim_design::inspect::Rect::new(self.x as f32, self.y as f32, self.w as f32, self.h as f32)
+    }
+}
+
+/// ADR 0099: the bar's geometry at one scale, every value a design token × the scale, rounded
+/// once. The label is a UI font line (never terminal cells), so sizes follow the type scale.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Metrics {
+    /// The bar's height; the tabs start `tab_top` below its top edge and reach its bottom.
+    pub height: u32,
+    pub tab_top: u32,
+    /// Space before the first and after the last control.
+    pub bar_pad: u32,
+    /// A tab's inner horizontal padding, and the gap between its marks and its name.
+    pub pad_x: u32,
+    pub gap: u32,
+    /// Uniform tabs are this narrow at least and this wide at most.
+    pub min_w: u32,
+    pub max_w: u32,
+    /// The close button's square hit area and its glyph's size.
+    pub close: u32,
+    pub close_icon: u32,
+    /// `+`, the gear and the scroll arrows: square buttons and their glyph size.
+    pub button: u32,
+    pub icon: u32,
+    /// The label's font size (UI body).
+    pub font: u32,
+    /// Top corner radius of a filled tab, the active marker's thickness, the separator inset.
+    pub radius: u32,
+    pub marker: u32,
+    pub sep_inset: u32,
+    /// The colour bar of a coloured tab.
+    pub color_bar: u32,
+    /// The scale the values were made for.
+    pub scale: f32,
+}
+
+impl Metrics {
+    /// The tokens at `scale` (DPI × chrome zoom); `compact` is the lower bar (#98 T1).
+    pub fn new(scale: f32, compact: bool) -> Metrics {
+        use kim_design::{font, radius, size, space};
+        let p = |v: f32| kim_design::px(v, scale).max(0) as u32;
+        let height = if compact {
+            size::TABBAR_HEIGHT_COMPACT
+        } else {
+            size::TABBAR_HEIGHT
+        };
+        Metrics {
+            height: p(height),
+            tab_top: p(size::TAB_INSET_TOP),
+            bar_pad: p(space::S),
+            pad_x: p(space::M),
+            gap: p(6.0),
+            min_w: p(size::TAB_MIN_WIDTH),
+            max_w: p(size::TAB_MAX_WIDTH),
+            close: p(size::HIT_MIN),
+            close_icon: p(size::TAB_CLOSE_ICON),
+            button: p(if compact {
+                size::HIT_MIN
+            } else {
+                size::CONTROL
+            }),
+            icon: p(size::ICON_S),
+            font: p(font::BODY),
+            radius: p(radius::M),
+            marker: p(2.0),
+            sep_inset: p(space::S),
+            color_bar: p(3.0),
+            scale,
+        }
+    }
+
+    /// The tabs' height.
+    pub fn tab_h(&self) -> u32 {
+        self.height.saturating_sub(self.tab_top)
+    }
+}
+
+/// Text measuring: the real font's advance width of `text` at `px` pixels.
+pub trait Measure {
+    fn width(&mut self, text: &str, px: u32, semibold: bool) -> u32;
+    /// The font's line height (ascent + descent) at `px`.
+    fn line(&mut self, px: u32) -> u32;
+}
+
+/// A measure for tests: CJK and other wide characters twice as wide.
+#[cfg(test)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ApproxMeasure;
+
+#[cfg(test)]
+impl Measure for ApproxMeasure {
+    fn width(&mut self, text: &str, px: u32, semibold: bool) -> u32 {
+        let units: u32 = text
+            .chars()
+            .map(|c| u32::from(subak_term::screen::char_width(c)).max(1))
+            .sum();
+        let per = px as f32 * if semibold { 0.58 } else { 0.55 };
+        (units as f32 * per).round() as u32
+    }
+    fn line(&mut self, px: u32) -> u32 {
+        (px as f32 * 1.33).round() as u32
+    }
+}
+
+/// Which font a text is drawn in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Face {
+    /// The UI family (kim_design::font::UI_FAMILY, Korean through Windows' font linking).
+    Ui,
+    /// Windows' icon font (Segoe MDL2 Assets / Segoe Fluent Icons): ×, +, gear, chevrons.
+    Icon,
+    /// Symbols for the state marks (Segoe UI Symbol).
+    Symbol,
+}
+
+/// One drawing operation of the bar, in device pixels.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Op {
+    /// A filled rectangle; `radius` rounds its top corners.
+    Fill { rect: Px, color: Rgb, radius: u32 },
+    /// Text in `rect`, vertically centred (horizontally too with `center`), cut with an
+    /// ellipsis when it does not fit.
+    Text {
+        rect: Px,
+        text: String,
+        px: u32,
+        semibold: bool,
+        face: Face,
+        color: Rgb,
+        center: bool,
+    },
+}
+
+/// The colours the bar is drawn with (the window maps the theme and High Contrast onto them).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Colors {
+    pub bar: Rgb,
+    pub active: Rgb,
+    pub hover: Rgb,
+    pub field: Rgb,
+    pub border: Rgb,
+    pub marker: Rgb,
+    pub text: Rgb,
+    pub text_active: Rgb,
+    pub text_muted: Rgb,
+}
+
+#[cfg(test)]
+impl Colors {
+    /// `kim-dark`'s roles (the window passes its theme's).
+    pub const DARK: Colors = Colors {
+        bar: BG_RAISED,
+        active: BG_BASE,
+        hover: BG_HOVER,
+        field: BG_OVERLAY,
+        border: BORDER_SUBTLE,
+        marker: ACCENT,
+        text: TEXT_SECONDARY,
+        text_active: TEXT_PRIMARY,
+        text_muted: TEXT_MUTED,
+    };
+}
+
+/// One laid-out part, for the geometry report (ADR 0099).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Part {
+    pub id: String,
+    pub kind: &'static str,
+    pub parent: Option<String>,
+    pub rect: Px,
+    pub hit: Option<Px>,
+    /// The text, its measured box, font size, line height, whether it was cut, its face.
+    pub text: Option<(String, Px, u32, u32, bool, Face)>,
+    pub state: Vec<&'static str>,
+    pub fg: Option<Rgb>,
+    pub bg: Option<Rgb>,
+    pub interactive: bool,
+}
+
 /// A laid-out bar.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Bar {
-    /// VT text for a one-row view of the bar's width.
-    pub vt: Vec<u8>,
-    /// Clickable column ranges `[start, end)`.
-    pub spans: Vec<(u16, u16, Hit)>,
-    /// The active tab's columns (the window fills it to the pane and draws the marker above it).
-    pub active: Option<(u16, u16)>,
-    /// The rename caret's column, while renaming.
-    pub caret: Option<u16>,
+    pub ops: Vec<Op>,
+    /// Clickable rectangles, tested in order (a close button before its tab).
+    pub spans: Vec<(Px, Hit)>,
+    /// The active tab's horizontal extent (the bar's bottom border is open under it).
+    pub active: Option<(i32, i32)>,
+    /// The rename caret's x and its height, while renaming.
+    pub caret: Option<(i32, u32)>,
     /// The first visible tab.
     pub first: usize,
+    /// The bar as text: what each visible tab shows, the arrows, `+` and the gear (tests,
+    /// accessibility).
+    pub text: String,
+    pub parts: Vec<Part>,
+    /// Not every tab fits: the arrows scroll.
+    pub overflow: bool,
 }
 
 impl Bar {
-    /// What a click at `col` means.
-    pub fn hit(&self, col: u16) -> Option<Hit> {
+    /// What a click at (`x`, `y`) (bar pixels) means.
+    pub fn hit(&self, x: i32, y: i32) -> Option<Hit> {
         self.spans
             .iter()
-            .find(|(a, b, _)| (*a..*b).contains(&col))
-            .map(|s| s.2)
+            .find(|(r, _)| r.contains(x, y))
+            .map(|s| s.1)
     }
-}
 
-/// Tab widths in cells (DESIGN_SYSTEM §2.4: 96–220 px at the UI size).
-pub const TAB_MIN: usize = 12;
-pub const TAB_MAX: usize = 28;
+    /// The bar's rectangle of `hit` (the first one).
+    pub fn rect_of(&self, hit: Hit) -> Option<Px> {
+        self.spans.iter().find(|s| s.1 == hit).map(|s| s.0)
+    }
 
-/// ADR 0095: how the tabs are sized.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Sizing {
-    /// The narrowest and widest tab, in cells.
-    pub min: usize,
-    pub max: usize,
-    /// Every tab the same width, filling the bar before the tabs scroll; otherwise each tab
-    /// is as wide as its name (Step 17).
-    pub uniform: bool,
-    /// The settings gear at the right end of the bar.
-    pub gear: bool,
-}
-
-impl Sizing {
-    /// Step 17: each tab as wide as its name, 12–28 cells; no gear.
-    pub const BY_NAME: Sizing = Sizing {
-        min: TAB_MIN,
-        max: TAB_MAX,
-        uniform: false,
-        gear: false,
-    };
-
-    /// ADR 0095: the design tokens' 96–220 logical pixels at `scale` (DPI × the window's zoom)
-    /// for cells `cell_w` device pixels wide, every tab the same width, the gear shown. The
-    /// widths follow the real scale and font, never fixed cell counts.
-    pub fn from_tokens(cell_w: u32, scale: f32) -> Sizing {
-        let c = cell_w.max(1) as f32;
-        let min = ((kim_design::size::TAB_MIN_WIDTH * scale) / c).ceil() as usize;
-        let max = ((kim_design::size::TAB_MAX_WIDTH * scale) / c).floor() as usize;
-        let min = min.max(10);
-        Sizing {
-            min,
-            max: max.max(min),
-            uniform: true,
-            gear: true,
+    /// An empty bar (before the first layout).
+    pub fn empty() -> Bar {
+        Bar {
+            ops: Vec::new(),
+            spans: Vec::new(),
+            active: None,
+            caret: None,
+            first: 0,
+            text: String::new(),
+            parts: Vec::new(),
+            overflow: false,
         }
     }
 }
 
-/// The gear's cells (` ⚙ `).
-const GEAR: &str = " \u{2699} ";
-/// The rename field's widest extent.
-const EDIT_MAX: usize = 40;
-
-fn width(s: &str) -> usize {
-    s.chars()
-        .map(|c| usize::from(subak_term::screen::char_width(c)))
-        .sum()
-}
-
-/// `s` cut to `max` cells, with `…` when cut.
-fn fit(s: &str, max: usize) -> String {
-    if width(s) <= max {
-        return s.to_string();
+/// The marks of a tab before its name, in order, with their colours. A running Terminal is the
+/// normal state and has no mark; every other state keeps its own shape.
+fn marks(it: &Item<'_>) -> Vec<(String, Rgb)> {
+    let mut out = Vec::new();
+    if it.status != Status::Running {
+        out.push((it.status.glyph().to_string(), it.status.color()));
     }
-    let mut out = String::new();
-    let mut w = 0;
-    for c in s.chars() {
-        let cw = usize::from(subak_term::screen::char_width(c));
-        if w + cw + 1 > max {
-            break;
-        }
-        out.push(c);
-        w += cw;
+    if let Some((g, c, _)) = claude_mark(it.claude) {
+        let g = it.frame.map_or(g, |f| f.glyph);
+        out.push((g.to_string(), c));
     }
-    out.push('…');
+    if it.pinned {
+        out.push(("\u{25c6}".to_string(), ACCENT));
+    }
+    if let Some((g, c, _)) = alert_mark(it.alert) {
+        out.push((g.to_string(), c));
+    }
+    if let Some((t, c)) = progress_mark(it.progress) {
+        out.push((t, c));
+    }
     out
 }
 
-fn fg(c: Rgb) -> String {
-    format!("\x1b[38;2;{};{};{}m", c.0, c.1, c.2)
-}
+/// The icon font's glyphs (Segoe MDL2 Assets and Segoe Fluent Icons share the code points).
+pub const ICON_CLOSE: &str = "\u{E8BB}";
+pub const ICON_ADD: &str = "\u{E710}";
+pub const ICON_SETTINGS: &str = "\u{E713}";
+pub const ICON_LEFT: &str = "\u{E76B}";
+pub const ICON_RIGHT: &str = "\u{E76C}";
 
-fn bg(c: Rgb) -> String {
-    format!("\x1b[48;2;{};{};{}m", c.0, c.1, c.2)
-}
-
-const RESET: &str = "\x1b[0m";
-
-/// The rename field: the visible part of `text` around the caret, the caret's cell offset, and
-/// the field's width in cells.
-fn edit_window(e: &Edit<'_>) -> (String, usize, usize) {
-    let chars: Vec<char> = e.text.chars().collect();
-    let cursor = e.cursor.min(chars.len());
-    let cw = |c: &char| usize::from(subak_term::screen::char_width(*c));
-    let total: usize = chars.iter().map(cw).sum::<usize>() + 1;
-    let field = total.clamp(8, EDIT_MAX);
-    // Show the text so that the caret (one cell after `cursor` chars) fits in `field` cells.
-    let mut start = 0;
-    while chars[start..cursor].iter().map(cw).sum::<usize>() + 1 > field {
-        start += 1;
+/// `text` cut with `…` to at most `max` pixels (whole characters).
+fn ellipsize(m: &mut dyn Measure, text: &str, px: u32, semibold: bool, max: u32) -> (String, bool) {
+    if m.width(text, px, semibold) <= max {
+        return (text.to_string(), false);
     }
-    let mut shown = String::new();
-    let mut w = 0;
-    for c in &chars[start..] {
-        if w + cw(c) > field {
-            break;
+    let chars: Vec<char> = text.chars().collect();
+    let mut n = chars.len();
+    while n > 0 {
+        let s: String = chars[..n].iter().collect::<String>() + "…";
+        if m.width(&s, px, semibold) <= max {
+            return (s, true);
         }
-        shown.push(*c);
-        w += cw(c);
+        n -= 1;
     }
-    let caret = chars[start..cursor].iter().map(cw).sum::<usize>();
-    (shown, caret, field)
+    (String::new(), true)
 }
 
-/// The width in cells of tab `i`.
-fn tab_width(it: &Item<'_>, edit: Option<&Edit<'_>>) -> usize {
-    match edit {
-        Some(e) => edit_window(e).2 + 6 + marks_width(it),
-        None => (width(it.name) + 6).clamp(TAB_MIN, TAB_MAX) + marks_width(it),
-    }
+fn sub(chars: &[char]) -> String {
+    chars.iter().collect()
 }
 
-/// Lays out `items` on a bar of `cols` cells. `active` is the shown tab, `edit` the rename field
-/// (of the active tab), `first` the first visible tab of the last layout (kept while the active
-/// tab stays visible).
+/// Lays out `items` on a bar `width` device pixels wide with metrics `mt` (ADR 0095, ADR 0099):
+/// every tab the same width, sharing the bar within `min_w`–`max_w` before the tabs scroll
+/// (the active tab always visible); the close button at each tab's right end; `+` after the
+/// last tab; the gear at the bar's right end. `edit` is the rename field of the active tab,
+/// `first` the first visible tab of the last layout, `hover` the tab under the pointer (its
+/// fill only; nothing moves).
+#[allow(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::needless_range_loop
+)]
 pub fn layout(
     items: &[Item<'_>],
     active: Option<usize>,
     edit: Option<&Edit<'_>>,
-    cols: u16,
-    first: usize,
-) -> Bar {
-    layout_hover(items, active, edit, cols, first, None)
-}
-
-/// [`layout`] with the tab under the pointer (Step 20): an inactive hovered tab gets the
-/// `bg.hover` fill and its `×` the secondary text colour, so the hidden-tab action is easier to
-/// see before it is clicked. The columns and spans are the same as without a hover.
-pub fn layout_hover(
-    items: &[Item<'_>],
-    active: Option<usize>,
-    edit: Option<&Edit<'_>>,
-    cols: u16,
+    width: u32,
     first: usize,
     hover: Option<usize>,
+    mt: &Metrics,
+    colors: &Colors,
+    m: &mut dyn Measure,
 ) -> Bar {
-    layout_sized(items, active, edit, cols, first, hover, Sizing::BY_NAME)
-}
-
-/// [`layout_hover`] with the tabs sized by `sizing` (ADR 0095): uniform tabs share the bar
-/// (`(cols - + - gear) / n`, within `min`–`max`), so they grow and shrink with the window and
-/// scroll only below their minimum; the `×` stays at each tab's right end; the gear sits at the
-/// bar's right end.
-pub fn layout_sized(
-    items: &[Item<'_>],
-    active: Option<usize>,
-    edit: Option<&Edit<'_>>,
-    cols: u16,
-    first: usize,
-    hover: Option<usize>,
-    sizing: Sizing,
-) -> Bar {
-    let cols = usize::from(cols);
-    const PLUS: usize = 3;
-    const ARROW: usize = 2;
-    let gear_w = if sizing.gear { width(GEAR) } else { 0 };
-    let share = if items.is_empty() {
-        sizing.max
+    let width = width as i32;
+    let (h, top, th) = (mt.height, mt.tab_top as i32, mt.tab_h());
+    let button = mt.button as i32;
+    let gap = mt.gap as i32;
+    let bcy = top + th as i32 / 2;
+    let by = bcy - button / 2;
+    let gear_x = width - mt.bar_pad as i32 - button;
+    let left = mt.bar_pad as i32;
+    // The room for the tabs (and the arrows) and `+`.
+    let room = (gear_x - gap - left).max(0);
+    let n = items.len() as i32;
+    let plus_w = gap + button;
+    let share = if n == 0 {
+        mt.max_w as i32
     } else {
-        (cols.saturating_sub(PLUS + gear_w) / items.len()).clamp(sizing.min, sizing.max)
+        ((room - plus_w) / n).clamp(mt.min_w as i32, mt.max_w as i32)
     };
-    let widths: Vec<usize> = items
-        .iter()
-        .enumerate()
-        .map(|(i, it)| {
-            let e = edit.filter(|_| Some(i) == active);
-            if sizing.uniform && e.is_none() {
-                // At least the state, a few letters of the name and the `×`.
-                share.max(9 + marks_width(it))
-            } else if e.is_some() {
-                tab_width(it, e)
-            } else {
-                (width(it.name) + 6).clamp(sizing.min, sizing.max) + marks_width(it)
-            }
-        })
-        .collect();
-    let cols = cols.saturating_sub(gear_w);
-    let total: usize = widths.iter().sum::<usize>() + PLUS;
-    // Which tabs are visible.
-    let (first, last) = if total <= cols || items.is_empty() {
-        (0, items.len())
+    let overflow = n * share + plus_w > room;
+    let mut first = if overflow {
+        first.min(items.len().saturating_sub(1))
     } else {
-        let avail = cols.saturating_sub(PLUS + 2 * ARROW);
-        let mut first = first.min(items.len() - 1);
+        0
+    };
+    let (tabs_x0, visible_n) = if overflow {
+        let avail = room - plus_w - 2 * button;
+        let fit = (avail / share).max(1) as usize;
         if let Some(a) = active {
-            first = first.min(a);
-            while first < a && widths[first..=a].iter().sum::<usize>() > avail {
-                first += 1;
+            if a < first {
+                first = a;
+            } else if a >= first + fit {
+                first = a + 1 - fit;
             }
         }
-        let mut last = first;
-        let mut used = 0;
-        while last < items.len() && used + widths[last] <= avail.max(widths[first]) {
-            used += widths[last];
-            last += 1;
-        }
-        (first, last.max(first + 1))
+        first = first.min(items.len().saturating_sub(fit));
+        // The left arrow only when tabs are hidden on the left (no empty gap otherwise).
+        let x0 = if first > 0 { left + button } else { left };
+        (x0, fit.min(items.len() - first))
+    } else {
+        (left, items.len())
     };
-    let mut vt = String::from("\x1b[?25l\x1b[2J\x1b[1;1H");
-    let mut spans = Vec::new();
-    let mut col = 0usize;
-    let mut active_cols = None;
+    let last = first + visible_n;
+    let mut ops = vec![Op::Fill {
+        rect: Px::new(0, 0, width.max(0) as u32, h),
+        color: colors.bar,
+        radius: 0,
+    }];
+    let mut spans: Vec<(Px, Hit)> = Vec::new();
+    let bar_id = "subak.tabbar".to_string();
+    let mut parts = vec![Part {
+        id: bar_id.clone(),
+        kind: "tabbar",
+        parent: None,
+        rect: Px::new(0, 0, width.max(0) as u32, h),
+        hit: None,
+        text: None,
+        state: if overflow {
+            vec!["overflow"]
+        } else {
+            Vec::new()
+        },
+        fg: None,
+        bg: Some(colors.bar),
+        interactive: false,
+    }];
+    let mut text = String::new();
+    let mut active_x = None;
     let mut caret = None;
-    let put = |vt: &mut String, col: &mut usize, text: &str| {
-        vt.push_str(text);
-        *col += width(&strip(text));
-    };
-    if first > 0 {
-        let at = col;
-        put(
-            &mut vt,
-            &mut col,
-            &format!("{}‹ {RESET}", fg(TEXT_SECONDARY)),
+    let line = m.line(mt.font);
+    let mut icon_button = |ops: &mut Vec<Op>,
+                           spans: &mut Vec<(Px, Hit)>,
+                           x: i32,
+                           glyph: &str,
+                           hit: Hit,
+                           id: &str,
+                           kind: &'static str| {
+        let r = Px::new(x, by, mt.button, mt.button);
+        ops.push(Op::Text {
+            rect: r,
+            text: glyph.to_string(),
+            px: mt.icon,
+            semibold: false,
+            face: Face::Icon,
+            color: colors.text,
+            center: true,
+        });
+        spans.push((r, hit));
+        let g = Px::new(
+            x + (button - mt.icon as i32) / 2,
+            bcy - mt.icon as i32 / 2,
+            mt.icon,
+            mt.icon,
         );
-        spans.push((cell(at), cell(col), Hit::Left));
+        parts.push(Part {
+            id: id.to_string(),
+            kind,
+            parent: Some(bar_id.clone()),
+            rect: r,
+            hit: Some(r),
+            text: Some((glyph.to_string(), g, mt.icon, mt.icon, false, Face::Icon)),
+            state: Vec::new(),
+            fg: Some(colors.text),
+            bg: Some(colors.bar),
+            interactive: true,
+        });
+    };
+    if overflow && first > 0 {
+        icon_button(
+            &mut ops,
+            &mut spans,
+            left,
+            ICON_LEFT,
+            Hit::Left,
+            "subak.tabbar.left",
+            "icon-button",
+        );
+        text.push_str("‹ ");
     }
+    let mut tab_parts = Vec::new();
+    let mut x = tabs_x0;
+    let mut prev_filled = true;
     for i in first..last {
         let it = &items[i];
-        let w = widths[i];
-        let start = col;
         let is_active = Some(i) == active;
         let hovered = !is_active && Some(i) == hover;
+        let tab = Px::new(x, top, share as u32, th);
         let fill = if is_active {
-            bg(BG_BASE)
+            Some(colors.active)
         } else if hovered {
-            bg(BG_HOVER)
+            Some(colors.hover)
         } else {
-            String::new()
+            None
         };
-        // A hairline between two inactive tabs; #98 T1: a coloured tab starts with its colour.
-        let lead = if let Some(c) = it.color {
-            format!("{}\u{258e}", fg(c))
-        } else if !is_active && i > first && Some(i - 1) != active {
-            format!("{}│", fg(BORDER_SUBTLE))
-        } else {
-            " ".to_string()
-        };
-        put(&mut vt, &mut col, &format!("{fill}{lead}"));
-        put(
-            &mut vt,
-            &mut col,
-            &format!("{fill}{}{} ", fg(it.status.color()), it.status.glyph()),
+        if let Some(c) = fill {
+            ops.push(Op::Fill {
+                rect: tab,
+                color: c,
+                radius: mt.radius,
+            });
+        } else if !prev_filled {
+            // A hairline between two plain tabs.
+            ops.push(Op::Fill {
+                rect: Px::new(
+                    x,
+                    top + mt.sep_inset as i32,
+                    1,
+                    th.saturating_sub(2 * mt.sep_inset),
+                ),
+                color: colors.border,
+                radius: 0,
+            });
+        }
+        prev_filled = fill.is_some();
+        if is_active {
+            ops.push(Op::Fill {
+                rect: Px::new(
+                    x + mt.radius as i32,
+                    top,
+                    (share as u32).saturating_sub(2 * mt.radius),
+                    mt.marker,
+                ),
+                color: colors.marker,
+                radius: 0,
+            });
+            active_x = Some((x, x + share));
+        }
+        if let Some(c) = it.color {
+            ops.push(Op::Fill {
+                rect: Px::new(
+                    x + gap / 2,
+                    top + mt.sep_inset as i32,
+                    mt.color_bar,
+                    th.saturating_sub(2 * mt.sep_inset),
+                ),
+                color: c,
+                radius: 0,
+            });
+            text.push('\u{258e}');
+        }
+        let closable = it.closable && !it.pinned;
+        let close_r = Px::new(
+            x + share - gap / 2 - mt.close as i32,
+            bcy - mt.close as i32 / 2,
+            mt.close,
+            mt.close,
         );
-        if let Some((g, c, _)) = claude_mark(it.claude) {
-            // Step 44: the frame's glyph (same width as the resting one), faint as SGR 2 so
-            // every theme's colour mapping still applies.
-            let (g, faint) = it.frame.map_or((g, false), |f| (f.glyph, f.faint));
-            let (on, off) = if faint {
-                ("\x1b[2m", "\x1b[22m")
-            } else {
-                ("", "")
-            };
-            put(&mut vt, &mut col, &format!("{fill}{}{on}{g}{off} ", fg(c)));
+        let name_end = if closable {
+            close_r.x
+        } else {
+            x + share - mt.pad_x as i32
+        };
+        let mut cx = x + mt.pad_x as i32;
+        for (g, c) in marks(it) {
+            let w = m.width(&g, mt.font, false).max(1);
+            ops.push(Op::Text {
+                rect: Px::new(cx, top, w, th),
+                text: g.clone(),
+                px: mt.font,
+                semibold: false,
+                face: Face::Symbol,
+                color: c,
+                center: false,
+            });
+            text.push_str(&g);
+            text.push(' ');
+            cx += w as i32 + gap;
         }
-        if it.pinned {
-            put(&mut vt, &mut col, &format!("{fill}{}\u{25c6} ", fg(ACCENT)));
-        }
-        if let Some((g, c, _)) = alert_mark(it.alert) {
-            put(&mut vt, &mut col, &format!("{fill}{}{g} ", fg(c)));
-        }
-        if let Some((t, c)) = progress_mark(it.progress) {
-            put(&mut vt, &mut col, &format!("{fill}{}{t} ", fg(c)));
-        }
-        match edit.filter(|_| is_active) {
+        let fg = if is_active {
+            colors.text_active
+        } else {
+            colors.text
+        };
+        let bg = fill.unwrap_or(colors.bar);
+        let room = (name_end - cx - gap / 2).max(0) as u32;
+        let editing = edit.filter(|_| is_active);
+        let (label, cut, tbox) = match editing {
             Some(e) => {
-                let (shown, at, field) = edit_window(e);
-                caret = Some(cell(col + at));
-                let mut s = format!("{}{}\x1b[4m", bg(BG_OVERLAY), fg(TEXT_PRIMARY));
-                let mut w = 0;
-                for (k, c) in shown.chars().enumerate() {
-                    let before: usize = shown.chars().take(k).map(|c| width(&c.to_string())).sum();
-                    if before == at {
-                        s.push_str(&format!("\x1b[7m{c}\x1b[27m"));
-                    } else {
-                        s.push(c);
-                    }
-                    w += width(&c.to_string());
+                // The rename field: the text around the caret, within the field.
+                let chars: Vec<char> = e.text.chars().collect();
+                let cursor = e.cursor.min(chars.len());
+                let mut start = 0;
+                while start < cursor
+                    && m.width(&sub(&chars[start..cursor]), mt.font, false) + 2 > room
+                {
+                    start += 1;
                 }
-                if at >= w {
-                    s.push_str("\x1b[7m \x1b[27m");
-                    w += 1;
+                let mut end = chars.len();
+                while end > cursor && m.width(&sub(&chars[start..end]), mt.font, false) > room {
+                    end -= 1;
                 }
-                s.push_str(&" ".repeat(field.saturating_sub(w)));
-                s.push_str(RESET);
-                put(&mut vt, &mut col, &s);
+                let shown = sub(&chars[start..end]);
+                let inset = kim_design::px(4.0, mt.scale).max(1);
+                let field_h = line + 2 * inset as u32;
+                ops.push(Op::Fill {
+                    rect: Px::new(
+                        cx - inset,
+                        bcy - field_h as i32 / 2,
+                        room + 2 * inset as u32,
+                        field_h,
+                    ),
+                    color: colors.field,
+                    radius: 0,
+                });
+                let at = m.width(&sub(&chars[start..cursor]), mt.font, false) as i32;
+                caret = Some((cx + at, line));
+                let w = m.width(&shown, mt.font, false);
+                (shown, false, Px::new(cx, bcy - line as i32 / 2, w, line))
             }
             None => {
-                let room = w - 6 - marks_width(it);
-                let name = fit(it.name, room);
-                let pad = " ".repeat(room.saturating_sub(width(&name)));
-                let style = if is_active {
-                    format!("\x1b[1m{}", fg(TEXT_PRIMARY))
-                } else {
-                    fg(TEXT_SECONDARY)
-                };
-                put(
-                    &mut vt,
-                    &mut col,
-                    &format!("{fill}{style}{name}{pad}{RESET}"),
-                );
+                let (s, cut) = ellipsize(m, it.name, mt.font, is_active, room);
+                let w = m.width(&s, mt.font, is_active);
+                (s, cut, Px::new(cx, bcy - line as i32 / 2, w, line))
             }
+        };
+        ops.push(Op::Text {
+            rect: Px::new(cx, top, room, th),
+            text: label.clone(),
+            px: mt.font,
+            semibold: is_active,
+            face: Face::Ui,
+            color: fg,
+            center: false,
+        });
+        if let Some((cx, _)) = caret.filter(|_| editing.is_some()) {
+            ops.push(Op::Fill {
+                rect: Px::new(
+                    cx,
+                    bcy - line as i32 / 2,
+                    kim_design::px(1.0, mt.scale).max(1) as u32,
+                    line,
+                ),
+                color: colors.text_active,
+                radius: 0,
+            });
         }
-        let close_at = col;
-        let closable = it.closable && !it.pinned;
-        put(
-            &mut vt,
-            &mut col,
-            &format!(
-                "{fill}{} {} {RESET}",
-                fg(if hovered { TEXT_SECONDARY } else { TEXT_MUTED }),
-                if closable { '×' } else { ' ' }
-            ),
-        );
-        if closable {
-            spans.push((cell(start), cell(close_at), Hit::Tab(i)));
-            spans.push((cell(close_at), cell(col), Hit::Close(i)));
-        } else {
-            spans.push((cell(start), cell(col), Hit::Tab(i)));
-        }
+        text.push_str(&label);
+        let tab_id = format!("subak.tabbar.tab[{i}]");
+        let mut state = Vec::new();
         if is_active {
-            active_cols = Some((cell(start), cell(col)));
+            state.push("active");
         }
+        if hovered {
+            state.push("hover");
+        }
+        if overflow {
+            state.push("overflow");
+        }
+        if editing.is_some() {
+            state.push("editing");
+        }
+        tab_parts.push(Part {
+            id: tab_id.clone(),
+            kind: "tab",
+            parent: Some(bar_id.clone()),
+            rect: tab,
+            hit: Some(tab),
+            text: Some((label, tbox, mt.font, line, cut, Face::Ui)),
+            state,
+            fg: Some(fg),
+            bg: Some(bg),
+            interactive: true,
+        });
+        if closable {
+            let dim = if is_active || hovered {
+                colors.text
+            } else {
+                colors.text_muted
+            };
+            ops.push(Op::Text {
+                rect: close_r,
+                text: ICON_CLOSE.to_string(),
+                px: mt.close_icon,
+                semibold: false,
+                face: Face::Icon,
+                color: dim,
+                center: true,
+            });
+            spans.push((close_r, Hit::Close(i)));
+            let g = Px::new(
+                close_r.x + (mt.close - mt.close_icon) as i32 / 2,
+                bcy - mt.close_icon as i32 / 2,
+                mt.close_icon,
+                mt.close_icon,
+            );
+            tab_parts.push(Part {
+                id: format!("{tab_id}.close"),
+                kind: "tab-close",
+                parent: Some(tab_id.clone()),
+                rect: close_r,
+                hit: Some(close_r),
+                text: Some((
+                    ICON_CLOSE.to_string(),
+                    g,
+                    mt.close_icon,
+                    mt.close_icon,
+                    false,
+                    Face::Icon,
+                )),
+                state: Vec::new(),
+                fg: Some(dim),
+                bg: Some(bg),
+                interactive: true,
+            });
+            text.push_str(" ×");
+        }
+        spans.push((tab, Hit::Tab(i)));
+        text.push_str("  ");
+        x += share;
     }
-    if last < items.len() {
-        let at = col;
-        put(
-            &mut vt,
-            &mut col,
-            &format!("{} ›{RESET}", fg(TEXT_SECONDARY)),
+    if overflow && last < items.len() {
+        icon_button(
+            &mut ops,
+            &mut spans,
+            x,
+            ICON_RIGHT,
+            Hit::Right,
+            "subak.tabbar.right",
+            "icon-button",
         );
-        spans.push((cell(at), cell(col), Hit::Right));
+        x += button;
+        text.push_str("› ");
     }
-    if col + PLUS <= cols.max(PLUS) {
-        let at = col;
-        put(&mut vt, &mut col, &format!("{} + {RESET}", fg(ACCENT)));
-        spans.push((cell(at), cell(col), Hit::New));
+    if x > tabs_x0 {
+        x += gap;
     }
-    if gear_w > 0 {
-        // The gear at the right end (the bar's `cols` above already left room for it).
-        let pad = cols.saturating_sub(col);
-        put(&mut vt, &mut col, &" ".repeat(pad));
-        let at = col;
-        put(
-            &mut vt,
-            &mut col,
-            &format!("{}{GEAR}{RESET}", fg(TEXT_MUTED)),
+    if x + button <= gear_x {
+        icon_button(
+            &mut ops,
+            &mut spans,
+            x,
+            ICON_ADD,
+            Hit::New,
+            "subak.tabbar.new",
+            "tab-new",
         );
-        spans.push((cell(at), cell(col), Hit::Settings));
+        text.push_str("+ ");
+    }
+    icon_button(
+        &mut ops,
+        &mut spans,
+        gear_x,
+        ICON_SETTINGS,
+        Hit::Settings,
+        "subak.tabbar.settings",
+        "icon-button",
+    );
+    text.push('\u{2699}');
+    parts.extend(tab_parts);
+    // The bar's bottom border, open under the active tab.
+    let y = h as i32 - 1;
+    let line_at = |a: i32, b: i32| Op::Fill {
+        rect: Px::new(a, y, (b - a).max(0) as u32, 1),
+        color: colors.border,
+        radius: 0,
+    };
+    match active_x {
+        Some((a, b)) => {
+            ops.push(line_at(0, a));
+            ops.push(line_at(b, width));
+        }
+        None => ops.push(line_at(0, width)),
     }
     Bar {
-        vt: vt.into_bytes(),
+        ops,
         spans,
-        active: active_cols,
+        active: active_x,
         caret,
         first,
+        text: text.trim_end().to_string(),
+        parts,
+        overflow,
     }
 }
 
-fn cell(n: usize) -> u16 {
-    u16::try_from(n).unwrap_or(u16::MAX)
+/// ADR 0099: the bar's parts as a geometry report's components (window client pixels).
+pub fn components(bar: &Bar) -> Vec<kim_design::inspect::Component> {
+    use kim_design::inspect::{Component, Text};
+    let rgb = |c: Rgb| kim_design::Rgb {
+        r: c.0,
+        g: c.1,
+        b: c.2,
+    };
+    bar.parts
+        .iter()
+        .map(|p| {
+            let mut c = Component::new(p.id.clone(), p.kind, p.rect.inspect());
+            c.parent.clone_from(&p.parent);
+            c.hit = p.hit.map(|h| h.inspect());
+            c.interactive = p.interactive;
+            c.state = p.state.iter().map(|s| (*s).to_string()).collect();
+            c.fg = p.fg.map(rgb);
+            c.bg = p.bg.map(rgb);
+            c.text = p.text.as_ref().map(|(t, r, px, line, cut, face)| Text {
+                content: t.clone(),
+                bounds: r.inspect(),
+                font_px: *px as f32,
+                line_px: *line as f32,
+                truncated: *cut,
+                role: if *face == Face::Icon { "icon" } else { "ui" }.to_string(),
+            });
+            c
+        })
+        .collect()
 }
 
-/// The printable text of a VT fragment (escape sequences removed), to count its cells.
-fn strip(s: &str) -> String {
-    let mut out = String::new();
-    let mut it = s.chars().peekable();
-    while let Some(c) = it.next() {
-        if c == '\x1b' {
-            if it.peek() == Some(&'[') {
-                it.next();
-                for d in it.by_ref() {
-                    if d.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            }
-        } else {
-            out.push(c);
-        }
+/// A geometry report of the bar alone (unit tests).
+#[cfg(test)]
+pub fn report(bar: &Bar, width: u32, height: u32, scale: f32) -> kim_design::inspect::Report {
+    kim_design::inspect::Report {
+        application: "subak".into(),
+        screen: "tabbar".into(),
+        fixture: format!("scale={scale}"),
+        theme: "kim-dark".into(),
+        window: (width as f32, height as f32),
+        dpi_scale: 1.0,
+        ui_zoom: scale,
+        scale,
+        components: components(bar),
+        ..kim_design::inspect::Report::default()
     }
-    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use subak_term::TermView;
-
-    fn text(bar: &Bar, cols: u16) -> String {
-        let mut v = TermView::new(cols, 1, 0);
-        v.feed(&bar.vt);
-        v.row_at(0).text().trim_end().to_string()
-    }
-
-    /// ADR 0095: tabs sized from the tokens are all the same width, share the bar within
-    /// 96–220 logical pixels at the bar's scale, keep their `×` at their right end, scroll only
-    /// below the minimum with the active tab visible, and the gear takes the bar's last cells.
-    #[test]
-    fn token_sized_tabs_share_the_bar_and_the_gear_ends_it() {
-        // 100 %: an 8 px cell; 175 %: a 14 px cell (the cell grows with the scale too).
-        for (cell_w, scale) in [(8u32, 1.0f32), (14, 1.75)] {
-            let sz = Sizing::from_tokens(cell_w, scale);
-            let px = |cells: usize| cells as f32 * cell_w as f32 / scale;
-            assert!(
-                px(sz.min) >= 96.0 && px(sz.min) < 96.0 + cell_w as f32,
-                "{sz:?}"
-            );
-            assert!(
-                px(sz.max) <= 220.0 && px(sz.max) > 220.0 - cell_w as f32,
-                "{sz:?}"
-            );
-            let list = items(&["claude", "server", "a much longer name of a terminal"]);
-            for cols in [60u16, 120, 240] {
-                let bar = layout_sized(&list, Some(0), None, cols, 0, None, sz);
-                let tabs: Vec<(u16, u16)> = (0..list.len())
-                    .filter_map(|i| {
-                        let a = bar.spans.iter().find(|s| s.2 == Hit::Tab(i))?.0;
-                        let b = bar.spans.iter().find(|s| s.2 == Hit::Close(i))?.1;
-                        Some((a, b))
-                    })
-                    .collect();
-                if tabs.len() == list.len() {
-                    let w: Vec<u16> = tabs.iter().map(|(a, b)| b - a).collect();
-                    assert!(w.iter().all(|x| *x == w[0]), "same width: {w:?} at {cols}");
-                    assert!(
-                        (sz.min..=sz.max).contains(&usize::from(w[0])),
-                        "{w:?} within {sz:?}"
-                    );
-                }
-                let gear = bar.spans.iter().find(|s| s.2 == Hit::Settings).unwrap();
-                assert_eq!(gear.1, cols, "the gear ends the bar at {cols}");
-                let line = text(&bar, cols);
-                assert!(line.trim_end().ends_with('\u{2699}'), "{line}");
-            }
-            // Wider window, wider tabs (until the maximum).
-            let narrow = layout_sized(&list, Some(0), None, 70, 0, None, sz);
-            let wide = layout_sized(&list, Some(0), None, 200, 0, None, sz);
-            let w = |b: &Bar| {
-                let a = b.spans.iter().find(|s| s.2 == Hit::Tab(0)).unwrap().0;
-                let e = b.spans.iter().find(|s| s.2 == Hit::Close(0)).unwrap().1;
-                e - a
-            };
-            assert!(w(&wide) >= w(&narrow), "{} vs {}", w(&wide), w(&narrow));
-            // Many tabs: they scroll, the active one stays visible.
-            let many: Vec<String> = (0..30).map(|i| format!("t{i}")).collect();
-            let refs: Vec<&str> = many.iter().map(String::as_str).collect();
-            let list = items(&refs);
-            let bar = layout_sized(&list, Some(25), None, 100, 0, None, sz);
-            assert!(
-                bar.spans.iter().any(|s| s.2 == Hit::Tab(25)),
-                "active visible"
-            );
-            assert!(bar.spans.iter().any(|s| s.2 == Hit::Left), "scrolls");
-        }
-    }
 
     fn items<'a>(names: &[&'a str]) -> Vec<Item<'a>> {
         names
@@ -726,288 +1020,390 @@ mod tests {
             .collect()
     }
 
-    /// The cells of `[a, b)` as text.
-    fn cells(line: &str, a: u16, b: u16) -> String {
-        let mut out = String::new();
-        let mut col = 0u16;
-        for c in line.chars() {
-            if col >= a && col < b {
-                out.push(c);
-            }
-            col += u16::from(subak_term::screen::char_width(c));
-        }
-        out
+    fn lay(
+        list: &[Item<'_>],
+        active: Option<usize>,
+        edit: Option<&Edit<'_>>,
+        width: u32,
+        hover: Option<usize>,
+        mt: &Metrics,
+    ) -> Bar {
+        layout(
+            list,
+            active,
+            edit,
+            width,
+            0,
+            hover,
+            mt,
+            &Colors::DARK,
+            &mut ApproxMeasure,
+        )
     }
 
-    /// Step 28: a tab's Claude mark has its own shape per state, sits after the status, and
-    /// keeps the name and the spans in place.
+    fn bar(list: &[Item<'_>], active: Option<usize>, width: u32, scale: f32) -> Bar {
+        lay(list, active, None, width, None, &Metrics::new(scale, false))
+    }
+
+    fn tab_rects(b: &Bar) -> Vec<Px> {
+        b.spans
+            .iter()
+            .filter(|s| matches!(s.1, Hit::Tab(_)))
+            .map(|s| s.0)
+            .collect()
+    }
+
+    fn index(id: &str) -> usize {
+        id[id.find('[').unwrap() + 1..id.find(']').unwrap()]
+            .parse()
+            .unwrap()
+    }
+
+    /// ADR 0099: every metric is a token × the scale, rounded once, at 100–200 %.
     #[test]
-    fn a_motion_frame_replaces_the_glyph_at_the_same_width_and_fades_with_sgr_2() {
+    fn metrics_are_the_tokens_at_the_scale() {
+        use kim_design::size;
+        for s in [1.0f32, 1.25, 1.5, 2.0] {
+            let m = Metrics::new(s, false);
+            let t = |v: f32| (v * s).round() as u32;
+            assert_eq!(m.height, t(size::TABBAR_HEIGHT));
+            assert_eq!(m.tab_h(), t(size::TABBAR_HEIGHT) - t(size::TAB_INSET_TOP));
+            assert_eq!(m.font, t(kim_design::font::BODY));
+            assert_eq!((m.min_w, m.max_w), (t(96.0), t(220.0)));
+            assert!(m.close >= t(size::HIT_MIN), "close hit area");
+            assert!(m.tab_h() >= m.close, "the close button fits the tab");
+            let c = Metrics::new(s, true);
+            assert_eq!(c.height, t(size::TABBAR_HEIGHT_COMPACT));
+            assert!(c.tab_h() >= c.close, "compact still fits the close button");
+        }
+    }
+
+    /// ADR 0095/0099: tabs are the same width, share the bar within 96–220 px × scale, grow with
+    /// the window up to the maximum, and the gear ends the bar.
+    #[test]
+    fn tabs_share_the_bar_and_the_gear_ends_it() {
+        for s in [1.0f32, 1.25, 1.5, 2.0] {
+            let mt = Metrics::new(s, false);
+            let list = items(&["claude", "server", "a much longer name of a terminal"]);
+            let mut prev = 0;
+            for w in [500u32, 900, 1400, 3000] {
+                let w = (w as f32 * s) as u32;
+                let b = bar(&list, Some(0), w, s);
+                let tabs = tab_rects(&b);
+                assert_eq!(tabs.len(), 3);
+                assert!(tabs.iter().all(|t| t.w == tabs[0].w), "same width {tabs:?}");
+                assert!(
+                    (mt.min_w..=mt.max_w).contains(&tabs[0].w),
+                    "{tabs:?} at {w}"
+                );
+                assert!(tabs[0].w >= prev, "wider window, wider tabs");
+                prev = tabs[0].w;
+                let gear = b.rect_of(Hit::Settings).unwrap();
+                assert_eq!(
+                    gear.right(),
+                    w as i32 - mt.bar_pad as i32,
+                    "the gear ends the bar"
+                );
+                let plus = b.rect_of(Hit::New).unwrap();
+                assert!(plus.x >= tabs[2].right(), "+ follows the last tab");
+                assert!(b.text.ends_with('\u{2699}'), "{}", b.text);
+            }
+        }
+    }
+
+    #[test]
+    fn labels_are_centred_and_the_close_button_sits_at_the_right_end() {
+        let list = items(&["main", "로그", "a-much-longer-terminal-name-than-fits"]);
+        for s in [1.0f32, 1.5, 2.0] {
+            let b = bar(&list, Some(0), (800.0 * s) as u32, s);
+            for p in b.parts.iter().filter(|p| p.kind == "tab") {
+                let (_, tb, ..) = p.text.as_ref().unwrap();
+                let tc = tb.y * 2 + tb.h as i32;
+                let pc = p.rect.y * 2 + p.rect.h as i32;
+                assert!((tc - pc).abs() <= 2, "centred {p:?}");
+                assert!(tb.right() <= p.rect.right(), "label inside its tab {p:?}");
+            }
+            for p in b.parts.iter().filter(|p| p.kind == "tab-close") {
+                let tab = b
+                    .parts
+                    .iter()
+                    .find(|t| Some(&t.id) == p.parent.as_ref())
+                    .unwrap();
+                assert!(
+                    tab.rect.right() - p.rect.right() <= (8.0 * s) as i32,
+                    "{p:?}"
+                );
+                assert!(p.rect.y >= tab.rect.y && p.rect.bottom() <= tab.rect.bottom());
+            }
+            let long = b.parts.iter().find(|p| p.id.ends_with("[2]")).unwrap();
+            let t = long.text.as_ref().unwrap();
+            assert!(t.4 && t.0.ends_with('…'), "the long name is cut: {t:?}");
+        }
+    }
+
+    #[test]
+    fn hit_testing_matches_the_painted_parts() {
+        let list = items(&["one", "two"]);
+        let b = bar(&list, Some(1), 900, 1.0);
+        for p in &b.parts {
+            let Some(h) = p.hit else { continue };
+            let got = b.hit(h.x + h.w as i32 / 2, h.y + h.h as i32 / 2);
+            let want = match p.kind {
+                "tab" => Hit::Tab(index(&p.id)),
+                "tab-close" => Hit::Close(index(&p.id)),
+                "tab-new" => Hit::New,
+                _ => Hit::Settings,
+            };
+            assert_eq!(got, Some(want), "{p:?}");
+        }
+        // Above a tab's close button but inside the tab: the tab.
+        let c = b.rect_of(Hit::Close(0)).unwrap();
+        let t = b.rect_of(Hit::Tab(0)).unwrap();
+        assert_eq!(b.hit(c.x + 2, t.y + 1), Some(Hit::Tab(0)));
+        assert_eq!(b.hit(-1, 5), None);
+    }
+
+    #[test]
+    fn many_tabs_scroll_with_the_active_one_visible() {
+        let names: Vec<String> = (0..30).map(|i| format!("t{i}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let list = items(&refs);
+        let mt = Metrics::new(1.0, false);
+        let b = layout(
+            &list,
+            Some(25),
+            None,
+            1000,
+            0,
+            None,
+            &mt,
+            &Colors::DARK,
+            &mut ApproxMeasure,
+        );
+        assert!(b.overflow);
+        assert!(
+            b.spans.iter().any(|s| s.1 == Hit::Tab(25)),
+            "active visible"
+        );
+        assert!(b.spans.iter().any(|s| s.1 == Hit::Left), "scrolls left");
+        let tabs = tab_rects(&b);
+        assert!(tabs.iter().all(|t| t.w == mt.min_w), "at the minimum");
+        let gear = b.rect_of(Hit::Settings).unwrap();
+        for (r, _) in &b.spans {
+            if r != &gear {
+                assert!(r.right() <= gear.x, "nothing under the gear: {r:?}");
+            }
+        }
+        assert!(b.text.contains('‹'));
+        // Scrolled to the start: no left arrow and no gap before the first tab.
+        let b = layout(
+            &list,
+            Some(0),
+            None,
+            1000,
+            0,
+            None,
+            &mt,
+            &Colors::DARK,
+            &mut ApproxMeasure,
+        );
+        assert!(b.rect_of(Hit::Left).is_none());
+        assert_eq!(
+            b.rect_of(Hit::Tab(0)).unwrap().x,
+            mt.bar_pad as i32,
+            "no gap"
+        );
+        assert!(b.rect_of(Hit::Right).is_some());
+    }
+
+    #[test]
+    fn no_tabs_is_just_new_and_settings() {
+        let b = bar(&[], None, 600, 1.0);
+        assert_eq!(b.text, "+ \u{2699}");
+        assert!(b.active.is_none());
+    }
+
+    #[test]
+    fn marks_show_shapes_for_states_and_running_needs_none() {
+        let mut list = items(&["run", "stop", "agent", "back", "build", "pin"]);
+        list[1].status = Status::Stopped;
+        list[2].claude = Claude::NeedInput;
+        list[3].alert = Some(crate::gui::model::Alert::Output);
+        list[4].progress = Some(subak_term::screen::Progress {
+            state: subak_term::screen::ProgressState::Normal,
+            value: 42,
+        });
+        list[5].pinned = true;
+        let b = bar(&list, Some(0), 2400, 1.0);
+        for want in [
+            "run",
+            "■ stop",
+            "! agent",
+            "• back",
+            "42% build",
+            "\u{25c6} pin",
+        ] {
+            assert!(b.text.contains(want), "{want} in {}", b.text);
+        }
+        assert!(
+            !b.text.contains('●'),
+            "running is the normal state: no mark"
+        );
+        assert!(
+            b.rect_of(Hit::Close(5)).is_none(),
+            "pinned: no close button"
+        );
+    }
+
+    /// #98 T1 (`CORE-10`, `CORE-14`): a pinned tab has its ◆ and no close button; a tab without
+    /// close buttons (`tabs.close_buttons = false`) keeps its width and has no close target.
+    #[test]
+    fn pinned_tabs_and_tabs_without_close_buttons() {
+        let mut list = items(&["pinned", "plain", "noclose"]);
+        list[0].pinned = true;
+        list[2].closable = false;
+        let b = bar(&list, Some(1), 1200, 1.0);
+        assert!(b.text.contains("\u{25c6} pinned"), "{}", b.text);
+        assert!(b.rect_of(Hit::Close(0)).is_none() && b.rect_of(Hit::Close(2)).is_none());
+        assert!(b.rect_of(Hit::Close(1)).is_some());
+        let w: Vec<u32> = tab_rects(&b).iter().map(|r| r.w).collect();
+        assert!(w.iter().all(|x| *x == w[0]), "same width {w:?}");
+    }
+
+    /// #98 T3 (`CORE-78`): the program's progress is shown on its tab, in words and shape.
+    #[test]
+    fn progress_shows_on_the_tab() {
+        use subak_term::screen::{Progress, ProgressState};
+        let mut list = items(&["build", "copy", "fail"]);
+        list[0].progress = Some(Progress {
+            state: ProgressState::Normal,
+            value: 42,
+        });
+        list[1].progress = Some(Progress {
+            state: ProgressState::Indeterminate,
+            value: 0,
+        });
+        list[2].progress = Some(Progress {
+            state: ProgressState::Error,
+            value: 7,
+        });
+        let b = bar(&list, Some(0), 1600, 1.0);
+        for want in ["42% build", "\u{2026} copy", "7%! fail"] {
+            assert!(b.text.contains(want), "{want} in {}", b.text);
+        }
+    }
+
+    /// #98 T3 (`CORE-80`): unseen output (•) and a bell (♪) are marks beside the name.
+    #[test]
+    fn alert_marks_show_beside_the_status() {
+        let mut list = items(&["front", "out", "bell"]);
+        list[1].alert = Some(crate::gui::model::Alert::Output);
+        list[2].alert = Some(crate::gui::model::Alert::Bell);
+        let b = bar(&list, Some(0), 1600, 1.0);
+        assert!(b.text.contains("\u{2022} out"), "{}", b.text);
+        assert!(b.text.contains("\u{266a} bell"), "{}", b.text);
+        let before = bar(&items(&["front", "out", "bell"]), Some(0), 1600, 1.0);
+        assert_eq!(before.spans, b.spans, "marks never move the tabs");
+    }
+
+    #[test]
+    fn a_motion_frame_replaces_the_glyph_without_moving_anything() {
         use crate::gui::claude_motion::{Frame, SPIN};
         let mut list = items(&["agent"]);
         list[0].claude = Claude::InProgress;
-        let rest = layout(&list, Some(0), None, 80, 0);
+        let rest = bar(&list, Some(0), 800, 1.0);
         for g in SPIN {
             list[0].frame = Some(Frame {
                 glyph: g,
                 faint: false,
             });
-            let b = layout(&list, Some(0), None, 80, 0);
-            assert!(text(&b, 80).contains(g), "{}", text(&b, 80));
+            let b = bar(&list, Some(0), 800, 1.0);
+            assert!(b.text.contains(g), "{}", b.text);
             assert_eq!(b.spans, rest.spans, "a frame never moves the tabs");
         }
-        list[0].claude = Claude::NeedInput;
-        list[0].frame = Some(Frame {
-            glyph: '!',
-            faint: true,
-        });
-        assert!(
-            String::from_utf8_lossy(&layout(&list, Some(0), None, 80, 0).vt).contains("[2m![22m")
-        );
     }
 
-    #[test]
-    fn claude_marks_are_distinct_shapes_beside_the_status() {
-        let states = [
-            Claude::NeedInput,
-            Claude::Error,
-            Claude::Done,
-            Claude::InProgress,
-            Claude::Unknown,
-            Claude::Idle,
-        ];
-        let glyphs: Vec<char> = states.iter().map(|c| claude_mark(*c).unwrap().0).collect();
-        let mut unique = glyphs.clone();
-        unique.sort_unstable();
-        unique.dedup();
-        assert_eq!(unique.len(), states.len(), "never colour alone: {glyphs:?}");
-        assert!(claude_mark(Claude::None).is_none());
-        assert!(
-            states
-                .iter()
-                .all(|c| claude_mark(*c).unwrap().2.starts_with("Claude "))
-        );
-        let mut list = items(&["agent", "other"]);
-        list[0].claude = Claude::NeedInput;
-        let bar = layout(&list, Some(1), None, 120, 0);
-        let t = text(&bar, 120);
-        assert!(t.contains("● ! agent"), "{t:?}");
-        assert!(t.contains("● other"), "no mark without a state: {t:?}");
-        let plain = layout(&items(&["agent", "other"]), Some(1), None, 120, 0);
-        let w = |b: &Bar| {
-            b.spans
-                .iter()
-                .find(|s| s.2 == Hit::Tab(0))
-                .map(|s| s.1 - s.0)
-                .unwrap()
-        };
-        assert_eq!(w(&bar), w(&plain) + 2, "the mark adds its own columns");
-    }
-
-    /// Step 20: a hovered inactive tab gets `bg.hover` and a brighter `×`; the text and the
-    /// clickable spans do not move, and the active tab is not changed by a hover.
     #[test]
     fn a_hovered_tab_is_filled_without_moving_anything() {
         let list = items(&["one", "two", "three"]);
-        let plain = layout(&list, Some(0), None, 120, 0);
-        let hover = layout_hover(&list, Some(0), None, 120, 0, Some(1));
-        assert_eq!(text(&plain, 120), text(&hover, 120));
-        assert_eq!(plain.spans, hover.spans);
-        let mut v = TermView::new(120, 1, 0);
-        v.feed(&hover.vt);
-        let (a, b) = hover
-            .spans
-            .iter()
-            .find(|s| s.2 == Hit::Tab(1))
-            .map(|s| (s.0, s.1))
-            .unwrap();
-        let bg_of = |x: u16| v.row_at(0).cell(usize::from(x)).attrs.bg;
-        let hovered = subak_term::screen::Color::Rgb(BG_HOVER.0, BG_HOVER.1, BG_HOVER.2);
-        assert!((a..b).all(|x| bg_of(x) == hovered));
-        assert_ne!(bg_of(1), hovered, "the active tab keeps its fill");
-        assert_eq!(
-            layout_hover(&list, Some(1), None, 120, 0, Some(1)).vt,
-            layout(&list, Some(1), None, 120, 0).vt,
-            "hovering the active tab changes nothing"
+        let mt = Metrics::new(1.0, false);
+        let plain = lay(&list, Some(0), None, 900, None, &mt);
+        let hov = lay(&list, Some(0), None, 900, Some(1), &mt);
+        assert_eq!(plain.spans, hov.spans);
+        let t1 = hov.rect_of(Hit::Tab(1)).unwrap();
+        assert!(hov.ops.iter().any(
+            |o| matches!(o, Op::Fill { rect, color, .. } if *rect == t1 && *color == BG_HOVER)
+        ));
+        assert!(
+            hov.parts
+                .iter()
+                .any(|p| p.id.ends_with("[1]") && p.state.contains(&"hover"))
         );
     }
 
     #[test]
-    fn no_tabs_is_just_the_new_button() {
-        let bar = layout(&[], None, None, 80, 0);
-        assert_eq!(text(&bar, 80).trim(), "+");
-        assert_eq!(bar.spans.len(), 1);
-        assert_eq!(bar.hit(1), Some(Hit::New));
-        assert_eq!(bar.active, None);
+    fn the_rename_field_shows_a_caret_inside_the_active_tab() {
+        let list = items(&["one", "two"]);
+        let mt = Metrics::new(1.0, false);
+        let e = Edit {
+            text: "renamed",
+            cursor: 3,
+        };
+        let b = lay(&list, Some(1), Some(&e), 900, None, &mt);
+        let (cx, _) = b.caret.unwrap();
+        let t = b.rect_of(Hit::Tab(1)).unwrap();
+        assert!(cx > t.x && cx < t.right(), "caret {cx} in {t:?}");
+        assert!(b.text.contains("renamed"));
+        let long = Edit {
+            text: "a very long new name that does not fit into one tab at all",
+            cursor: 58,
+        };
+        let b = lay(&list, Some(1), Some(&long), 900, None, &mt);
+        let (cx, _) = b.caret.unwrap();
+        assert!(cx < t.right(), "the caret stays visible at the end");
     }
 
     #[test]
-    fn one_and_many_tabs_show_state_name_close_and_plus() {
-        let mut list = items(&["빌드", "claude", "server"]);
-        list[2].status = Status::Stopped;
-        let bar = layout(&list, Some(1), None, 120, 0);
-        let line = text(&bar, 120);
-        assert!(line.contains("● 빌드"), "{line}");
-        assert!(line.contains("● claude"), "{line}");
-        assert!(line.contains("■ server"), "{line}");
-        assert_eq!(line.matches('×').count(), 3, "{line}");
-        assert!(line.ends_with('+'), "{line}");
-        // The spans tile the bar from column 0 and name what is under them.
-        let mut at = 0;
-        for (a, b, hit) in &bar.spans {
-            assert_eq!(*a, at, "{:?}", bar.spans);
-            at = *b;
-            let under = cells(&line, *a, *b);
-            match hit {
-                Hit::Tab(i) => assert!(under.contains(list[*i].name), "{under}"),
-                Hit::Close(_) => assert_eq!(under.trim(), "×"),
-                Hit::New => assert_eq!(under.trim(), "+"),
-                Hit::Left | Hit::Right => panic!("no scrolling"),
-                Hit::Settings => panic!("no gear in the Step 17 layout"),
+    fn coloured_tabs_start_with_their_colour() {
+        let mut list = items(&["build", "logs"]);
+        let plain = bar(&list, Some(0), 900, 1.0);
+        list[1].color = color_named("teal");
+        let coloured = bar(&list, Some(0), 900, 1.0);
+        assert_eq!(plain.spans, coloured.spans);
+        assert!(coloured.text.contains("\u{258e}logs"), "{}", coloured.text);
+        assert!(
+            coloured
+                .ops
+                .iter()
+                .any(|o| matches!(o, Op::Fill { color, .. } if *color == Rgb(0x2E, 0xA8, 0xA8)))
+        );
+        assert_eq!(color_named("nope"), None);
+        assert_eq!(TAB_COLORS.len(), 8);
+    }
+
+    /// ADR 0099: the bar's parts pass the design audit at every scale and density.
+    #[test]
+    fn the_laid_out_bar_passes_the_design_audit() {
+        use kim_design::audit;
+        let list = items(&[
+            "main",
+            "build",
+            "로그",
+            "ssh-prod",
+            "a-much-longer-terminal-name",
+        ]);
+        for s in [1.0f32, 1.25, 1.5, 2.0] {
+            for compact in [false, true] {
+                let mt = Metrics::new(s, compact);
+                let w = (1400.0 * s) as u32;
+                let b = lay(&list, Some(1), None, w, Some(3), &mt);
+                let r = report(&b, w, mt.height, s);
+                let f = audit::audit(&r);
+                assert_eq!(audit::counts(&f).2, 0, "{}", audit::render(&r, &f, false));
             }
         }
-        let (a, b) = bar.active.unwrap();
-        assert!(cells(&line, a, b).contains("claude"));
-        assert!((TAB_MIN..=TAB_MAX).contains(&usize::from(b - a)));
-        // Every state has its own shape.
-        let shapes: std::collections::HashSet<char> = [
-            Status::Running,
-            Status::Starting,
-            Status::Stopped,
-            Status::Failed,
-            Status::Gone,
-        ]
-        .iter()
-        .map(|s| s.glyph())
-        .collect();
-        assert_eq!(shapes.len(), 5);
-        assert_eq!(Status::from_state("stopped"), Status::Stopped);
-        assert_eq!(Status::from_state("bogus"), Status::Unknown);
     }
 
-    #[test]
-    fn long_names_are_cut_and_too_many_tabs_scroll_with_the_active_one_visible() {
-        let long = "a-very-long-terminal-name-that-does-not-fit-in-a-tab";
-        let bar = layout(&items(&[long]), Some(0), None, 120, 0);
-        let line = text(&bar, 120);
-        assert!(line.contains('…'), "{line}");
-        let names: Vec<String> = (0..30).map(|i| format!("term-{i:02}")).collect();
-        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-        let list = items(&refs);
-        for active in [0usize, 7, 15, 29] {
-            let bar = layout(&list, Some(active), None, 80, 0);
-            let line = text(&bar, 80);
-            assert!(
-                line.contains(&format!("term-{active:02}")),
-                "active {active}: {line}"
-            );
-            assert!(width(&line) <= 80, "{line}");
-            assert_eq!(bar.first > 0, line.starts_with('‹'), "{line}");
-            let more = bar.spans.iter().any(|s| s.2 == Hit::Right);
-            assert_eq!(more, active < 29, "{line}");
-        }
-        // The previous first tab is kept while the active one stays visible.
-        let bar = layout(&list, Some(8), None, 80, 5);
-        assert_eq!(bar.first, 5);
-        // A very narrow bar still shows the active tab.
-        let bar = layout(&list, Some(12), None, 20, 0);
-        assert!(text(&bar, 20).contains("term-1"), "{}", text(&bar, 20));
-    }
-
-    #[test]
-    fn the_rename_field_replaces_the_active_name_with_a_caret() {
-        let list = items(&["one", "two"]);
-        let e = Edit {
-            text: "새이름",
-            cursor: 1,
-        };
-        let bar = layout(&list, Some(1), Some(&e), 80, 0);
-        let line = text(&bar, 80);
-        assert!(line.contains("새이름"), "{line}");
-        assert!(!line.contains("two"), "{line}");
-        let (a, _) = bar.active.unwrap();
-        // " ● " then the field: the caret is after the first (wide) syllable.
-        assert_eq!(bar.caret, Some(a + 3 + 2));
-        // The caret at the end sits after the text.
-        let e = Edit {
-            text: "ab",
-            cursor: 2,
-        };
-        let bar = layout(&list, Some(0), Some(&e), 80, 0);
-        let (a, _) = bar.active.unwrap();
-        assert_eq!(bar.caret, Some(a + 3 + 2));
-        // A long text scrolls so the caret stays in the field.
-        let long = "x".repeat(100);
-        let e = Edit {
-            text: &long,
-            cursor: 100,
-        };
-        let bar = layout(&list, Some(0), Some(&e), 120, 0);
-        let (a, b) = bar.active.unwrap();
-        let caret = bar.caret.unwrap();
-        assert!(caret > a && caret < b, "{a} {caret} {b}");
-    }
-
-    /// #98 T3: an unseen tab shows `•` for output and `♪` for a bell, beside its status, and
-    /// the tab grows to keep the whole name.
-    #[test]
-    fn alert_marks_show_beside_the_status() {
-        use crate::gui::model::Alert;
-        let mut list = items(&["build", "logs", "shell"]);
-        list[1].alert = Some(Alert::Output);
-        list[2].alert = Some(Alert::Bell);
-        let bar = layout(&list, Some(0), None, 120, 0);
-        let line = text(&bar, 120);
-        assert!(line.contains("● • logs"), "{line}");
-        assert!(line.contains("● ♪ shell"), "{line}");
-        assert!(
-            !line.contains("● • build") && !line.contains("● ♪ build"),
-            "{line}"
-        );
-        assert_eq!(alert_mark(Some(Alert::Bell)).unwrap().2, "bell");
-        assert!(alert_mark(None).is_none());
-        let plain = tab_width(&items(&["logs"])[0], None);
-        assert_eq!(tab_width(&list[1], None), plain + 2);
-    }
-
-    /// #98 T3 (`CORE-78`): the tab shows its program's progress in text (`42%`, `7%!`,
-    /// `‖9%`, `…`).
-    #[test]
-    fn progress_shows_on_the_tab() {
-        use subak_term::screen::{Progress, ProgressState};
-        let p = |state, value| Some(Progress { state, value });
-        let mut list = items(&["a", "b", "c", "d"]);
-        list[0].progress = p(ProgressState::Normal, 42);
-        list[1].progress = p(ProgressState::Error, 7);
-        list[2].progress = p(ProgressState::Paused, 9);
-        list[3].progress = p(ProgressState::Indeterminate, 0);
-        let line = text(&layout(&list, Some(0), None, 160, 0), 160);
-        for want in ["● 42% a", "● 7%! b", "● \u{2016}9% c", "● \u{2026} d"] {
-            assert!(line.contains(want), "{want} in {line}");
-        }
-        assert_eq!(progress_mark(None), None);
-        assert_eq!(progress_mark(p(ProgressState::Error, 7)).unwrap().1, DANGER);
-    }
-
-    /// #98 T1 (`CORE-14`, `CORE-10`): a pinned tab shows `◆` and no `×`; with close buttons
-    /// off no tab has one; a click there selects the tab.
-    #[test]
-    fn pinned_tabs_and_tabs_without_close_buttons() {
-        let mut list = items(&["build", "logs"]);
-        list[0].pinned = true;
-        let bar = layout(&list, Some(1), None, 120, 0);
-        let line = text(&bar, 120);
-        assert!(line.contains("● \u{25c6} build"), "{line}");
-        assert_eq!(line.matches('×').count(), 1, "only logs has one: {line}");
-        assert!(!bar.spans.iter().any(|s| s.2 == Hit::Close(0)));
-        for it in &mut list {
-            it.closable = false;
-        }
-        let line = text(&layout(&list, Some(1), None, 120, 0), 120);
-        assert_eq!(line.matches('×').count(), 0, "{line}");
-    }
-
-    /// #98 T1 (`CORE-23`): tab title formats; never a blank tab, never a control character.
     #[test]
     fn tab_titles_follow_the_format() {
         assert_eq!(
@@ -1040,28 +1436,5 @@ mod tests {
             "falls back"
         );
         assert_eq!(label("{title}", "b", Some("a\u{7}b"), "c", None), "ab");
-    }
-
-    /// #98 T1 (`CORE-24`): a coloured tab starts with a bar in its colour; the width and the
-    /// name stay as they were.
-    #[test]
-    fn coloured_tabs_start_with_their_colour() {
-        let mut list = items(&["build", "logs"]);
-        let plain = layout(&list, Some(0), None, 80, 0);
-        list[1].color = color_named("teal");
-        let coloured = layout(&list, Some(0), None, 80, 0);
-        assert_eq!(
-            text(&plain, 80).chars().count(),
-            text(&coloured, 80).chars().count()
-        );
-        assert!(
-            text(&coloured, 80).contains("\u{258e}● logs"),
-            "{}",
-            text(&coloured, 80)
-        );
-        let vt = String::from_utf8_lossy(&coloured.vt).to_string();
-        assert!(vt.contains("38;2;46;168;168"), "teal: {vt}");
-        assert_eq!(color_named("nope"), None);
-        assert_eq!(TAB_COLORS.len(), 8);
     }
 }

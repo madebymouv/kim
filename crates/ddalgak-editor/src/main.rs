@@ -112,13 +112,6 @@ mod single {
             .then(|| ((r.right - r.left) as f32, (r.bottom - r.top) as f32))
     }
 
-    /// Whether the user's Windows display language is Korean (primary language 0x12).
-    pub fn ui_language_is_korean() -> bool {
-        // SAFETY: no arguments; returns the user's UI language ID.
-        let id = unsafe { windows_sys::Win32::Globalization::GetUserDefaultUILanguage() };
-        id & 0x3ff == 0x12
-    }
-
     /// Calls `show` every time a second start asks (a thread sleeping in the wait; no polling).
     pub fn on_show(owner: &Owner, show: impl Fn() + Send + 'static) {
         let event = owner.event as usize;
@@ -227,13 +220,23 @@ fn run(
         cursor.top + cursor.height() / 2,
     );
     // ADR 0091: everything is drawn larger on a large screen.
-    let zoom = single::work_area().map_or(1.0, |(w, h)| ddalgak_editor::window_scale(w, h));
+    let zoom = match (
+        std::env::var(kim_design::scale::ENV_ZOOM),
+        kim_design::prefs::UiPrefs::load().zoom,
+    ) {
+        (Err(_), None) => kim_design::system::work_area_logical()
+            .map_or(1.0, |(w, h)| ddalgak_editor::window_scale(w, h)),
+        _ => kim_design::scale::startup_zoom(),
+    };
+    let _ = single::work_area;
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("Ddalgak rules")
-            .with_app_id("mouv.ddalgak.editor")
-            .with_inner_size([1060.0 * zoom, 680.0 * zoom])
-            .with_min_inner_size([420.0 * zoom, 360.0 * zoom]),
+        viewport: kim_ui::inspect::audit_viewport(
+            egui::ViewportBuilder::default()
+                .with_title("Ddalgak rules")
+                .with_app_id("mouv.ddalgak.editor")
+                .with_inner_size([1060.0 * zoom, 680.0 * zoom])
+                .with_min_inner_size([420.0 * zoom, 360.0 * zoom]),
+        ),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -250,7 +253,7 @@ fn run(
                 ctx.request_repaint();
             });
             // The owner's handles stay open until the process ends (no Drop: closed by Windows).
-            let app = EditorApp::new(Options {
+            let mut app = EditorApp::new(Options {
                 paths,
                 engine: Arc::new(PipeEngine { endpoint }),
                 lang,
@@ -260,6 +263,10 @@ fn run(
                 cursor,
                 launcher: Arc::new(ddalgak::win::launch::WinLauncher),
             });
+            // ADR 0099: the view a UI audit asks for.
+            if let Ok(s) = std::env::var(kim_design::inspect::ENV_SCREEN) {
+                app.audit_screen(&s);
+            }
             Ok(Box::new(app))
         }),
     );
@@ -275,7 +282,7 @@ fn run(
 /// Korean when Windows' display language is Korean, English otherwise (`--lang` overrides).
 #[cfg(windows)]
 fn system_lang() -> ddalgak_editor::i18n::Lang {
-    if single::ui_language_is_korean() {
+    if kim_design::Lang::system() == kim_design::Lang::Ko {
         ddalgak_editor::i18n::Lang::Ko
     } else {
         ddalgak_editor::i18n::Lang::En

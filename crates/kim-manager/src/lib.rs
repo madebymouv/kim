@@ -794,7 +794,17 @@ impl KimManagerApp {
         let r = p
             .parent()
             .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&p, text));
+            .and_then(|()| std::fs::write(&p, text))
+            .and_then(|()| {
+                // ADR 0099: the size is shared with every Kim program.
+                let ui = kim_ui::design::prefs::UiPrefs {
+                    zoom: self.prefs.scale,
+                };
+                self.backend
+                    .settings_path
+                    .as_deref()
+                    .map_or(Ok(()), |s| ui.save_to(&ui_prefs_path(s)))
+            });
         if let Err(e) = r {
             self.set_banner(Banner::Error {
                 message: format!("cannot save {}: {e}", p.display()),
@@ -885,6 +895,36 @@ impl KimManagerApp {
     /// The tool whose information is open.
     pub fn info_visible(&self) -> Option<&str> {
         self.info.as_deref()
+    }
+
+    /// ADR 0099: opens the view a UI audit asks for (`KIM_UI_SCREEN`): `launcher`, `settings`,
+    /// `settings-shortcuts`, `settings-catalog`, `settings-about`.
+    pub fn audit_screen(&mut self, screen: &str) {
+        let tab = match screen {
+            "settings" | "settings-general" => Some(SettingsTab::General),
+            "settings-shortcuts" => Some(SettingsTab::Shortcuts),
+            "settings-catalog" => Some(SettingsTab::Catalog),
+            "settings-about" => Some(SettingsTab::About),
+            _ => None,
+        };
+        if let Some(t) = tab {
+            self.show_settings = true;
+            self.settings_tab = t;
+        }
+    }
+
+    /// The name of the view shown (the geometry report's `screen`).
+    pub fn audit_screen_name(&self) -> String {
+        if !self.show_settings {
+            return "launcher".into();
+        }
+        match self.settings_tab {
+            SettingsTab::General => "settings",
+            SettingsTab::Shortcuts => "settings-shortcuts",
+            SettingsTab::Catalog => "settings-catalog",
+            SettingsTab::About => "settings-about",
+        }
+        .into()
     }
 
     /// Opens or closes Settings (the gear does this).
@@ -1078,6 +1118,18 @@ impl KimManagerApp {
             let state = self.tile_state(id);
             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
             self.paint_tile(ui, id, rect, &resp, state);
+            // ADR 0099: the tile in the geometry report (nothing happens unless asked for).
+            kim_ui::inspect::record(
+                ui,
+                &format!("tile:{id}"),
+                "tile",
+                rect,
+                None,
+                true,
+                &[],
+                None,
+                None,
+            );
             if resp.clicked() {
                 clicked = Some(id.to_string());
             }
@@ -1106,31 +1158,18 @@ impl KimManagerApp {
             self.menu(&id, a);
         }
 
-        // The gear, anchored to the lower-right corner.
+        // The gear, anchored to the lower-right corner: the shared component at the token size,
+        // its centre `GEAR_INSET - 4 + GEAR / 2` (22) from both edges.
+        let edge = kim_ui::design::size::GEAR_INSET - 4.0 + kim_ui::design::size::GEAR / 2.0;
         let gear = egui::Rect::from_center_size(
             // Never over the tiles, even in a window squeezed below its minimum size.
             egui::pos2(
-                full.right() - 22.0,
-                (full.bottom() - 22.0).max(full.top() + MARGIN + TILE.y + 16.0),
+                full.right() - edge,
+                (full.bottom() - edge).max(full.top() + MARGIN + TILE.y + 16.0),
             ),
-            egui::vec2(28.0, 28.0),
+            egui::Vec2::splat(kim_ui::design::size::GEAR),
         );
-        let g = ui.interact(
-            gear,
-            egui::Id::unique("settings-gear"),
-            egui::Sense::click(),
-        );
-        g.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Settings"));
-        let col = if g.hovered() || g.has_focus() {
-            c.text_primary
-        } else {
-            c.text_muted
-        };
-        if g.hovered() {
-            ui.painter().circle_filled(gear.center(), 14.0, c.bg_hover);
-        }
-        kim_ui::paint_gear(ui.painter(), gear.center(), 7.0, col);
-        if g.on_hover_text("Settings").clicked() {
+        if kim_ui::gear_at(ui, gear, "Settings", false).clicked() {
             self.toggle_settings(Some(&ui.ctx().clone()));
         }
 
@@ -1880,7 +1919,18 @@ impl KimManagerApp {
                 self.capture = None;
             }
         }
-        rail.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+        // ADR 0099: Done sits at the rail's bottom when there is room below the sections, and
+        // right after them otherwise (a short window never puts it over a section).
+        let room = rail.available_height() >= size::CONTROL + space::M;
+        if !room {
+            rail.add_space(space::S);
+        }
+        let layout = if room {
+            egui::Layout::bottom_up(egui::Align::Min)
+        } else {
+            egui::Layout::top_down(egui::Align::Min)
+        };
+        rail.with_layout(layout, |ui| {
             if ui
                 .add(kim_ui::Button::secondary("Done").min_width(ui.available_width()))
                 .on_hover_text(self.tr("Back to the launcher (Esc)", "런처로 돌아갑니다 (Esc)"))
@@ -2421,34 +2471,57 @@ pub struct Prefs {
 }
 
 impl Prefs {
-    /// The zoom to use: the chosen percentage (kept within 100–300 %) or `auto`.
+    /// The zoom to use: the chosen percentage (a step of 100–200 %) or `auto`.
     pub fn scale_or(&self, auto: f32) -> f32 {
         self.scale
-            .map_or(auto, |p| f32::from(p.clamp(100, 300)) / 100.0)
+            .map_or(auto, |p| kim_ui::design::scale::ui_zoom(Some(p), 0.0, 0.0))
     }
 
     /// The preferences in `manager.json` next to `settings` (Kim's settings file); defaults
-    /// when the file is missing or unreadable.
+    /// when the file is missing or unreadable. ADR 0099: the size is the UI zoom all Kim
+    /// programs share (`ui.json`, see [`ui_prefs_path`]); an older `scale` in manager.json is
+    /// used until the shared file says something.
     pub fn load_beside(settings: &Path) -> Prefs {
-        std::fs::read(settings.with_file_name("manager.json"))
+        let mut p: Prefs = std::fs::read(settings.with_file_name("manager.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let ui = ui_prefs_path(settings);
+        if ui.exists() {
+            p.scale = kim_ui::design::prefs::UiPrefs::load_from(&ui).zoom;
+        }
+        p
     }
 }
+
+/// ADR 0099: where Kim keeps the shared UI zoom for a settings file at `settings`:
+/// `%APPDATA%\mouv\ui.json` for the real `%APPDATA%\mouv\kim\settings.json`; beside the file
+/// anywhere else (a test's folder), so a test never touches the user's own file.
+pub fn ui_prefs_path(settings: &Path) -> PathBuf {
+    let dir = settings.parent().unwrap_or(Path::new("."));
+    if dir
+        .file_name()
+        .is_some_and(|n| n.eq_ignore_ascii_case("kim"))
+        && let Some(mouv) = dir.parent()
+    {
+        return mouv.join("ui.json");
+    }
+    dir.join("ui.json")
+}
+
+impl Prefs {}
 
 /// The launcher's size in points at 100 % (ADR 0090) and its minimum.
 pub const BASE_SIZE: [f32; 2] = [368.0, 224.0];
 pub const MIN_SIZE: [f32; 2] = [336.0, 196.0];
-/// The sizes Settings → General offers besides Auto (percent).
-pub const SCALES: [u16; 5] = [100, 150, 200, 250, 300];
+/// The sizes Settings → General offers besides Auto (percent): the UI zooms every Kim program
+/// shares (ADR 0099).
+pub const SCALES: [u16; 5] = kim_ui::design::scale::CHOICES;
 
-/// ADR 0091: the zoom for a screen whose work area is `work` points: as large as fits the
-/// largest view (Settings, 580 × 460 plus the title bar) on the screen with a small margin, in
-/// steps of 25 %, between 100 % and 300 %.
+/// ADR 0099 (replaces ADR 0091's own rule): the automatic UI zoom for a work area of `work`
+/// logical pixels, the same for every Kim program (`kim_ui::design::scale::auto_zoom`).
 pub fn auto_scale(work: egui::Vec2) -> f32 {
-    let fit = (work.x * 0.95 / 580.0).min(work.y * 0.98 / 492.0);
-    ((fit * 4.0).floor() / 4.0).clamp(1.0, 3.0)
+    kim_ui::design::scale::auto_zoom(work.x, work.y)
 }
 
 /// ADR 0091: keeping the real window within its screen (Win32).
@@ -2717,7 +2790,10 @@ impl eframe::App for KimManagerApp {
         }
         #[cfg(not(windows))]
         let _ = frame;
+        let screen = self.audit_screen_name();
         KimManagerApp::ui(self, ui);
+        // ADR 0099: the geometry report while a developer asks for it (nothing otherwise).
+        kim_ui::inspect::finish_frame(ui.ctx(), "kim", &screen);
     }
 }
 

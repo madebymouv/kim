@@ -350,13 +350,14 @@ fn bar_lparam(d: &Value, what: &str) -> (isize, u32) {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s[2] == what)
+        .find(|s| s[4] == what)
         .unwrap_or_else(|| panic!("no span {what}: {}", d["bar"]))
         .clone();
-    let cw = d["bar"]["cell"][0].as_u64().unwrap() as u32;
-    let pad = d["bar"]["pad_x"].as_u64().unwrap() as u32;
-    let x = pad + (span[0].as_u64().unwrap() as u32 + 2) * cw + cw / 2;
-    let y = d["bar"]["height"].as_u64().unwrap() as u32 / 2;
+    // ADR 0099: [x, y, w, h, what] in client pixels; a quarter into the span (a tab's label,
+    // clear of its close button).
+    let n = |i: usize| span[i].as_u64().unwrap() as u32;
+    let x = n(0) + n(2) / 4;
+    let y = n(1) + n(3) / 2;
     (((y as isize) << 16) | x as isize, x)
 }
 
@@ -435,8 +436,10 @@ fn themes_fonts_layout_opacity_and_high_contrast_in_rendered_frames() {
         "kim-light terminal.background"
     );
     let (_, x) = bar_lparam(&d, "tab:0");
+    // ADR 0099: the marker is the tab's top edge, below the bar's 4 px inset.
+    let tab_top = top - d["bar"]["tab_height"].as_u64().unwrap() as u32;
     assert_eq!(
-        hex(px(x, 0)),
+        hex(px(x, tab_top)),
         "5F49C4",
         "kim-light accent: the active tab's marker"
     );

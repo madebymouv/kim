@@ -7,6 +7,7 @@
 //! `state::DISABLED_OPACITY` (egui's disabled painter) and are never clickable. Each one reports
 //! its role and label to screen readers (AccessKit), which is also how the tests find it.
 
+use crate::inspect::{self, Painted};
 use crate::{Colors, ui_font};
 use egui::{
     Align, Align2, Color32, CornerRadius, Id, Layout, Margin, Pos2, Rect, Response, RichText,
@@ -67,7 +68,7 @@ impl Button {
     /// The 24-point compact height (rows, toolbars).
     pub fn compact(mut self) -> Button {
         self.compact = true;
-        self.min_width = self.min_width.min(48.0);
+        self.min_width = self.min_width.min(size::BUTTON_MIN_WIDTH_COMPACT);
         self
     }
     pub fn min_width(mut self, w: f32) -> Button {
@@ -166,8 +167,43 @@ impl Widget for Button {
                 StrokeKind::Inside,
             );
             let pos = rect.center() - galley.size() / 2.0;
+            let text_rect = Rect::from_min_size(pos, galley.size());
             p.galley(pos, galley, fg);
             focus_ring(ui, &resp, rect, radius::S);
+            if inspect::active() {
+                let kind = match self.kind {
+                    ButtonKind::Primary => "primary",
+                    ButtonKind::Secondary => "secondary",
+                    ButtonKind::Ghost => "ghost",
+                    ButtonKind::Danger => "danger",
+                };
+                let mut states = vec![kind];
+                if self.compact {
+                    states.push("compact");
+                }
+                if self.selected {
+                    states.push("selected");
+                }
+                if hot {
+                    states.push("hover");
+                }
+                inspect::record(
+                    ui,
+                    &format!("button:{}", self.text),
+                    "button",
+                    rect,
+                    Some(Painted {
+                        content: &self.text,
+                        rect: text_rect,
+                        size: font::BODY,
+                        truncated: false,
+                    }),
+                    true,
+                    &states,
+                    Some(fg),
+                    (fill.a() == 255).then_some(fill),
+                );
+            }
         }
         if resp.clicked() || resp.hovered() {
             ui.ctx().set_cursor_icon(if resp.enabled() {
@@ -256,6 +292,28 @@ impl Widget for Switch<'_> {
                 vec2(size::SWITCH_WIDTH, size::SWITCH_HEIGHT),
             );
             focus_ring(ui, &resp, track, size::SWITCH_HEIGHT / 2.0);
+            inspect::record(
+                ui,
+                &format!("switch:{label}"),
+                "switch",
+                track,
+                None,
+                false,
+                &[if on { "on" } else { "off" }],
+                None,
+                None,
+            );
+            inspect::record(
+                ui,
+                &format!("switch-hit:{label}"),
+                "hit-area",
+                rect,
+                None,
+                true,
+                &[],
+                None,
+                None,
+            );
         }
         resp
     }
@@ -325,6 +383,23 @@ impl Widget for SwitchRow<'_> {
             let top = rect.center().y - text_h / 2.0;
             let p = ui.painter();
             let th = title.size().y;
+            let title_rect = Rect::from_min_size(pos2(rect.left(), top), title.size());
+            inspect::record(
+                ui,
+                &format!("row:{t_label}"),
+                "setting-row",
+                rect,
+                Some(Painted {
+                    content: &t_label,
+                    rect: title_rect,
+                    size: font::BODY,
+                    truncated: title.elided,
+                }),
+                true,
+                &[if on { "on" } else { "off" }],
+                Some(c.text_primary),
+                None,
+            );
             p.galley(pos2(rect.left(), top), title, c.text_primary);
             if let Some(d) = desc {
                 p.galley(pos2(rect.left(), top + th + 2.0), d, c.text_muted);
@@ -335,6 +410,17 @@ impl Widget for SwitchRow<'_> {
             );
             let t = ui.ctx().animate_bool_responsive(resp.id, on);
             paint_switch(ui, sw, t, resp.hovered() && resp.enabled());
+            inspect::record(
+                ui,
+                &format!("switch:{t_label}"),
+                "switch",
+                Rect::from_center_size(sw.center(), vec2(size::SWITCH_WIDTH, size::SWITCH_HEIGHT)),
+                None,
+                false,
+                &[if on { "on" } else { "off" }],
+                None,
+                None,
+            );
             if resp.has_focus() {
                 focus_ring(ui, &resp, rect.expand2(vec2(space::XS, 0.0)), radius::S);
             }
@@ -367,6 +453,25 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
     let h = size::CONTROL_COMPACT + 4.0;
     // Exactly its own size, always left to right (also inside a right-aligned settings row).
     let (outer, _) = ui.allocate_exact_size(vec2(total, h), Sense::hover());
+    let seg_id = format!(
+        "segmented:{}",
+        options
+            .iter()
+            .map(|(_, l)| *l)
+            .collect::<Vec<_>>()
+            .join("|")
+    );
+    inspect::record(
+        ui,
+        &seg_id,
+        "segmented",
+        outer,
+        None,
+        false,
+        &[],
+        None,
+        Some(c.bg_raised),
+    );
     ui.painter().rect(
         outer,
         CornerRadius::same(radius::M as u8),
@@ -403,7 +508,7 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
         } else {
             c.text_secondary
         };
-        p.text(
+        let tr = p.text(
             rect.center(),
             Align2::CENTER_CENTER,
             *label,
@@ -411,6 +516,28 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
             fg,
         );
         focus_ring(ui, &resp, rect, radius::S);
+        inspect::scope(&seg_id, || {
+            inspect::record(
+                ui,
+                &format!("segment:{label}"),
+                "segment",
+                rect,
+                Some(Painted {
+                    content: label,
+                    rect: tr,
+                    size: font::BODY,
+                    truncated: false,
+                }),
+                true,
+                if sel { &["selected"] } else { &[] },
+                Some(fg),
+                Some(if fill == Color32::TRANSPARENT {
+                    c.bg_raised
+                } else {
+                    fill
+                }),
+            );
+        });
         if resp.clicked() && !sel {
             *value = *v;
             changed = true;
@@ -446,6 +573,17 @@ pub fn dropdown<T: PartialEq + Clone>(
             }
         });
     let l = label.to_string();
+    inspect::record(
+        ui,
+        &format!("dropdown:{label}"),
+        "dropdown",
+        r.response.rect,
+        None,
+        true,
+        &[],
+        None,
+        None,
+    );
     r.response
         .widget_info(|| WidgetInfo::labeled(egui::Role::ComboBox, true, &l));
     changed
@@ -458,10 +596,24 @@ pub fn text_field(ui: &mut Ui, text: &mut String, label: &str, hint: &str, width
         egui::TextEdit::singleline(text)
             .hint_text(hint)
             .desired_width(width)
-            .margin(Margin::symmetric(space::S as i8, 5)),
+            // ADR 0099: the control height (28), the text centred in it.
+            .min_size(vec2(0.0, size::CONTROL))
+            .align(Align2::LEFT_CENTER)
+            .margin(Margin::symmetric(space::S as i8, space::XS as i8)),
     );
     ui.ctx()
         .accesskit_node_builder(r.id, |b| b.set_label(label.to_string()));
+    inspect::record(
+        ui,
+        &format!("input:{label}"),
+        "text-input",
+        r.rect,
+        None,
+        true,
+        &[],
+        None,
+        None,
+    );
     r
 }
 
@@ -491,18 +643,35 @@ pub fn nav_item(ui: &mut Ui, selected: bool, label: &str) -> Response {
             );
             p.rect_filled(bar, CornerRadius::same(1), c.accent);
         }
-        p.text(
+        let fg = if selected || hot {
+            c.text_primary
+        } else {
+            c.text_secondary
+        };
+        let tr = p.text(
             pos2(rect.left() + space::M, rect.center().y),
             Align2::LEFT_CENTER,
             label,
             ui_font(ui.ctx(), font::BODY, selected),
-            if selected || hot {
-                c.text_primary
-            } else {
-                c.text_secondary
-            },
+            fg,
         );
         focus_ring(ui, &resp, rect, radius::M);
+        inspect::record(
+            ui,
+            &format!("nav:{label}"),
+            "nav-item",
+            rect,
+            Some(Painted {
+                content: label,
+                rect: tr,
+                size: font::BODY,
+                truncated: false,
+            }),
+            true,
+            if selected { &["selected"] } else { &[] },
+            Some(fg),
+            (fill != Color32::TRANSPARENT).then_some(fill),
+        );
     }
     resp
 }
@@ -539,6 +708,17 @@ pub fn list_row<R>(
             .rect_filled(bar, CornerRadius::same(1), c.accent);
     }
     focus_ring(ui, &resp, rect, radius::M);
+    inspect::record(
+        ui,
+        &format!("row:{id:?}"),
+        "list-row",
+        rect,
+        None,
+        true,
+        if selected { &["selected"] } else { &[] },
+        None,
+        (fill != Color32::TRANSPARENT).then_some(fill),
+    );
     let inner = rect.shrink2(vec2(space::M, 0.0));
     let r = ui
         .scope_builder(
@@ -561,6 +741,7 @@ pub fn setting_group<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R
             .color(c.text_secondary),
     );
     ui.add_space(2.0);
+    let gid = format!("group:{title}");
     let r = egui::Frame::new()
         .fill(c.bg_raised)
         .stroke(Stroke::new(size::BORDER, c.border_subtle))
@@ -569,11 +750,21 @@ pub fn setting_group<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = space::XS;
-            add(ui)
-        })
-        .inner;
+            inspect::scope(&gid, || add(ui))
+        });
+    inspect::record(
+        ui,
+        &gid,
+        "setting-group",
+        r.response.rect,
+        None,
+        false,
+        &[],
+        None,
+        Some(c.bg_raised),
+    );
     ui.add_space(space::GROUP);
-    r
+    r.inner
 }
 
 /// A settings row: the title and an optional description on the left, the control `add` puts
@@ -587,6 +778,25 @@ pub fn setting_row<R>(
 ) -> R {
     let c = Colors::get(ui.ctx());
     let width = ui.available_width();
+    // ADR 0099: a control that left the text less than `ROW_TEXT_MIN` last frame (a narrow
+    // window, a wide segmented choice, a long translation) stacks the row: the text on top, the
+    // control below it — never the control over the text. It returns beside the text once the
+    // row is wide enough again.
+    let key = ui.scope_id().with(("kim-ui-row", title));
+    let last: Option<f32> = ui.ctx().data(|d| d.get_temp(key));
+    if last.is_some_and(|w| width - w - space::L < ROW_TEXT_MIN) {
+        let mut cw = 0.0;
+        let r = setting_stack(ui, title, description, |ui| {
+            let ir = ui.scope_builder(
+                egui::UiBuilder::new().layout(Layout::left_to_right(Align::Min)),
+                add,
+            );
+            cw = ir.response.rect.width();
+            ir.inner
+        });
+        ui.ctx().data_mut(|d| d.insert_temp(key, cw));
+        return r;
+    }
     let top = ui.cursor().min;
     let mut child = ui.new_child(
         egui::UiBuilder::new()
@@ -595,6 +805,11 @@ pub fn setting_row<R>(
     );
     let r = add(&mut child);
     let ctrl = child.min_rect();
+    ui.ctx().data_mut(|d| d.insert_temp(key, ctrl.width()));
+    if width - ctrl.width() - space::L < ROW_TEXT_MIN {
+        // Stacked from the next frame on; this frame is drawn again at once.
+        ui.ctx().request_discard("a settings row stacks");
+    }
     let text_w = (width - ctrl.width() - space::L).max(80.0);
     let tg = ui.painter().layout(
         title.to_string(),
@@ -615,6 +830,22 @@ pub fn setting_row<R>(
     ui.allocate_rect(Rect::from_min_size(top, vec2(width, h)), Sense::hover());
     let y = top.y + ((ctrl.height().max(size::CONTROL_COMPACT) - text_h) / 2.0).max(0.0);
     let th = tg.size().y;
+    inspect::record(
+        ui,
+        &format!("row:{title}"),
+        "setting-row",
+        Rect::from_min_size(top, vec2(width, h)),
+        Some(Painted {
+            content: title,
+            rect: Rect::from_min_size(pos2(top.x, y), tg.size()),
+            size: font::BODY,
+            truncated: tg.elided,
+        }),
+        false,
+        &[],
+        Some(c.text_primary),
+        None,
+    );
     ui.painter().galley(pos2(top.x, y), tg, c.text_primary);
     if let Some(d) = dg {
         ui.painter()
@@ -622,6 +853,9 @@ pub fn setting_row<R>(
     }
     r
 }
+
+/// The narrowest text column a settings row keeps beside its control (logical pixels).
+pub const ROW_TEXT_MIN: f32 = 160.0;
 
 /// A settings row whose control is too wide to sit beside its text (a segmented choice with
 /// many options): the title and description first, the control below.
@@ -971,6 +1205,17 @@ pub fn shortcut_field(
         if !recording {
             focus_ring(ui, &resp, rect, radius::S);
         }
+        inspect::record(
+            ui,
+            &format!("shortcut:{label}"),
+            "text-input",
+            rect,
+            None,
+            true,
+            if recording { &["recording"] } else { &[] },
+            None,
+            Some(c.bg_raised),
+        );
     }
     resp
 }
@@ -1028,6 +1273,17 @@ pub fn gear_at(ui: &mut Ui, rect: Rect, label: &str, open: bool) -> Response {
     };
     paint_gear(ui.painter(), rect.center(), r, col);
     focus_ring(ui, &resp, rect, radius::M);
+    inspect::record(
+        ui,
+        &format!("gear:{label}"),
+        "gear",
+        rect,
+        None,
+        true,
+        if open { &["selected"] } else { &[] },
+        None,
+        None,
+    );
     if hot {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }

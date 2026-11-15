@@ -112,12 +112,16 @@ pub fn first_size(work: Rect, dpi: u32) -> (i32, i32) {
     )
 }
 
-/// ADR 0091: how much larger than at 100 % a first window and the default text are on a monitor
-/// whose work area is `work` at `dpi` (1.0 … 2.0 in steps of 0.25; see [`first_size`]).
+/// ADR 0091, ADR 0099: how much larger than at 100 % a first window and the default text are on
+/// a monitor whose work area is `work` at `dpi`: the automatic UI zoom every Kim program shares
+/// (`kim_design::scale::auto_zoom` of the logical work area), kept so that the first window
+/// still fits within 80 % of the work area.
 pub fn screen_zoom(work: Rect, dpi: u32) -> f32 {
+    let ds = kim_design::scale::dpi_scale(dpi);
+    let auto = kim_design::scale::auto_zoom(work.width() as f32 / ds, work.height() as f32 / ds);
     let (bw, bh) = (px(800.0, dpi), px(600.0, dpi));
     let fit = (work.width() as f32 * 0.8 / bw as f32).min(work.height() as f32 * 0.8 / bh as f32);
-    ((fit * 4.0).floor() / 4.0).clamp(1.0, 2.0)
+    auto.min(kim_design::scale::quantize(fit))
 }
 
 /// ADR 0091: the text size when `config.toml` does not set one: the default, `zoom` times
@@ -170,17 +174,18 @@ mod tests {
 
     #[test]
     fn a_first_window_is_larger_on_a_large_screen() {
-        // ADR 0091: 5120 × 1410 at 100 % (an ultrawide): 175 %.
-        assert_eq!(first_size(work(5120, 1410), 96), (1400, 1050));
-        // 1920 × 1040 at 100 %: 125 %.
-        assert_eq!(first_size(work(1920, 1040), 96), (1000, 750));
+        // ADR 0099: the UI zoom every Kim program shares: 5120 × 1410 at 100 % → 150 %.
+        assert_eq!(first_size(work(5120, 1410), 96), (1200, 900));
+        // 1920 × 1040 at 100 %: 100 %.
+        assert_eq!(first_size(work(1920, 1040), 96), (800, 600));
         // Small screens keep 800 × 600 logical pixels; the scale still applies.
         assert_eq!(first_size(work(1024, 728), 96), (800, 600));
         assert_eq!(first_size(work(1280, 680), 144), (1200, 900));
         // Never more than twice.
         assert_eq!(first_size(work(7680, 4280), 96), (1600, 1200));
         // The default text grows with it (13 px at 100 %).
-        assert!((screen_zoom(work(5120, 1410), 96) - 1.75).abs() < 1e-6);
+        assert!((screen_zoom(work(5120, 1410), 96) - 1.5).abs() < 1e-6);
+        assert!((default_font(1.5) - 20.0).abs() < 1e-6);
         assert!((default_font(1.75) - 23.0).abs() < 1e-6);
         assert!((default_font(1.0) - crate::config::FONT_SIZE.2).abs() < 1e-6);
         assert!((default_font(2.0) - 26.0).abs() < 1e-6);

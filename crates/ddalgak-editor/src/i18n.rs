@@ -479,6 +479,12 @@ pub const LABELS: &[(&str, &str, &str)] = &[
         "No rules yet. Ddalgak does nothing until you make one.",
         "아직 규칙이 없습니다. 규칙을 만들기 전에는 딸깍은 아무것도 하지 않습니다.",
     ),
+    ("list.empty_title", "No rules yet", "아직 규칙이 없습니다"),
+    (
+        "list.empty_body",
+        "Ddalgak does nothing until you make one. Start from an example:",
+        "규칙을 만들기 전에는 딸깍은 아무것도 하지 않습니다. 예시로 시작해 보세요.",
+    ),
     (
         "list.no_match",
         "No rule matches the search and filters.",

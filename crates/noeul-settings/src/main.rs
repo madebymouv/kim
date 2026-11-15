@@ -149,13 +149,23 @@ fn run(lang: Option<kim_ui::Lang>, endpoint: Option<String>) -> ExitCode {
         eprintln!("noeul-settings: error: noeul.exe is not next to this program (not_found)");
         return ExitCode::from(1);
     };
-    let zoom = single::work_area().map_or(1.0, |(w, h)| noeul_settings::window_scale(w, h));
+    let zoom = match (
+        std::env::var(kim_design::scale::ENV_ZOOM),
+        kim_design::prefs::UiPrefs::load().zoom,
+    ) {
+        (Err(_), None) => kim_design::system::work_area_logical()
+            .map_or(1.0, |(w, h)| noeul_settings::window_scale(w, h)),
+        _ => kim_design::scale::startup_zoom(),
+    };
+    let _ = single::work_area;
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("Noeul settings")
-            .with_app_id("mouv.noeul.settings")
-            .with_inner_size([680.0 * zoom, 560.0 * zoom])
-            .with_min_inner_size([480.0 * zoom, 360.0 * zoom]),
+        viewport: kim_ui::inspect::audit_viewport(
+            egui::ViewportBuilder::default()
+                .with_title("Noeul settings")
+                .with_app_id("mouv.noeul.settings")
+                .with_inner_size([680.0 * zoom, 560.0 * zoom])
+                .with_min_inner_size([480.0 * zoom, 360.0 * zoom]),
+        ),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -174,6 +184,10 @@ fn run(lang: Option<kim_ui::Lang>, endpoint: Option<String>) -> ExitCode {
             let mut app = noeul_settings::SettingsApp::new(runner);
             if let Some(l) = lang {
                 app.set_lang(l);
+            }
+            // ADR 0099: the section a UI audit asks for.
+            if let Ok(s) = std::env::var(kim_design::inspect::ENV_SCREEN) {
+                app.audit_screen(&s);
             }
             Ok(Box::new(app))
         }),

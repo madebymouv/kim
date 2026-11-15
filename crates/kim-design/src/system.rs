@@ -67,3 +67,39 @@ pub fn ui_language_is_korean() -> bool {
 pub fn ui_language_is_korean() -> bool {
     false
 }
+
+/// ADR 0099: the primary monitor's work area (without the taskbar) in **logical** pixels: the
+/// pixels Windows reports divided by the system DPI scale (a process that is not DPI aware yet
+/// already gets 96-DPI values and a system DPI of 96, so both cases agree).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn work_area_logical() -> Option<(f32, f32)> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::HiDpi::GetDpiForSystem;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETWORKAREA, SystemParametersInfoW};
+    let mut r = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    // SAFETY: SPI_GETWORKAREA writes one RECT; GetDpiForSystem takes nothing.
+    let (ok, dpi) = unsafe {
+        (
+            SystemParametersInfoW(SPI_GETWORKAREA, 0, (&raw mut r).cast(), 0),
+            GetDpiForSystem(),
+        )
+    };
+    let ds = crate::scale::dpi_scale(dpi.max(96));
+    (ok != 0 && r.right > r.left && r.bottom > r.top).then(|| {
+        (
+            (r.right - r.left) as f32 / ds,
+            (r.bottom - r.top) as f32 / ds,
+        )
+    })
+}
+
+#[cfg(not(windows))]
+pub fn work_area_logical() -> Option<(f32, f32)> {
+    None
+}

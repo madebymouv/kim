@@ -3,7 +3,7 @@
   "schema_version": 1,
   "hotkey_contract": 1,
   "tool": "kim",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "backend": "focus",
   "actions": [
     { "id": "catalog.refresh", "title": "Refresh the catalog", "scopes": ["app"], "defaults": ["F5"] },

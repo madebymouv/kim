@@ -55,6 +55,8 @@ mod prefs;
 mod screens;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod tabs;
+// ADR 0099: the chrome's UI font (GDI): the tab bar's labels and icons.
+mod uitext;
 
 #[cfg(windows)]
 #[allow(unsafe_code)]

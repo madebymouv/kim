@@ -1035,56 +1035,65 @@ fn the_layout_holds_at_other_display_scales() {
     }
 }
 
-/// ADR 0091: Size (Settings → General) follows the screen by default (Auto) and can be fixed;
+/// ADR 0091, ADR 0099: Size follows the screen by default (Auto, the UI zoom every Kim program
+/// shares) and can be fixed;
 /// the choice zooms the whole window at once, is saved in manager.json and read again by the
 /// next start (`Prefs::load_beside`, what kim-manager.exe reads before its window opens).
 #[test]
 fn the_size_follows_the_screen_or_the_choice_and_persists() {
-    // Auto: an ultrawide 5120 × 1410 → 275 %, 1920 × 1040 → 200 %, a small screen 100 %.
-    assert!((kim_manager::auto_scale(egui::vec2(5120.0, 1410.0)) - 2.75).abs() < 1e-6);
-    assert!((kim_manager::auto_scale(egui::vec2(1920.0, 1040.0)) - 2.0).abs() < 1e-6);
+    // Auto: an ultrawide 5120 × 1410 → 150 %, 1920 × 1040 → 100 %, a 4K screen at 100 % → 200 %.
+    assert!((kim_manager::auto_scale(egui::vec2(5120.0, 1410.0)) - 1.5).abs() < 1e-6);
+    assert!((kim_manager::auto_scale(egui::vec2(1920.0, 1040.0)) - 1.0).abs() < 1e-6);
     assert!((kim_manager::auto_scale(egui::vec2(1024.0, 600.0)) - 1.0).abs() < 1e-6);
-    assert!((kim_manager::auto_scale(egui::vec2(9000.0, 9000.0)) - 3.0).abs() < 1e-6);
+    assert!((kim_manager::auto_scale(egui::vec2(9000.0, 9000.0)) - 2.0).abs() < 1e-6);
     let sb = Sandbox::new("size");
     let be = all_released(&sb, "1.0.0");
     let again = be.clone();
     let (first, _) = app(be);
     let mut h = sized(first, 580.0, 460.0);
     let ctx = h.ctx.clone();
-    h.state_mut().set_window_scale(&ctx, 2.75, 2.75);
+    h.state_mut().set_window_scale(&ctx, 1.5, 1.5);
     h.run();
-    assert!((h.ctx.zoom_factor() - 2.75).abs() < 1e-6);
+    assert!((h.ctx.zoom_factor() - 1.5).abs() < 1e-6);
     h.get_by_label("Settings").click();
     h.run();
     assert!(
-        h.query_by_label("Auto (275%)").is_some(),
+        h.query_by_label("Auto (150%)").is_some(),
         "Auto names its size"
     );
-    h.get_by_label("150%").click();
+    h.get_by_label("125%").click();
     h.run_steps(8);
-    assert!((h.ctx.zoom_factor() - 1.5).abs() < 1e-6, "applied at once");
-    assert!((h.state().wanted_scale() - 1.5).abs() < 1e-6);
+    assert!((h.ctx.zoom_factor() - 1.25).abs() < 1e-6, "applied at once");
+    assert!((h.state().wanted_scale() - 1.25).abs() < 1e-6);
     let prefs: serde_json::Value =
         serde_json::from_slice(&std::fs::read(sb.0.join("manager.json")).unwrap()).unwrap();
-    assert_eq!(prefs["scale"], 150);
+    assert_eq!(prefs["scale"], 125);
+    let ui: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(sb.0.join("ui.json")).unwrap()).unwrap();
+    assert_eq!(ui["schema"], "mouv.ui");
+    assert_eq!(ui["zoom"], 125, "the shared size, beside a test's settings");
     let loaded = Prefs::load_beside(&sb.0.join("settings.json"));
-    assert_eq!(loaded.scale, Some(150));
-    assert!((loaded.scale_or(2.75) - 1.5).abs() < 1e-6);
+    assert_eq!(loaded.scale, Some(125));
+    assert!((loaded.scale_or(1.5) - 1.25).abs() < 1e-6);
     let (next, _) = app(again);
-    assert_eq!(next.prefs().scale, Some(150), "kept for the next start");
-    h.get_by_label("Auto (275%)").click();
+    assert_eq!(next.prefs().scale, Some(125), "kept for the next start");
+    h.get_by_label("Auto (150%)").click();
     // The window takes its size once the new zoom is in effect (a few frames).
     h.run_steps(8);
-    assert!((h.ctx.zoom_factor() - 2.75).abs() < 1e-6, "Auto again");
+    assert!((h.ctx.zoom_factor() - 1.5).abs() < 1e-6, "Auto again");
     let prefs: serde_json::Value =
         serde_json::from_slice(&std::fs::read(sb.0.join("manager.json")).unwrap()).unwrap();
     assert!(prefs["scale"].is_null());
-    // Out-of-range values in a hand-edited file stay within 100–300 %.
+    // Out-of-range values in a hand-edited file stay within 100–200 %.
     let odd = Prefs {
         scale: Some(900),
         ..Prefs::default()
     };
-    assert!((odd.scale_or(1.0) - 3.0).abs() < 1e-6);
+    assert!((odd.scale_or(1.0) - 2.0).abs() < 1e-6);
+    assert_eq!(
+        kim_manager::ui_prefs_path(Path::new("C:/u/Roaming/mouv/kim/settings.json")),
+        Path::new("C:/u/Roaming/mouv/ui.json")
+    );
 }
 
 /// ADR 0092: titles and button names stay English; descriptions and messages follow the chosen

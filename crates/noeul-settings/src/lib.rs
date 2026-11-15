@@ -1317,7 +1317,28 @@ fn kim_hotkeys_keys() -> &'static [&'static str] {
 
 impl eframe::App for SettingsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let screen = self.audit_screen_name();
         SettingsApp::ui(self, ui);
+        // ADR 0099: the geometry report while a developer asks for it (nothing otherwise).
+        kim_ui::inspect::finish_frame(ui.ctx(), "noeul", &screen);
+    }
+}
+
+impl SettingsApp {
+    /// ADR 0099: opens the section a UI audit asks for (`KIM_UI_SCREEN`: `general`, `capture`,
+    /// `pins`, `shortcuts`, `appearance`, `advanced`).
+    pub fn audit_screen(&mut self, screen: &str) {
+        if let Some(s) = Section::ALL
+            .iter()
+            .find(|s| s.title().eq_ignore_ascii_case(screen))
+        {
+            self.section = *s;
+        }
+    }
+
+    /// The section shown, for the geometry report (`settings-general`, …).
+    pub fn audit_screen_name(&self) -> String {
+        format!("settings-{}", self.section.title().to_lowercase())
     }
 }
 
@@ -1373,9 +1394,10 @@ pub mod files {
     }
 }
 
-/// ADR 0091: the window's zoom on a screen whose work area is `w` × `h` points (680 × 560
-/// within 90 %, at most 200 %, in steps of 25 %).
+/// ADR 0099 (replaces ADR 0091's own rule): the window's zoom on a screen whose work area is
+/// `w` × `h` logical pixels: the UI zoom every Kim program shares, kept so that 680 × 560 stays
+/// within 90 % of the screen.
 pub fn window_scale(w: f32, h: f32) -> f32 {
-    let z = (w * 0.9 / 680.0).min(h * 0.9 / 560.0);
-    ((z * 4.0).floor() / 4.0).clamp(1.0, 2.0)
+    let fit = (w * 0.9 / 680.0).min(h * 0.9 / 560.0);
+    kim_design::scale::auto_zoom(w, h).min(kim_design::scale::quantize(fit))
 }

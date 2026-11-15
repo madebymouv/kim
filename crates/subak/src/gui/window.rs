@@ -46,6 +46,7 @@ use super::net::{self, Inbox, Link, Msg};
 use super::prefs::{LastTerminal, Placement, Prefs};
 use super::screens::{self, Banner, Choice, Chrome, Hints};
 use super::tabs::{self, Hit};
+use super::uitext::UiText;
 use crate::config::{self, MiddleClick, RightClick, Settings, ThemeChoice};
 use kim_hotkeys::keys::Side;
 use serde_json::{Value, json};
@@ -156,11 +157,8 @@ const TIMER_BLUR: usize = 10;
 const NOTICE_MS: u32 = 15_000;
 /// `WM_MOUSELEAVE` (the pointer left the client area after `TrackMouseEvent`).
 const WM_MOUSELEAVE: u32 = 0x02A3;
-/// The tab bar's text size (DESIGN_SYSTEM §2.3: UI body 12) and height (§2.4: 32), logical px.
-const BAR_FONT: f32 = 12.0;
-const BAR_HEIGHT: f32 = kim_design::size::TABBAR_HEIGHT;
-/// #98 T1 (`appearance.density = "compact"`).
-const BAR_HEIGHT_COMPACT: f32 = kim_design::size::CONTROL_COMPACT;
+/// The pane labels' and the rename composition's text size (DESIGN_SYSTEM §2.3: UI body 12).
+const BAR_FONT: f32 = kim_design::font::BODY;
 /// The tab menu's commands.
 const CMD_RENAME: u32 = 1;
 const CMD_HIDE: u32 = 2;
@@ -363,15 +361,15 @@ enum After {
     },
 }
 
-/// The tab bar: its renderer (the UI size), the laid-out bar and the composed strip.
+/// The tab bar (ADR 0099): its UI font, the laid-out bar and the composed strip.
 #[derive(Debug)]
 struct TabBar {
-    renderer: Option<Renderer>,
+    ui: Option<UiText>,
     layout: tabs::Bar,
     strip: Frame,
-    /// The strip's height and the row's left inset, in device pixels.
+    /// The strip's height in device pixels and the metrics it was laid out with.
     height: u32,
-    pad_x: u32,
+    metrics: Option<tabs::Metrics>,
     /// The first visible tab (scrolling).
     first: usize,
 }
@@ -944,6 +942,49 @@ impl App {
 
     fn scale(&self) -> f32 {
         layout::scale(self.dpi)
+    }
+
+    /// ADR 0099: the zoom of the window's chrome (the tab bar): the UI zoom, but never larger
+    /// than the terminal text's own enlargement over the default size.
+    fn chrome_zoom(&self) -> f32 {
+        kim_design::scale::chrome_zoom(self.screen_zoom, self.settings.appearance.font_size)
+    }
+
+    fn chrome_scale(&self) -> f32 {
+        self.scale() * self.chrome_zoom()
+    }
+
+    /// The tab bar's colours: the theme's roles (the active tab's fill and marker mid-transition),
+    /// or the system colours in reverse video for High Contrast.
+    fn bar_colors(&self, hc: bool) -> tabs::Colors {
+        if hc {
+            let t = self.theme();
+            let (bg, fg) = (t.background, t.foreground);
+            return tabs::Colors {
+                bar: bg,
+                active: fg,
+                hover: bg,
+                field: bg,
+                border: fg,
+                marker: fg,
+                text: fg,
+                text_active: bg,
+                text_muted: fg,
+            };
+        }
+        let c = self.chrome();
+        let t = motion::mix_amount(self.motion.progress(What::Tab, Instant::now()));
+        tabs::Colors {
+            bar: c.bg_raised,
+            active: c.bg_raised.mix(c.bg_base, t),
+            hover: c.bg_hover,
+            field: c.bg_overlay,
+            border: c.border_subtle,
+            marker: c.bg_raised.mix(c.accent, t),
+            text: c.text_secondary,
+            text_active: c.text_primary,
+            text_muted: c.text_muted,
+        }
     }
 
     /// Test reports on stdout (JSON lines).
@@ -1820,31 +1861,13 @@ impl App {
     /// Lays out and renders the tab bar (the tabs, their states, the rename field) and composes
     /// its strip.
     fn rebuild_bar(&mut self) {
-        // ADR 0098 (supersedes ADR 0091 for the bar): the tab bar keeps the design system's size
-        // at the monitor's DPI on every screen; only the terminal text grows on a large screen.
-        let scale = self.scale();
+        // ADR 0099: the bar's scale is the DPI × the chrome zoom (the UI zoom, never more than
+        // the terminal text's own enlargement); its text is the UI font, measured by GDI.
+        let scale = self.chrome_scale();
         let hc = self.hc_theme();
-        let theme = self.bar_theme();
-        let mut r = match self.bar.renderer.take() {
-            Some(r) if (r.options().scale - scale).abs() < f32::EPSILON => r,
-            _ => make_renderer(theme.clone(), BAR_FONT, scale, 0.0),
-        };
-        r.set_theme(theme.clone());
-        let m = r.metrics();
-        // #98 T1 (`CORE-48`): compact density lowers the bar.
-        let bar_height = if self.settings.appearance.compact {
-            BAR_HEIGHT_COMPACT
-        } else {
-            BAR_HEIGHT
-        };
-        // ADR 0095: every metric of the bar follows the same scale as its text (the DPI): its
-        // height (and at least the text's line plus 4 px on each side), its padding and the
-        // active tab's marker.
-        let height = (layout::px(bar_height, self.dpi).max(1) as u32)
-            .max(m.height + 2 * (layout::px(4.0, self.dpi).max(1) as u32));
-        let pad_x = layout::px(4.0, self.dpi).max(0) as u32;
-        let cols = (self.client.0.saturating_sub(2 * pad_x) / m.width.max(1)).max(1);
-        let cols = u16::try_from(cols).unwrap_or(u16::MAX);
+        let mt = tabs::Metrics::new(scale, self.settings.appearance.compact);
+        let height = mt.height;
+        let mut ui = self.bar.ui.take().unwrap_or_else(UiText::new);
         let connected = self.model.connected();
         // #98 T3: the shown tab was seen.
         self.model.seen();
@@ -1935,15 +1958,29 @@ impl App {
             text: &e.text,
             cursor: e.cursor,
         });
-        let bar = tabs::layout_sized(
+        let colors = self.bar_colors(hc);
+        let mut bar = tabs::layout(
             &items,
             active,
             edit.as_ref(),
-            cols,
+            self.client.0,
             self.bar.first,
             self.hover,
-            tabs::Sizing::from_tokens(m.width, scale),
+            &mt,
+            &colors,
+            &mut ui,
         );
+        if !hc {
+            // The marks are written in kim-dark's roles; the theme in use maps them.
+            let c = self.chrome();
+            for op in &mut bar.ops {
+                match op {
+                    tabs::Op::Fill { color, .. } | tabs::Op::Text { color, .. } => {
+                        *color = c.map(*color);
+                    }
+                }
+            }
+        }
         drop(items);
         self.arm_claude_timer(claude_motion::earliest(marks, mode));
         // Step 20: another tab shown starts the tab transition (the marker fades in).
@@ -1954,46 +1991,17 @@ impl App {
             }
             self.bar_active = active_id;
         }
-        let mut view = TermView::new(cols, 1, 0);
-        view.feed(&self.themed_vt(&bar.vt));
-        r.render(&view);
-        let style = if hc {
-            compose::BarStyle {
-                fill: theme.background,
-                active_fill: None,
-                marker: None,
-                border: Some(theme.foreground),
-            }
-        } else {
-            let c = self.chrome();
-            let t = motion::mix_amount(self.motion.progress(What::Tab, Instant::now()));
-            compose::BarStyle {
-                fill: c.bg_raised,
-                active_fill: Some(c.bg_raised.mix(c.bg_base, t)),
-                marker: Some((
-                    c.bg_raised.mix(c.accent, t),
-                    layout::px(2.0, self.dpi).max(1) as u32,
-                )),
-                border: Some(c.border_subtle),
-            }
-        };
-        let strip = compose::bar_strip(
-            self.client.0,
-            height,
-            r.frame(),
-            pad_x,
-            m.width,
-            bar.active,
-            &style,
-        );
+        let mut strip = Frame::new(self.client.0.max(1), height.max(1), colors.bar);
+        ui.paint(&mut strip, &bar.ops);
         self.bar = TabBar {
-            renderer: Some(r),
+            ui: Some(ui),
             first: bar.first,
             layout: bar,
             strip,
             height,
-            pad_x,
+            metrics: Some(mt),
         };
+        self.write_geometry();
         self.invalidate_bar();
         self.report_tabs();
     }
@@ -2202,15 +2210,10 @@ impl App {
     /// and the cell height there.
     fn cursor_at(&self) -> (i32, i32, i32) {
         if self.rename.is_some()
-            && let (Some(col), Some(r)) = (self.bar.layout.caret, &self.bar.renderer)
+            && let (Some((x, line)), Some(mt)) = (self.bar.layout.caret, self.bar.metrics)
         {
-            let m = r.metrics();
-            let y = self.bar.height.saturating_sub(m.height) / 2;
-            return (
-                (self.bar.pad_x + u32::from(col) * m.width) as i32,
-                y as i32,
-                m.height as i32,
-            );
+            let y = mt.tab_top + mt.tab_h().saturating_sub(line) / 2;
+            return (x, y as i32, line as i32);
         }
         if self.find.is_some()
             && self.ask.is_none()
@@ -2306,6 +2309,9 @@ impl App {
     }
 
     fn paint(&self) {
+        if kim_design::inspect::enabled() {
+            self.write_geometry();
+        }
         let mut ps = PAINTSTRUCT::default();
         let present = |dc: HDC, f: &Frame, x: i32, y: i32| {
             let bmi = BITMAPINFO {
@@ -5005,20 +5011,9 @@ impl App {
         items.push(self.settings_menu());
         let at = at.unwrap_or_else(|| {
             let x = tab
-                .and_then(|i| {
-                    self.bar
-                        .layout
-                        .spans
-                        .iter()
-                        .find(|s| s.2 == Hit::Tab(i))
-                        .map(|s| s.0)
-                })
-                .unwrap_or(0);
-            let w = self.bar.renderer.as_ref().map_or(8, |r| r.metrics().width);
-            (
-                (self.bar.pad_x + u32::from(x) * w) as i32,
-                self.bar.height as i32,
-            )
+                .and_then(|i| self.bar.layout.rect_of(Hit::Tab(i)))
+                .map_or(0, |r| r.x);
+            (x, self.bar.height as i32)
         });
         let tab = tab.map_or(-1, |i| i as isize);
         if self.opts.test {
@@ -5728,10 +5723,8 @@ impl App {
     }
 
     /// A click on the tab bar (`x`, `y` in client pixels inside the strip).
-    fn on_bar_mouse(&mut self, msg: u32, x: i32) {
-        let w = self.bar.renderer.as_ref().map_or(8, |r| r.metrics().width) as i32;
-        let col = (x - self.bar.pad_x as i32).div_euclid(w.max(1));
-        let hit = u16::try_from(col).ok().and_then(|c| self.bar.layout.hit(c));
+    fn on_bar_mouse(&mut self, msg: u32, x: i32, y: i32) {
+        let hit = self.bar.layout.hit(x, y);
         if let Some(r) = &self.rename
             && !matches!(hit, Some(Hit::Tab(i)) if self.model.tabs().get(i).is_some_and(|t| t.id == r.id))
             && matches!(msg, WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN)
@@ -5799,9 +5792,7 @@ impl App {
     /// The tab under the pointer (Step 20: hover), and `WM_MOUSELEAVE` requested once.
     fn track_hover(&mut self, x: i32, y: i32) {
         let hover = if y >= 0 && y < self.top() as i32 {
-            let w = self.bar.renderer.as_ref().map_or(8, |r| r.metrics().width) as i32;
-            let col = (x - self.bar.pad_x as i32).div_euclid(w.max(1));
-            match u16::try_from(col).ok().and_then(|c| self.bar.layout.hit(c)) {
+            match self.bar.layout.hit(x, y) {
                 Some(Hit::Tab(i) | Hit::Close(i)) => Some(i),
                 _ => None,
             }
@@ -5834,7 +5825,7 @@ impl App {
             self.track_hover(x, y);
         }
         if self.drag.is_none() && y < top {
-            self.on_bar_mouse(msg, x);
+            self.on_bar_mouse(msg, x, y);
             return;
         }
         if self.drag.is_none()
@@ -6228,6 +6219,7 @@ impl App {
         // Step 44: the Claude mark timer and frames.
         dump["claude_motion"] = self.tabs_json()["claude_motion"].clone();
         // Step 22: the split window's places, its read-only views and the active pane.
+        dump["geometry"] = self.geometry().to_json();
         dump["layout"] = json!(self.model.layout().map(|l| json!({
             "window_id": l.window_id,
             "size": [l.size.0, l.size.1],
@@ -6406,7 +6398,7 @@ impl App {
             .layout
             .spans
             .iter()
-            .map(|(a, b, h)| {
+            .map(|(r, h)| {
                 let what = match h {
                     Hit::Tab(i) => format!("tab:{i}"),
                     Hit::Close(i) => format!("close:{i}"),
@@ -6415,21 +6407,126 @@ impl App {
                     Hit::Right => "right".into(),
                     Hit::Settings => "settings".into(),
                 };
-                json!([a, b, what])
+                json!([r.x, r.y, r.w, r.h, what])
             })
             .collect();
-        let cell = self
-            .bar
-            .renderer
-            .as_ref()
-            .map(|r| [r.metrics().width, r.metrics().height]);
         json!({
             "text": self.bar_text(),
             "height": self.bar.height,
-            "pad_x": self.bar.pad_x,
-            "cell": cell,
+            "font_px": self.bar.metrics.map(|m| m.font),
+            "tab_height": self.bar.metrics.map(|m| m.tab_h()),
+            "scale": self.chrome_scale(),
+            "chrome_zoom": self.chrome_zoom(),
+            "ui_zoom": self.screen_zoom,
+            "face": self.bar.ui.as_ref().map(|u| u.face(tabs::Face::Ui).to_string()),
+            "overflow": self.bar.layout.overflow,
             "spans": spans,
         })
+    }
+
+    /// ADR 0099: the geometry report of what the window laid out and painted: the client area,
+    /// the tab bar's parts (measured UI text) and the terminal area with its real font metrics.
+    fn geometry(&self) -> kim_design::inspect::Report {
+        use kim_design::inspect::{Component, Rect as R, Report, Text};
+        let (w, h) = self.client;
+        let c = self.cells();
+        let top = self.top();
+        let mut components = vec![Component::new(
+            "subak.window",
+            "region",
+            R::new(0.0, 0.0, w as f32, h as f32),
+        )];
+        let mut bar = tabs::components(&self.bar.layout);
+        if let Some(b) = bar.first_mut() {
+            b.parent = Some("subak.window".into());
+        }
+        components.extend(bar);
+        let mut term = Component::new(
+            "subak.terminal",
+            "terminal",
+            R::new(0.0, top as f32, w as f32, h.saturating_sub(top) as f32),
+        )
+        .parent("subak.window");
+        term.text = Some(Text {
+            content: String::new(),
+            bounds: R::new(
+                c.pad as f32,
+                (top + c.pad) as f32,
+                (u32::from(self.grid.0) * c.width) as f32,
+                (u32::from(self.grid.1) * c.height) as f32,
+            ),
+            font_px: self.settings.appearance.font_size * self.scale(),
+            line_px: c.height as f32,
+            truncated: false,
+            role: "terminal".into(),
+        });
+        components.push(term);
+        let mut extra = serde_json::Map::new();
+        extra.insert(
+            "terminal_font_logical".into(),
+            json!(self.settings.appearance.font_size),
+        );
+        extra.insert("terminal_cell".into(), json!([c.width, c.height]));
+        extra.insert("terminal_grid".into(), json!([self.grid.0, self.grid.1]));
+        extra.insert("chrome_zoom".into(), json!(self.chrome_zoom()));
+        extra.insert("dpi".into(), json!(self.dpi));
+        extra.insert(
+            "ui_face".into(),
+            json!(
+                self.bar
+                    .ui
+                    .as_ref()
+                    .map(|u| u.face(tabs::Face::Ui).to_string())
+            ),
+        );
+        extra.insert(
+            "icon_face".into(),
+            json!(
+                self.bar
+                    .ui
+                    .as_ref()
+                    .map(|u| u.face(tabs::Face::Icon).to_string())
+            ),
+        );
+        if let Some(mt) = self.bar.metrics {
+            extra.insert("tab_font_px".into(), json!(mt.font));
+            extra.insert("bar_height".into(), json!(mt.height));
+            extra.insert(
+                "bar_to_terminal_text".into(),
+                json!(
+                    f64::from(mt.font)
+                        / f64::from(self.settings.appearance.font_size * self.scale())
+                ),
+            );
+        }
+        Report {
+            application: "subak".into(),
+            screen: "terminal".into(),
+            fixture: std::env::var("KIM_UI_FIXTURE").unwrap_or_default(),
+            theme: if self.hc_theme() {
+                "high-contrast".into()
+            } else {
+                self.chrome().name.to_string()
+            },
+            window: (w as f32, h as f32),
+            dpi_scale: self.scale(),
+            ui_zoom: self.screen_zoom,
+            scale: self.chrome_scale(),
+            extra,
+            components,
+        }
+    }
+
+    /// ADR 0099: writes the geometry report to `KIM_UI_INSPECT` — and the composed client area,
+    /// the pixels the window presents, to `KIM_UI_SNAPSHOT` (BMP) — when the developer asked for
+    /// it (nothing happens otherwise).
+    fn write_geometry(&self) {
+        if let Some(path) = kim_design::inspect::requested_path() {
+            let _ = self.geometry().write(path);
+            if let Some(shot) = std::env::var_os(kim_design::inspect::ENV_SNAPSHOT) {
+                let _ = std::fs::write(shot, self.composed().to_bmp());
+            }
+        }
     }
 
     fn confirm_json(&self) -> Value {
@@ -6455,20 +6552,7 @@ impl App {
 
     /// The tab bar's text as drawn.
     fn bar_text(&self) -> String {
-        let mut v = TermView::new(
-            u16::try_from(
-                self.bar
-                    .layout
-                    .spans
-                    .last()
-                    .map_or(1, |s| usize::from(s.1).max(1)),
-            )
-            .unwrap_or(1),
-            1,
-            0,
-        );
-        v.feed(&self.bar.layout.vt);
-        v.row_at(0).text().trim_end().to_string()
+        self.bar.layout.text.clone()
     }
 
     /// The banner's text as drawn (the confirmation's buttons included).
@@ -7617,7 +7701,15 @@ pub fn run(o: Options) -> ExitCode {
         all.iter()
             .find(|(r, _)| r.left <= 0 && r.top <= 0 && r.right > 0 && r.bottom > 0)
             .or(all.first())
-            .map_or(1.0, |(r, dpi)| layout::screen_zoom(*r, *dpi))
+            .map_or(1.0, |(r, dpi)| {
+                // ADR 0099: the UI zoom every Kim program shares (ui.json, or Auto).
+                let ds = kim_design::scale::dpi_scale(*dpi);
+                kim_design::scale::ui_zoom(
+                    kim_design::prefs::UiPrefs::load().zoom,
+                    r.width() as f32 / ds,
+                    r.height() as f32 / ds,
+                )
+            })
     };
     let mut settings = cfg.settings().clone();
     screen_font(&mut settings, &cfg, screen_zoom);
@@ -7831,11 +7923,11 @@ pub fn run(o: Options) -> ExitCode {
         wheel: 0,
         matcher,
         bar: TabBar {
-            renderer: None,
-            layout: tabs::layout(&[], None, None, 1, 0),
+            ui: None,
+            layout: tabs::Bar::empty(),
             strip: Frame::new(1, 1, Chrome::KIM_DARK.bg_raised),
             height: 0,
-            pad_x: 0,
+            metrics: None,
             first: 0,
         },
         rename: None,
@@ -7989,6 +8081,15 @@ pub fn run(o: Options) -> ExitCode {
                 if test {
                     let secs = app.opts.test_max_seconds;
                     SetTimer(hwnd, TIMER_TEST_EXIT, secs.saturating_mul(1000), None);
+                    // ADR 0099 (debug builds): the UI audit's DPI fixture (125/150/200 % on a
+                    // 100 % monitor), as a monitor change would report it.
+                    #[cfg(debug_assertions)]
+                    if let Some(d) = std::env::var("SUBAK_TEST_DPI")
+                        .ok()
+                        .and_then(|v| v.parse::<u32>().ok())
+                    {
+                        app.on_dpi(d.clamp(96, 384), None);
+                    }
                     app.event(&json!({
                         "event": "ready", "hwnd": hwnd as usize, "pid": std::process::id(),
                         "dpi": app.dpi, "grid": [app.grid.0, app.grid.1],

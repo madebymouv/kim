@@ -21,6 +21,8 @@ ddalgak-editor = { path = "../crates/ddalgak-editor" }
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
 egui_kittest = "=0.37.0"
 kim = { path = "../crates/kim" }
+# adr0099 checks the geometry reports of the real Subak window with the design audit.
+kim-design = { path = "../crates/kim-design" }
 kim-setup = { path = "../crates/kim-setup" }
 # adr0089 reads the program icons back out of the release executables.
 kim-winres = { path = "../crates/kim-winres" }

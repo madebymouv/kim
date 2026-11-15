@@ -15,3 +15,11 @@ python -I design/mockups/render.py
 
 The specification is [docs/DESIGN_SYSTEM.md](../docs/DESIGN_SYSTEM.md); the GUI toolkit decision
 and its measurements are in [docs/adr/0014-gui-technology.md](../docs/adr/0014-gui-technology.md).
+
+## UI baselines (ADR 0099)
+
+`ui-baselines/*.png` are screenshots of the **real programs** taken by `cargo xtask ui-audit`
+(two views per program at 100 %, plus Subak at 150 %). The audit compares each run with them
+(≤ 0.5 % of pixels may differ by more than 40 levels); a change is reported for review and only
+recorded with `cargo xtask ui-audit --bless` after a person has looked at it. Unlike
+`mockups/`, they show what the programs actually draw.

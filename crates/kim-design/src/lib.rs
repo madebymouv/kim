@@ -7,7 +7,11 @@
 //!
 //! `design/tokens.json` stays the documented source; a test keeps the values here equal to it.
 
+pub mod audit;
+pub mod inspect;
 pub mod lang;
+pub mod prefs;
+pub mod scale;
 pub mod system;
 
 pub use lang::{Lang, LangPref};
@@ -314,6 +318,8 @@ pub mod size {
     pub const ICON_XL: f32 = 24.0;
 
     pub const BUTTON_MIN_WIDTH: f32 = 72.0;
+    /// A compact (24-high) button in a row or toolbar.
+    pub const BUTTON_MIN_WIDTH_COMPACT: f32 = 48.0;
     pub const BUTTON_PAD_X: f32 = 12.0;
 
     /// The switch (shadcn-like): a pill track and a round thumb 2 px inside it.
@@ -343,12 +349,19 @@ pub mod size {
     pub const SETTINGS_HEIGHT: f32 = 480.0;
     pub const SETTINGS_NAV_WIDTH: f32 = 148.0;
 
-    /// Subak's tab bar (scaled by the DPI and the window's zoom, never fixed pixels).
-    pub const TABBAR_HEIGHT: f32 = 32.0;
+    /// Subak's tab bar (ADR 0099: scaled by the DPI and the chrome zoom, never fixed pixels).
+    /// A 12 px UI label is a 16 px line; a tab of 32 (the bar less a 4 px inset above the tabs)
+    /// centres it with 8 px above and below and holds the 24 px close target with 4 px to spare.
+    pub const TABBAR_HEIGHT: f32 = 36.0;
+    /// The compact bar: tabs of 24, the minimum hit target.
+    pub const TABBAR_HEIGHT_COMPACT: f32 = 28.0;
+    pub const TAB_INSET_TOP: f32 = 4.0;
     pub const TAB_MIN_WIDTH: f32 = 96.0;
     pub const TAB_MAX_WIDTH: f32 = 220.0;
-    pub const TAB_PAD_X: f32 = 8.0;
-    pub const TAB_CLOSE: f32 = 16.0;
+    pub const TAB_PAD_X: f32 = 12.0;
+    /// The close button's hit square and its glyph (Windows' caption close glyph size).
+    pub const TAB_CLOSE: f32 = 24.0;
+    pub const TAB_CLOSE_ICON: f32 = 10.0;
     pub const CAPTION_BUTTON_WIDTH: f32 = 46.0;
     pub const PROGRESS: f32 = 4.0;
     pub const STATUS_DOT: f32 = 8.0;

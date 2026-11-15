@@ -19,6 +19,7 @@ mod local_mirror;
 mod package;
 mod schema;
 mod tmux;
+mod ui_audit;
 mod version;
 
 use std::path::{Path, PathBuf};
@@ -55,6 +56,10 @@ COMMANDS:
     e2e --force       Run the e2e suite locally anyway; must be justified in e2e/LEDGER.md.
     e2e-status        Print how many Step issues were processed since the last recorded run
     package <kim|subak|noeul> [--skip-build]
+    ui-audit [--quick] [--only kim|subak|noeul|ddalgak] [--bless]
+                      ADR 0099: open every audited view of the real programs (sandboxed), check the
+                      measured geometry against the design contract and compare screenshots with
+                      design/ui-baselines; writes target/ui-audit/report.txt
     local-mirror --key <file> [--out <dir>] [--skip-build]
                       Package kim, subak, noeul, ddalgak into a signed local mirror (kim-local/) Kim Manager can install from (ADR 0089)
     bench-noeul [--record|--check]   Noeul's budgets (NOEUL-NFR-001…006), release build, nothing visible
@@ -97,6 +102,7 @@ fn main() -> ExitCode {
         Some("bench-ddalgak") => bench_ddalgak::run(&root, &args[1..]),
         Some("package") => package::run(&root, &args[1..]),
         Some("local-mirror") => local_mirror::run(&root, &args[1..]),
+        Some("ui-audit") => ui_audit::run(&root, &args[1..]),
         Some("bump") => version::run_bump(&root, &args[1..]),
         Some("version-check") => version::check(&root),
         Some("e2e") => run_e2e(

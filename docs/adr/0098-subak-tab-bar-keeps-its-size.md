@@ -1,6 +1,6 @@
 # ADR 0098: Subak's tab bar keeps the design system's size on a large screen
 
-- Status: accepted
+- Status: superseded by [ADR 0099](0099-one-scale-model-measured-ui-audit.md) (the bar follows the shared UI zoom, capped by the terminal text)
 - Date: 2026-11-15
 - Issue: maintainer report 2026-11-15 ("subak의 상단탭 크기가 아직도 혼자서 엄청 큰데?");
   supersedes the tab-bar sentence of ADR 0091 §Decision ("The tab bar grows by the same factor")

@@ -1,6 +1,6 @@
 # ADR 0091: Windows open larger on large screens
 
-- Status: accepted
+- Status: accepted; the per-program zoom rules are superseded by [ADR 0099](0099-one-scale-model-measured-ui-audit.md) (one shared UI zoom)
 - Date: 2026-11-14
 - Issue: maintainer request 2026-11-14 ("Kim.exe 및 다른 앱들도 지금 창이 너무 작아. 창 크기를
   3~4배 키워도 될 것 같아. 좀 크게 크게 쓸 수 있도록 해줘."); extends ADR 0090 (the launcher

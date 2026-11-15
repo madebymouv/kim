@@ -886,13 +886,14 @@ fn rendered_frames_of_the_window_content() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s[2] == "tab:0")
+        .find(|s| s[4] == "tab:0")
         .unwrap()
         .clone();
-    let cw = d["bar"]["cell"][0].as_u64().unwrap() as u32;
-    let x = d["bar"]["pad_x"].as_u64().unwrap() as u32 + tab[0].as_u64().unwrap() as u32 * cw + 2;
+    // ADR 0099: spans are pixel rectangles [x, y, w, h, what]; the marker is on the tab's top.
+    let x = (tab[0].as_i64().unwrap() + tab[2].as_i64().unwrap() / 2) as u32;
+    let y = tab[1].as_u64().unwrap() as u32;
     assert_eq!(
-        px(x, 0),
+        px(x, y),
         (0xB7, 0xA6, 0xF5),
         "accent: the active tab's marker"
     );
@@ -1144,16 +1145,12 @@ impl Gui {
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s[2] == what)
+            .find(|s| s[4] == what)
             .unwrap_or_else(|| panic!("no `{what}` in {}", d["bar"]))
             .clone();
-        let cw = d["bar"]["cell"][0].as_u64().unwrap();
-        let pad = d["bar"]["pad_x"].as_u64().unwrap();
-        let mid = (span[0].as_u64().unwrap() + span[1].as_u64().unwrap()) * cw / 2;
-        (
-            (pad + mid) as u32,
-            (d["bar"]["height"].as_u64().unwrap() / 2) as u32,
-        )
+        // ADR 0099: [x, y, w, h, what] in client pixels.
+        let n = |i: usize| span[i].as_i64().unwrap();
+        ((n(0) + n(2) / 2) as u32, (n(1) + n(3) / 2) as u32)
     }
 }
 
@@ -1168,7 +1165,7 @@ fn tabs_follow_the_headless_cli_and_ctrl_tab_switches_without_ending_anything() 
     assert_eq!(attached["detail"]["pane_pid"], pid1, "the first tab opens");
     let d = gui.until("two tabs", |d| tab_names(d) == ["one", "two"]);
     assert_eq!(d["active"], 0);
-    assert!(d["bar"]["text"].as_str().unwrap().contains("● one"), "{d}");
+    assert!(d["bar"]["text"].as_str().unwrap().contains("one"), "{d}");
     // `subak new` from a console: a third tab appears; the shown tab stays (keys never move to a
     // Terminal the user did not choose).
     let (id3, _) = new_terminal(&ep, "three");
@@ -3372,7 +3369,7 @@ fn drops_pins_last_tab_fullscreen_and_focus_follows_mouse() {
         d["pinned"].as_array().is_some_and(|p| p.len() == 1)
     });
     let bar = d["bar"]["text"].as_str().unwrap().to_string();
-    assert!(bar.starts_with(" ● \u{25c6} two"), "{bar}");
+    assert!(bar.starts_with("\u{25c6} two"), "{bar}");
     gui.press(u64::from(b'W'), true, false);
     let d = gui.until("the question", |d| !d["confirm"].is_null());
     assert!(d["confirm"].to_string().contains("two"), "{}", d["confirm"]);
@@ -3718,7 +3715,7 @@ fn tab_colours_from_the_tab_menu() {
     // Teal is the fifth colour: CMD_COLOR + 5.
     let d = gui.cmd(&json!({"cmd": "menu", "tab": 1, "id": CMD_COLOR + 5}));
     assert!(
-        d["bar"]["text"].as_str().unwrap().contains("\u{258e}● two"),
+        d["bar"]["text"].as_str().unwrap().contains("\u{258e}two"),
         "{}",
         d["bar"]["text"]
     );
@@ -3891,16 +3888,27 @@ fn keyword_rules_change_the_drawing() {
     println!("EVIDENCE keyword rules: `standin` in red changed the frame ({coloured} vs {plain})");
 }
 
-/// ADR 0098: on a large screen (the test pretends Subak's screen zoom 1.75, as on a
-/// 5120 × 1410 work area) the terminal text grows, but the tab bar keeps the design system's
-/// height (32 logical px at 96 DPI) — the same as on a normal screen.
+/// ADR 0099 (replaces ADR 0098's check): the tab bar follows the UI zoom that every Kim program
+/// shares, so on a large screen (the test pretends a zoom of 150 %) the default terminal text and
+/// the bar grow together; when the user chose small text (13 px, as on the maintainer's PC under
+/// a 175 % zoom) the bar stays at its 100 % size instead of dwarfing it (the 0.0.1 defect). The
+/// window's measured geometry passes the design audit in every case.
 #[test]
-fn the_tab_bar_keeps_its_size_on_a_large_screen() {
+fn the_tab_bar_follows_the_ui_zoom_but_never_outgrows_the_text() {
     let host = Host::start("gui-bigscreen", &["--no-shell"]);
     let ep = host.ep.clone();
     new_terminal(&ep, "big");
-    let bar_and_font = |zoom: &str| {
-        let appdata = sandbox(&format!("bigscreen-{zoom}"));
+    let run = |zoom: &str, font: Option<u32>| {
+        let appdata = sandbox(&format!("bigscreen-{zoom}-{font:?}"));
+        if let Some(f) = font {
+            let dir = appdata.join("mouv").join("subak");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("config.toml"),
+                format!("config_version = 1\n[appearance]\nfont_size = {f}\n"),
+            )
+            .unwrap();
+        }
         let gui = Gui::start_env(
             &ep,
             Some("big"),
@@ -3912,19 +3920,33 @@ fn the_tab_bar_keeps_its_size_on_a_large_screen() {
         let d = gui.until("a bar", |d| {
             d["bar"]["height"].as_u64().is_some_and(|h| h > 0)
         });
+        let r = kim_design::inspect::Report::from_json(&d["geometry"]).expect("a geometry report");
+        let f = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&f).2,
+            0,
+            "{}",
+            kim_design::audit::render(&r, &f, false)
+        );
         (
             d["bar"]["height"].as_u64().unwrap(),
-            d["bar"]["cell"][1].as_u64().unwrap(),
+            d["bar"]["font_px"].as_u64().unwrap(),
             d["font_size"].as_f64().unwrap(),
         )
     };
-    let (bar1, bar_cell1, font1) = bar_and_font("1.0");
-    let (bar2, bar_cell2, font2) = bar_and_font("1.75");
-    assert!((32..=40).contains(&bar1), "normal screen bar {bar1}");
-    assert_eq!(bar2, bar1, "the bar is not larger on a large screen");
-    assert_eq!(bar_cell2, bar_cell1, "the tab text is not larger");
-    assert!(
-        font2 > font1,
-        "the terminal text still grows: {font1} -> {font2}"
+    let (bar1, tab1, font1) = run("1.0", None);
+    assert_eq!((bar1, tab1, font1), (36, 12, 13.0), "100 %: the tokens");
+    let (bar15, tab15, font15) = run("1.5", None);
+    assert_eq!(font15, 20.0, "the default text follows the zoom");
+    assert_eq!((bar15, tab15), (54, 18), "and the bar with it");
+    let (bar_small, tab_small, font_small) = run("1.75", Some(13));
+    assert_eq!(font_small, 13.0, "the user's own size wins");
+    assert_eq!(
+        (bar_small, tab_small),
+        (36, 12),
+        "the bar never outgrows small text"
+    );
+    println!(
+        "EVIDENCE bar/tab-text/terminal-text: 100 % {bar1}/{tab1}/{font1}, 150 % {bar15}/{tab15}/{font15}, 175 % with 13 px text {bar_small}/{tab_small}/{font_small}"
     );
 }

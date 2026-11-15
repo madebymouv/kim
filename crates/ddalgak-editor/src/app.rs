@@ -1536,6 +1536,37 @@ impl EditorApp {
 
 impl eframe::App for EditorApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let screen = self.audit_screen_name();
         EditorApp::ui(self, ui);
+        // ADR 0099: the geometry report while a developer asks for it (nothing otherwise).
+        kim_ui::inspect::finish_frame(ui.ctx(), "ddalgak", &screen);
+    }
+}
+
+impl EditorApp {
+    /// ADR 0099: opens the view a UI audit asks for (`KIM_UI_SCREEN`: `rules`, `new-rule`,
+    /// `modes`, `profiles`, `playground`, `settings`).
+    pub fn audit_screen(&mut self, screen: &str) {
+        match screen {
+            "new-rule" => self.start_new(None),
+            "modes" => self.page = Page::Modes,
+            "profiles" => self.page = Page::Profiles,
+            "playground" => self.page = Page::Playground,
+            "settings" => self.page = Page::Settings,
+            _ => self.page = Page::Rules,
+        }
+    }
+
+    /// The view shown, for the geometry report.
+    pub fn audit_screen_name(&self) -> String {
+        match self.page {
+            Page::Rules if self.form.is_some() => "rule-editor",
+            Page::Rules => "rules",
+            Page::Modes => "modes",
+            Page::Profiles => "profiles",
+            Page::Playground => "playground",
+            Page::Settings => "settings",
+        }
+        .into()
     }
 }

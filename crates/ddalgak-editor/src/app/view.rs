@@ -668,26 +668,61 @@ impl EditorApp {
         }
     }
 
+    /// ADR 0099: the design system's empty state — a centred title, one muted sentence, the
+    /// starters as quiet buttons (the primary action, + New rule, stays in the top row) and the
+    /// emergency stop as a caption.
     fn empty_state(&mut self, ui: &mut egui::Ui) {
         let c = Colors::get();
         let lang = self.lang;
-        ui.add_space(12.0);
-        ui.label(egui::RichText::new(lang.t("list.empty")).size(Metrics::get().emphasis));
-        ui.add_space(8.0);
-        ui.label(lang.t("list.first_rule"));
-        ui.horizontal_wrapped(|ui| {
-            for (key, e) in [
+        ui.vertical_centered(|ui| {
+            ui.add_space(kim_ui::design::space::XXL * 2.0);
+            ui.label(
+                egui::RichText::new(lang.t("list.empty_title"))
+                    .font(kim_ui::ui_font(ui.ctx(), kim_ui::design::font::TITLE, true))
+                    .color(c.text_primary),
+            );
+            ui.add_space(kim_ui::design::space::XS);
+            ui.label(egui::RichText::new(lang.t("list.empty_body")).color(c.text_muted));
+            ui.add_space(kim_ui::design::space::L);
+            // The starters, centred as one row.
+            let starters = [
                 ("list.starter_remap", Effect::Remap),
                 ("list.starter_text", Effect::TypeText),
                 ("list.starter_program", Effect::OpenProgram),
-            ] {
-                if ui.button(lang.t(key)).clicked() {
-                    self.acts.push(Act::New(Some(e)));
+            ];
+            let gap = kim_ui::design::space::S;
+            let widths: Vec<f32> = starters
+                .iter()
+                .map(|(k, _)| {
+                    ui.painter()
+                        .layout_no_wrap(
+                            lang.t(k).to_string(),
+                            kim_ui::ui_font(ui.ctx(), kim_ui::design::font::BODY, false),
+                            egui::Color32::PLACEHOLDER,
+                        )
+                        .size()
+                        .x
+                        .max(
+                            kim_ui::design::size::BUTTON_MIN_WIDTH
+                                - 2.0 * kim_ui::design::size::BUTTON_PAD_X,
+                        )
+                        + 2.0 * kim_ui::design::size::BUTTON_PAD_X
+                })
+                .collect();
+            let total = widths.iter().sum::<f32>() + gap * (widths.len() - 1) as f32;
+            let left = (ui.available_width() - total).max(0.0) / 2.0;
+            ui.horizontal(|ui| {
+                ui.add_space(left);
+                ui.spacing_mut().item_spacing.x = gap;
+                for (key, e) in starters {
+                    if ui.add(kim_ui::Button::secondary(lang.t(key))).clicked() {
+                        self.acts.push(Act::New(Some(e)));
+                    }
                 }
-            }
+            });
+            ui.add_space(kim_ui::design::space::XL);
+            ui.label(small(lang.t("header.emergency"), c.text_muted));
         });
-        ui.add_space(8.0);
-        ui.label(small(lang.t("header.emergency"), c.text_muted));
     }
 
     fn row_state(&self, r: &Row) -> (String, egui::Color32) {
@@ -1147,10 +1182,27 @@ impl EditorApp {
         } else {
             f.trigger_text()
         };
-        let sentence = format!("{keys} — {}", f.summary(profile.as_ref()));
-        ui.label(small(sentence, c.text_secondary));
+        // ADR 0099: the rule's sentence only once it says something (no lone dash on a new
+        // rule).
+        let summary = f.summary(profile.as_ref());
+        let sentence = match (keys.trim().is_empty(), summary.trim().is_empty()) {
+            (true, true) => None,
+            (true, false) => Some(summary),
+            (false, true) => Some(keys),
+            (false, false) => Some(format!("{keys} — {summary}")),
+        };
+        if let Some(s) = sentence.filter(|s| s.trim() != "—") {
+            ui.label(small(s, c.text_secondary));
+        }
         ui.separator();
         let problems = f.problems(profile.as_ref());
+        // ADR 0099: a new, untouched form shows no errors yet (Next stays disabled until the
+        // problems are solved); they appear as soon as the user changes something.
+        let shown: Vec<_> = if f.id.is_none() && f.fields == f.pristine {
+            Vec::new()
+        } else {
+            problems.clone()
+        };
         let stage = f.stage;
         let mut capture = std::mem::take(&mut self.capture);
         let mut target = self.capture_target;
@@ -1158,7 +1210,7 @@ impl EditorApp {
         let mut pick = None;
         match stage {
             Stage::Keys => {
-                pick = keys_stage(ui, lang, f, &mut capture, &mut target, &problems);
+                pick = keys_stage(ui, lang, f, &mut capture, &mut target, &shown);
             }
             Stage::Effect => effect_stage(ui, lang, f, profile.as_ref()),
             Stage::Details => details_stage(
@@ -1168,7 +1220,7 @@ impl EditorApp {
                 profile.as_ref(),
                 &mut capture,
                 &mut target,
-                &problems,
+                &shown,
                 &self.layout,
                 self.cursor,
                 &mut self.new_mode_title,

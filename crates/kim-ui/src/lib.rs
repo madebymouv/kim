@@ -11,6 +11,7 @@
 
 pub use kim_design::{self as design, Lang, LangPref, Theme, ThemePref};
 
+pub mod inspect;
 pub mod keys;
 pub mod widgets;
 
@@ -228,6 +229,12 @@ pub fn apply(ctx: &egui::Context, o: Options) {
 
 /// Switches between the two themes (both are installed by [`apply`]).
 pub fn set_theme(ctx: &egui::Context, theme: Theme) {
+    // ADR 0099: a UI audit fixes the theme of the run (`KIM_UI_THEME=dark|light`).
+    let theme = match std::env::var("KIM_UI_THEME").as_deref() {
+        Ok("dark") => Theme::Dark,
+        Ok("light") => Theme::Light,
+        _ => theme,
+    };
     ctx.set_theme(match theme {
         Theme::Dark => egui::Theme::Dark,
         Theme::Light => egui::Theme::Light,

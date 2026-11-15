@@ -70,6 +70,9 @@ fn the_scales_equal_the_token_file() {
     assert_eq!(num("radius/l"), radius::L);
     for (k, v) in [
         ("tabbar.height", size::TABBAR_HEIGHT),
+        ("tabbar.height.compact", size::TABBAR_HEIGHT_COMPACT),
+        ("tab.inset-top", size::TAB_INSET_TOP),
+        ("tab.close-icon", size::TAB_CLOSE_ICON),
         ("tab.min-width", size::TAB_MIN_WIDTH),
         ("tab.max-width", size::TAB_MAX_WIDTH),
         ("tab.padding-x", size::TAB_PAD_X),
@@ -82,6 +85,7 @@ fn the_scales_equal_the_token_file() {
         ("icon.l", size::ICON_L),
         ("icon.xl", size::ICON_XL),
         ("button.min-width", size::BUTTON_MIN_WIDTH),
+        ("button.min-width.compact", size::BUTTON_MIN_WIDTH_COMPACT),
         ("button.padding-x", size::BUTTON_PAD_X),
         ("switch.width", size::SWITCH_WIDTH),
         ("switch.height", size::SWITCH_HEIGHT),

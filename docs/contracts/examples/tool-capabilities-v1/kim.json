@@ -288,5 +288,5 @@
   "schema_version": 1,
   "summary": "Explicit, user-controlled catalog and installer for Kim tools",
   "tool": "kim",
-  "version": "0.0.2"
+  "version": "0.0.3"
 }
