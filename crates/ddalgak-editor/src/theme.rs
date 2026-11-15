@@ -59,7 +59,10 @@ pub fn apply(ctx: &egui::Context) {
 
 /// Switches the theme (Settings → Theme).
 pub fn set_theme(ctx: &egui::Context, theme: kim_ui::Theme) {
-    LIGHT.store(theme == kim_ui::Theme::Light, Ordering::Relaxed);
+    LIGHT.store(
+        kim_ui::effective_theme(theme) == kim_ui::Theme::Light,
+        Ordering::Relaxed,
+    );
     kim_ui::set_theme(ctx, theme);
 }
 

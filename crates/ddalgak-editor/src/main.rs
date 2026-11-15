@@ -262,6 +262,13 @@ fn run(
                 layout,
                 cursor,
                 launcher: Arc::new(ddalgak::win::launch::WinLauncher),
+                // ADR 0100: Settings -> Start at sign-in (debug builds: a test key from
+                // DDALGAK_DEV_STARTUP_KEY, like the CLI).
+                startup: Box::new(ddalgak::win::startup::Registry::for_cli()),
+                gui_exe: std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.join("ddalgak-gui.exe")))
+                    .unwrap_or_else(|| "ddalgak-gui.exe".into()),
             });
             // ADR 0099: the view a UI audit asks for.
             if let Ok(s) = std::env::var(kim_design::inspect::ENV_SCREEN) {

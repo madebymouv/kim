@@ -78,6 +78,10 @@ pub enum Job {
         revision: u64,
     },
     Engine(Request),
+    /// ADR 0100: switch the running engine's mode (Settings → Modes → Switch).
+    Mode(ddalgak::ipc::ModeCmd),
+    /// ADR 0100: release every key and button Ddalgak holds (Settings → Advanced).
+    Release,
 }
 
 /// A worker reply.
@@ -119,14 +123,18 @@ impl Link {
                         Job::Status => engine.call(&Method::Status, false),
                         Job::Reload { .. } => engine.call(&Method::RulesReload, false),
                         Job::Engine(r) => engine.call(&Method::Engine(*r), false),
+                        Job::Mode(m) => engine.call(&Method::Mode(m.clone()), false),
+                        Job::Release => engine.call(&Method::Release, false),
                     };
                     let _ = out.send(Reply { job, result });
-                    n.fetch_sub(1, Ordering::SeqCst);
+                    // Wake the window first, then count the job done: whoever waits for the
+                    // worker to be idle also sees the window woken (a test raced on this).
                     if let Ok(w) = wake.lock()
                         && let Some(w) = w.as_ref()
                     {
                         w();
                     }
+                    n.fetch_sub(1, Ordering::SeqCst);
                 }
             })
             .expect("spawn the editor's IPC thread");
@@ -187,6 +195,11 @@ pub enum EngineView {
 impl EngineView {
     /// Reads `status` or the `engine` part of any reply.
     pub fn from_reply(prev: &EngineView, job: &Job, r: &Result<Value, CallError>) -> EngineView {
+        // A mode switch or a release says nothing about the engine itself; the status that
+        // follows does.
+        if matches!(job, Job::Mode(_) | Job::Release) {
+            return prev.clone();
+        }
         match r {
             Err(e) if e.code == "engine_not_running" => EngineView::NotRunning,
             Err(e) => EngineView::Error {
@@ -211,6 +224,7 @@ impl EngineView {
                         None,
                     ),
                     Job::Engine(_) => (v["engine"]["state"].as_str(), None, None, None),
+                    Job::Mode(_) | Job::Release => (None, None, None, None),
                 };
                 let (p_profile, p_mode, p_active) = match prev {
                     EngineView::Running {
@@ -413,6 +427,9 @@ impl Engine for FakeEngine {
                     _ => "off",
                 }
                 .into();
+            }
+            if let Method::Mode(ddalgak::ipc::ModeCmd::Set(m)) = method {
+                s.mode = Some(m.clone());
             }
             if usable && matches!(method, Method::RulesReload | Method::Engine(Request::Start)) {
                 s.active = loaded.revision;

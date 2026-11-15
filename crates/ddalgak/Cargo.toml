@@ -1,6 +1,6 @@
 [package]
 name = "ddalgak"
-version = "0.0.3"
+version = "0.0.4"
 description = "Ddalgak: a native Windows-first automation engine (headless CLI and tray-app engine host)"
 edition.workspace = true
 rust-version.workspace = true

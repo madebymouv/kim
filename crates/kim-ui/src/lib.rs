@@ -11,10 +11,12 @@
 
 pub use kim_design::{self as design, Lang, LangPref, Theme, ThemePref};
 
+pub mod forms;
 pub mod inspect;
 pub mod keys;
 pub mod widgets;
 
+pub use forms::*;
 pub use widgets::*;
 
 use egui::{Color32, CornerRadius, FontFamily, FontId, Margin, Shadow, Stroke, TextStyle};
@@ -210,7 +212,9 @@ pub fn apply(ctx: &egui::Context, o: Options) {
         let sp = &mut s.spacing;
         sp.item_spacing = egui::vec2(space::S, space::S);
         sp.button_padding = egui::vec2(space::S, space::XS);
-        sp.interact_size = egui::vec2(size::HIT_MIN * 2.0, size::CONTROL_COMPACT);
+        // ADR 0100: egui's own widgets (text edits, buttons, combo boxes, drag values) take the
+        // design system's one control height too.
+        sp.interact_size = egui::vec2(size::HIT_MIN * 2.0, size::CONTROL);
         sp.icon_width = size::CHECKBOX;
         sp.icon_width_inner = size::CHECKBOX - 6.0;
         sp.icon_spacing = space::S;
@@ -227,14 +231,20 @@ pub fn apply(ctx: &egui::Context, o: Options) {
     install_fonts(ctx, o.system_fonts);
 }
 
-/// Switches between the two themes (both are installed by [`apply`]).
-pub fn set_theme(ctx: &egui::Context, theme: Theme) {
-    // ADR 0099: a UI audit fixes the theme of the run (`KIM_UI_THEME=dark|light`).
-    let theme = match std::env::var("KIM_UI_THEME").as_deref() {
+/// The theme a window really shows: `theme`, unless a UI audit fixed the run's theme
+/// (`KIM_UI_THEME=dark|light`, ADR 0099). A program that keeps its own copy of the palette must
+/// use this too, so its surfaces and egui's agree.
+pub fn effective_theme(theme: Theme) -> Theme {
+    match std::env::var("KIM_UI_THEME").as_deref() {
         Ok("dark") => Theme::Dark,
         Ok("light") => Theme::Light,
         _ => theme,
-    };
+    }
+}
+
+/// Switches between the two themes (both are installed by [`apply`]).
+pub fn set_theme(ctx: &egui::Context, theme: Theme) {
+    let theme = effective_theme(theme);
     ctx.set_theme(match theme {
         Theme::Dark => egui::Theme::Dark,
         Theme::Light => egui::Theme::Light,

@@ -66,6 +66,23 @@ Duplicate, Delete); a click opens the rule in the page itself with the steps Tri
 Details → Test; the trigger step offers *Together*, *One after another* and *Hold + press*
 (saved as a hold layer) and a key picker. The layout above is the Step 74 record.
 
+**Since ADR 0100** (current) the main window does one thing, rules. The rail shows *Ddalgak*, the
+engine's state as a status (On / Paused / Off / Not running — a word with a dot, never a switch),
+the profile and mode only when there is a choice, and two activities: **Rules** and
+**Playground**. The Rules page: the title with the count, one toolbar (a search field that fills
+the row, **Filters** in a popover with an active-filter count, the primary **New Rule**), and
+rows of name and keys over the summary with badges, the switch and a `⋯` menu (Edit, Duplicate,
+Enable/Disable, Test in Playground, Delete). A rule opens as **one page**: the sentence
+*When I press [keys] → [action]*, then **1 Trigger**, **2 Action** (every action type as a card),
+**3** the chosen action's settings (*Advanced* folds conditions, priority, description and macro
+steps), **4 Test and save**, and a fixed footer (Cancel · Save turned off · Save and enable). The
+key field records keys, opens the key picker (categories, left/right modifiers, removable chips,
+only chords the engine accepts) or a *Type* text field. The gear opens **Ddalgak Settings**, a
+window of its own: General (Turn on Ddalgak, Pause automation — each showing the engine's answer
+—, the emergency chord, start at sign-in), Profiles, Modes, Shortcuts, Appearance, Advanced
+([ADR 0100](adr/0100-ddalgak-rules-first-and-settings-windows.md),
+[DDALGAK_UI_AUDIT](DDALGAK_UI_AUDIT.md)).
+
 ## 3. Journeys
 
 ### J1. First start: safe and empty

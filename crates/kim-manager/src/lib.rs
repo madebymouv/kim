@@ -204,6 +204,10 @@ pub struct KimManagerApp {
     reinstall: Option<String>,
     info: Option<String>,
     show_settings: bool,
+    /// ADR 0100: Settings is a window of its own; bring it forward on the next frame.
+    settings_raise: bool,
+    /// A UI audit measures the Settings window (the launcher then writes nothing).
+    audit_settings: bool,
     settings_tab: SettingsTab,
     /// The action whose shortcut is being changed (Settings → Shortcuts).
     capture: Option<String>,
@@ -271,6 +275,8 @@ impl KimManagerApp {
             reinstall: None,
             info: None,
             show_settings: false,
+            settings_raise: false,
+            audit_settings: false,
             settings_tab: SettingsTab::default(),
             capture: None,
             textures: HashMap::new(),
@@ -910,6 +916,7 @@ impl KimManagerApp {
         if let Some(t) = tab {
             self.show_settings = true;
             self.settings_tab = t;
+            self.audit_settings = true;
         }
     }
 
@@ -927,16 +934,27 @@ impl KimManagerApp {
         .into()
     }
 
-    /// Opens or closes Settings (the gear does this).
+    /// Opens or closes Settings (Esc and the window's close button close it).
     pub fn toggle_settings(&mut self, _ctx: Option<&egui::Context>) {
         self.show_settings = !self.show_settings;
+        self.settings_raise = self.show_settings;
         self.capture = None;
+    }
+
+    /// ADR 0100: the gear: opens the Settings window, or brings the open one forward.
+    pub fn open_settings(&mut self) {
+        if self.show_settings {
+            self.settings_raise = true;
+        } else {
+            self.toggle_settings(None);
+        }
     }
 
     /// A compact window grows while Settings or Information is open and returns to its size
     /// afterwards.
     fn fit_window(&mut self, ctx: &egui::Context) {
-        let big = self.show_settings || self.info.is_some();
+        // ADR 0100: Settings has its own window; only Information still grows the launcher.
+        let big = self.info.is_some();
         if big == self.launcher_size.is_some() {
             return;
         }
@@ -1058,33 +1076,102 @@ impl KimManagerApp {
         self.apply_scale(&ctx);
         self.fit_window(&ctx);
         self.keep_on_screen(&ctx);
-        if self.capture.is_some() {
-            self.capture_key(&ctx);
-        } else {
+        // ADR 0100: while Settings is open its window takes the keys (a recorded shortcut, Esc);
+        // an embedded Settings window (the tests) shares this input, so the launcher waits.
+        let settings_keys = self.show_settings && (self.capture.is_some() || ctx.embed_viewports());
+        if !settings_keys {
             self.handle_shortcuts(&ctx);
         }
         let c = theme::Colors::get();
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(c.bg_base))
-            .show(ui, |ui| {
-                if self.show_settings {
-                    self.settings_panel(ui);
-                } else {
-                    self.launcher(ui);
-                }
-            });
-        if self.confirm.is_some() {
-            self.confirm_dialog(&ctx);
-        }
+            .show(ui, |ui| self.launcher(ui));
         if self.install_prompt.is_some() {
             self.install_dialog(&ctx);
         }
         if self.info.is_some() {
             self.info_dialog(&ctx);
         }
-        if self.show_shortcuts {
-            self.shortcuts_dialog(&ctx);
+        if !self.show_settings {
+            if self.confirm.is_some() {
+                self.confirm_dialog(&ctx);
+            }
+            if self.show_shortcuts {
+                self.shortcuts_dialog(&ctx);
+            }
         }
+        self.settings_window(&ctx);
+    }
+
+    /// ADR 0100: Settings in a window of its own (a native viewport; an embedded window where
+    /// the backend has only one): the launcher stays as it is underneath, the gear brings the
+    /// open window forward, Esc or the close button closes it. Its dialogs open in it.
+    fn settings_window(&mut self, ctx: &egui::Context) {
+        use kim_ui::design::size;
+        if !self.show_settings {
+            return;
+        }
+        // A child window's size is in the window's own points (egui applies the UI zoom).
+        let mut vb = egui::ViewportBuilder::default()
+            .with_title("Kim Settings")
+            .with_inner_size([size::SETTINGS_WIDTH, size::SETTINGS_HEIGHT])
+            .with_min_inner_size([520.0, 400.0]);
+        // An audit photographs the window from the screen: it opens beside the main window,
+        // never under it.
+        if let Some(p) = kim_ui::inspect::audit_position() {
+            let right = ctx
+                .input(|i| i.viewport().outer_rect)
+                .map_or(p[0] + 1200.0, |r| r.right() + 24.0);
+            vb = vb.with_position([right, p[1]]);
+        }
+        let raise = std::mem::take(&mut self.settings_raise);
+        let audit = self.audit_settings;
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("kim-settings"),
+            vb,
+            |ui, class| {
+                let ctx = ui.ctx().clone();
+                let native = class != egui::ViewportClass::EmbeddedWindow;
+                if raise && native {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                if audit && native {
+                    kim_ui::inspect::clear();
+                }
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    self.show_settings = false;
+                    self.capture = None;
+                    return;
+                }
+                if self.capture.is_some() {
+                    self.capture_key(&ctx);
+                }
+                let c = theme::Colors::get();
+                if !native {
+                    ui.set_min_size(egui::vec2(size::SETTINGS_WIDTH - 40.0, 400.0));
+                }
+                egui::Frame::new().fill(c.bg_base).show(ui, |ui| {
+                    ui.set_min_size(ui.available_size());
+                    self.settings_panel(ui);
+                });
+                if self.confirm.is_some() {
+                    self.confirm_dialog(&ctx);
+                }
+                if self.show_shortcuts {
+                    self.shortcuts_dialog(&ctx);
+                }
+                if audit && native {
+                    let name = self.audit_screen_name();
+                    kim_ui::inspect::finish_frame_with(
+                        &ctx,
+                        "kim",
+                        &name,
+                        Some(&|p: &Path| kim_ui::inspect::capture_window_png("Kim Settings", p)),
+                    );
+                }
+            },
+        );
     }
 
     /// The whole main view: three tiles from the upper-left corner, the gear in the
@@ -1169,8 +1256,8 @@ impl KimManagerApp {
             ),
             egui::Vec2::splat(kim_ui::design::size::GEAR),
         );
-        if kim_ui::gear_at(ui, gear, "Settings", false).clicked() {
-            self.toggle_settings(Some(&ui.ctx().clone()));
+        if kim_ui::gear_at(ui, gear, "Settings", self.show_settings).clicked() {
+            self.open_settings();
         }
 
         // One quiet line for progress and results, lower left; it fades after a while.
@@ -1919,26 +2006,6 @@ impl KimManagerApp {
                 self.capture = None;
             }
         }
-        // ADR 0099: Done sits at the rail's bottom when there is room below the sections, and
-        // right after them otherwise (a short window never puts it over a section).
-        let room = rail.available_height() >= size::CONTROL + space::M;
-        if !room {
-            rail.add_space(space::S);
-        }
-        let layout = if room {
-            egui::Layout::bottom_up(egui::Align::Min)
-        } else {
-            egui::Layout::top_down(egui::Align::Min)
-        };
-        rail.with_layout(layout, |ui| {
-            if ui
-                .add(kim_ui::Button::secondary("Done").min_width(ui.available_width()))
-                .on_hover_text(self.tr("Back to the launcher (Esc)", "런처로 돌아갑니다 (Esc)"))
-                .clicked()
-            {
-                self.toggle_settings(Some(&ui.ctx().clone()));
-            }
-        });
         let body = egui::Rect::from_min_max(egui::pos2(nav.right(), full.top()), full.max);
         let mut page = ui.new_child(
             egui::UiBuilder::new()
@@ -2792,8 +2859,11 @@ impl eframe::App for KimManagerApp {
         let _ = frame;
         let screen = self.audit_screen_name();
         KimManagerApp::ui(self, ui);
-        // ADR 0099: the geometry report while a developer asks for it (nothing otherwise).
-        kim_ui::inspect::finish_frame(ui.ctx(), "kim", &screen);
+        // ADR 0099: the geometry report while a developer asks for it (nothing otherwise); a
+        // Settings audit is written by the Settings window (ADR 0100).
+        if !self.audit_settings {
+            kim_ui::inspect::finish_frame(ui.ctx(), "kim", &screen);
+        }
     }
 }
 

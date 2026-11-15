@@ -42,6 +42,17 @@ pub fn take() -> Vec<Component> {
     ITEMS.with(|i| std::mem::take(&mut *i.borrow_mut()))
 }
 
+/// Puts components back (a second window measured inside the first one's frame hands the first
+/// one's components back afterwards).
+pub fn restore(items: Vec<Component>) {
+    ITEMS.with(|i| {
+        let mut list = i.borrow_mut();
+        let mine = std::mem::take(&mut *list);
+        *list = items;
+        list.extend(mine);
+    });
+}
+
 /// Runs `f` with `name` as the parent of the components it records (a settings group, a rail).
 pub fn scope<R>(name: &str, f: impl FnOnce() -> R) -> R {
     if !active() {
@@ -174,6 +185,18 @@ pub fn report(ctx: &egui::Context, application: &str, screen: &str) -> Report {
 /// `KIM_UI_SNAPSHOT` names a file, and — with `KIM_UI_EXIT=1` — closes the window once both are
 /// written. Without the variable it only clears (nothing was recorded).
 pub fn finish_frame(ctx: &egui::Context, application: &str, screen: &str) {
+    finish_frame_with(ctx, application, screen, None);
+}
+
+/// [`finish_frame`] for a window egui cannot photograph itself (a child viewport drawn
+/// immediately: eframe paints it but runs no screenshot for it). `capture` writes the window's
+/// real pixels (the program grabs them from the screen) and returns whether it did.
+pub fn finish_frame_with(
+    ctx: &egui::Context,
+    application: &str,
+    screen: &str,
+    capture: Option<&dyn Fn(&std::path::Path) -> bool>,
+) {
     let Some(path) = kim_design::inspect::requested_path() else {
         return;
     };
@@ -205,6 +228,17 @@ pub fn finish_frame(ctx: &egui::Context, application: &str, screen: &str) {
     clear();
     let shot = std::env::var_os(kim_design::inspect::ENV_SNAPSHOT);
     let exit = std::env::var("KIM_UI_EXIT").is_ok_and(|v| v == "1");
+    if let (Some(shot), Some(capture)) = (&shot, capture) {
+        // Two more settled frames on screen before the grab, then the grab, then the end.
+        if frame > 24 && !SHOT_DONE.load(std::sync::atomic::Ordering::SeqCst) {
+            if capture(std::path::Path::new(shot)) {
+                SHOT_DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        } else if exit && SHOT_DONE.load(std::sync::atomic::Ordering::SeqCst) {
+            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+        }
+        return;
+    }
     if let Some(shot) = shot {
         if !SHOT_ASKED.with(Cell::get) {
             SHOT_ASKED.with(|s| s.set(true));
@@ -217,15 +251,27 @@ pub fn finish_frame(ctx: &egui::Context, application: &str, screen: &str) {
             });
         }
         if exit && SHOT_DONE.load(std::sync::atomic::Ordering::SeqCst) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            // The whole program ends (a Settings window's audit runs in a child window).
+            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
         }
     } else if exit && frame > 6 {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
     }
 }
 
 /// The screenshot asked for by [`finish_frame`] was written.
 static SHOT_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// ADR 0100: writes the real pixels of this process's window titled `title` (copied from the
+/// screen) as a PNG — the photograph of a Settings window, which egui does not take for a child
+/// viewport. `false` when there is no such window.
+pub fn capture_window_png(title: &str, path: &std::path::Path) -> bool {
+    let Some((w, h, rgba)) = kim_design::system::grab_window(title) else {
+        return false;
+    };
+    let img = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
+    write_png(path, &img).is_ok()
+}
 
 /// Writes an egui screenshot as an 8-bit RGB PNG.
 pub fn write_png(path: &std::path::Path, img: &egui::ColorImage) -> std::io::Result<()> {

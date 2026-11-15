@@ -42,7 +42,15 @@ pub fn apply(ctx: &egui::Context) {
 
 /// ADR 0090: switches between the dark and the light theme.
 pub fn set_light(ctx: &egui::Context, light: bool) {
-    LIGHT.store(light, Ordering::Relaxed);
+    let want = if light {
+        kim_ui::Theme::Light
+    } else {
+        kim_ui::Theme::Dark
+    };
+    LIGHT.store(
+        kim_ui::effective_theme(want) == kim_ui::Theme::Light,
+        Ordering::Relaxed,
+    );
     kim_ui::set_theme(
         ctx,
         if light {

@@ -91,7 +91,9 @@ fn app(sb: &Sandbox, engine: Arc<dyn Engine>) -> EditorApp {
 
 fn harness(app: EditorApp) -> Harness<'static, EditorApp> {
     Harness::builder()
-        .with_size(egui::vec2(1280.0, 820.0))
+        // ADR 0100: tall enough for the rule editor's four sections without scrolling (a
+        // control outside the scrolled view is not clickable, as for a real user).
+        .with_size(egui::vec2(1280.0, 1500.0))
         // The header asks the engine for its state once a second; under load that answer can
         // arrive inside a run and cost two more frames (it made `run` exceed 4 steps).
         .with_max_steps(12)
@@ -106,6 +108,9 @@ fn settle(h: &mut Harness<'static, EditorApp>) {
 }
 
 fn click(h: &mut Harness<'static, EditorApp>, label: &str) {
+    // Like a user: scrolled into view first (the editor's sections scroll under a fixed footer).
+    h.get_by_label(label).scroll_to_me();
+    h.run();
     h.get_by_label(label).click();
     h.run();
 }
@@ -116,6 +121,66 @@ fn click_last_button(h: &mut Harness<'static, EditorApp>, label: &str) {
         .last()
         .unwrap_or_else(|| panic!("no button {label}"))
         .click();
+    h.run();
+}
+
+/// ADR 0100: opens the Settings window with the gear (an embedded window in the harness) and
+/// goes to `section`.
+fn open_settings(h: &mut Harness<'static, EditorApp>, section: &str) {
+    h.get_all_by_role_and_label(Role::Button, "Settings")
+        .next()
+        .expect("the settings gear")
+        .click();
+    h.run();
+    h.get_all_by_label(section)
+        .next()
+        .unwrap_or_else(|| panic!("no settings section {section}"))
+        .click();
+    h.run();
+}
+
+/// ADR 0100: a rule row's `⋯` menu, then one of its items.
+fn row_menu(h: &mut Harness<'static, EditorApp>, title: &str, item: &str) {
+    h.get_by_label(&format!("More actions: {title}")).click();
+    h.run();
+    click_last_button_or_item(h, item);
+}
+
+/// The last button or menu item with this label.
+fn click_last_button_or_item(h: &mut Harness<'static, EditorApp>, label: &str) {
+    let node = h
+        .get_all_by_label(label)
+        .rfind(|n| {
+            matches!(
+                n.accesskit_node().role(),
+                Role::Button | Role::MenuItem | Role::RadioButton
+            )
+        })
+        .unwrap_or_else(|| panic!("no button or menu item {label}"));
+    node.click();
+    h.run();
+}
+
+/// A text field by its name (its visible label above it has the same name).
+fn input<'h>(h: &'h Harness<'static, EditorApp>, label: &'h str) -> egui_kittest::Node<'h> {
+    h.get_all_by_label(label)
+        .find(|n| {
+            matches!(
+                n.accesskit_node().role(),
+                Role::TextInput | Role::MultilineTextInput | Role::SearchInput
+            )
+        })
+        .unwrap_or_else(|| panic!("no text field {label}"))
+}
+
+/// ADR 0100: types key names into a key field (its Type button opens the text field).
+fn type_keys(h: &mut Harness<'static, EditorApp>, field: &str, keys: &str) {
+    let name = format!("Type instead: {field}");
+    if h.query_all_by_label(&name).next().is_none() {
+        h.get_by_label(&format!("Type: {field}")).click();
+        h.run();
+    }
+    input(h, &name).set_text_value_accesskit(keys);
     h.run();
 }
 
@@ -150,12 +215,17 @@ fn j1_first_start_is_safe_and_a_starter_is_only_a_draft() {
         h.query_by_label_contains("Emergency off: Ctrl+Alt+Shift+Esc")
             .is_some()
     );
-    // ADR 0096: the rail's engine switch shows the real state: no app, so it is off and
-    // disabled, its description saying why.
+    // ADR 0100: the rail shows the engine's real state as a status, not a switch: no app.
     assert_eq!(h.state().engine_view(), &EngineView::NotRunning);
     assert!(
-        h.query_all_by_label("Ddalgak").count() >= 2,
-        "the switch is on the rail"
+        h.query_by_label("Not running").is_some(),
+        "the rail's status"
+    );
+    assert!(
+        h.query_all_by_role_and_label(Role::Switch, "Turn on Ddalgak")
+            .next()
+            .is_none(),
+        "the engine switch lives in Settings"
     );
     assert!(
         !sb.paths.rules().exists(),
@@ -180,7 +250,7 @@ fn j2_create_a_rule_with_capture_tile_form_simulation_and_consent() {
     let fake = sb.fake();
     let mut h = harness(app(&sb, fake.clone()));
     settle(&mut h);
-    click(&mut h, "+ New rule");
+    click(&mut h, "New Rule");
     // The capture box records on key-down.
     h.key_press_modifiers(Modifiers::CTRL | Modifiers::SHIFT, Key::F2);
     h.run();
@@ -198,22 +268,19 @@ fn j2_create_a_rule_with_capture_tile_form_simulation_and_consent() {
         h.state().form().is_some(),
         "Esc in the capture box does not close the form"
     );
-    click(&mut h, "Next ▸");
     click(&mut h, "Type text");
     assert_eq!(
         h.state().form().unwrap().fields.effect,
         Some(Effect::TypeText)
     );
-    h.get_by_label("Text")
-        .set_text_value_accesskit("감사합니다.\n김민수 드림");
+    input(&h, "Text").set_text_value_accesskit("감사합니다.\n김민수 드림");
     h.run();
     assert!(
         h.query_all_by_label_contains("Types 13 characters on 2 lines")
             .next()
             .is_some()
     );
-    click(&mut h, "4 Test");
-    click(&mut h, "▶ Simulate");
+    click(&mut h, "Simulate");
     let sim = h.state().simulation().expect("simulated").clone();
     assert!(sim.fires);
     assert_eq!(sim.typed.as_deref(), Some("감사합니다.\n김민수 드림"));
@@ -314,11 +381,9 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
         "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
     );
     assert!(h.state().form().unwrap().id.is_some());
-    h.get_by_label("Name")
-        .set_text_value_accesskit("Caps is Ctrl");
+    input(&h, "Name").set_text_value_accesskit("Caps is Ctrl");
     h.run();
     assert!(h.state().has_unsaved_changes());
-    click(&mut h, "4 Test");
     click(&mut h, "Save");
     let d = sb.rules();
     assert_eq!(rule(&d, "caps")["title"], "Caps is Ctrl");
@@ -328,7 +393,7 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
         "consent kept"
     );
     // Duplicate: a disabled copy right after the original.
-    click(&mut h, "Duplicate: Caps is Ctrl");
+    row_menu(&mut h, "Caps is Ctrl", "Duplicate");
     let d = sb.rules();
     let all = ids(&d);
     assert_eq!(all.len(), 4);
@@ -349,7 +414,7 @@ fn edit_duplicate_enable_disable_delete_and_undo() {
         "gui"
     );
     // Delete asks first, Cancel focused; then an Undo toast that stays until dismissed.
-    click(&mut h, "Delete: Thanks");
+    row_menu(&mut h, "Thanks", "Delete");
     assert!(h.query_by_label("Delete rules").is_some());
     assert!(
         h.get_all_by_role_and_label(Role::Button, "Cancel")
@@ -384,12 +449,12 @@ fn a_later_change_retires_the_undo_toast_of_a_delete() {
     sb.write_rules(&three_rules());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(&mut h, "Delete: Thanks");
+    row_menu(&mut h, "Thanks", "Delete");
     click_last_button(&mut h, "Delete (1)");
     assert!(h.query_by_label_contains("Deleted 1 rule(s)").is_some());
     let before = ids(&sb.rules()).len();
     // Another change: duplicate the remaining first rule.
-    click(&mut h, "Duplicate: CapsLock acts as Ctrl");
+    row_menu(&mut h, "CapsLock acts as Ctrl", "Duplicate");
     settle(&mut h);
     assert_eq!(ids(&sb.rules()).len(), before + 1);
     assert!(
@@ -419,14 +484,11 @@ fn every_action_form_validates_in_the_window() {
         ("Block this key", Effect::Block),
     ];
     for (i, (tile, effect)) in tiles.into_iter().enumerate() {
-        click(&mut h, "+ New rule");
+        click(&mut h, "New Rule");
         h.key_press(Key::Escape);
         h.run();
         let keys = format!("Ctrl+Alt+Shift+F{}", 13 + i);
-        h.get_by_label("Type instead: When I press")
-            .set_text_value_accesskit(&keys);
-        h.run();
-        click(&mut h, "Next ▸");
+        type_keys(&mut h, "Keys", &keys);
         click(&mut h, tile);
         assert_eq!(
             h.state().form().unwrap().fields.effect,
@@ -434,7 +496,6 @@ fn every_action_form_validates_in_the_window() {
             "{tile}"
         );
         let needs_input = !matches!(effect, Effect::Engine | Effect::Block | Effect::Mouse);
-        click(&mut h, "4 Test");
         let blocked = !h
             .get_by_role_and_label(Role::Button, "Save and enable")
             .accesskit_node()
@@ -450,21 +511,13 @@ fn every_action_form_validates_in_the_window() {
             );
         }
         // Fill the required field and the form is ready.
-        click(&mut h, "3 Details");
         match effect {
-            Effect::Remap => h
-                .get_by_label("Type instead: Acts as")
-                .set_text_value_accesskit("F20"),
-            Effect::SendKeys => h
-                .get_by_label("Type instead: Shortcut (up to eight chords)")
-                .set_text_value_accesskit("Ctrl+C"),
-            Effect::TypeText => h.get_by_label("Text").set_text_value_accesskit("hello"),
-            Effect::OpenProgram => h
-                .get_by_label("Program (.exe)")
+            Effect::Remap => type_keys(&mut h, "Acts as", "F20"),
+            Effect::SendKeys => type_keys(&mut h, "Shortcut (up to eight chords)", "Ctrl+C"),
+            Effect::TypeText => input(&h, "Text").set_text_value_accesskit("hello"),
+            Effect::OpenProgram => input(&h, "Program (.exe)")
                 .set_text_value_accesskit(r"C:\Windows\System32\notepad.exe"),
-            Effect::OpenUrl => h
-                .get_by_label("Website")
-                .set_text_value_accesskit("example.com"),
+            Effect::OpenUrl => input(&h, "Website").set_text_value_accesskit("example.com"),
             Effect::Mode => {
                 h.state_mut().form_mut().unwrap().fields.mode.mode = "nav".into();
             }
@@ -703,7 +756,7 @@ fn draft_safety_and_undo() {
         &mut h,
         "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
     );
-    h.get_by_label("Name").set_text_value_accesskit("Changed");
+    input(&h, "Name").set_text_value_accesskit("Changed");
     h.run();
     // ADR 0096: the rule has the page; going back to the list asks first.
     click(&mut h, "← Rules");
@@ -746,7 +799,7 @@ fn a_cli_change_appears_and_is_never_overwritten() {
         &mut h,
         "CapsLock  →  CapsLock acts as Left Ctrl; a quick tap is Escape",
     );
-    h.get_by_label("Name").set_text_value_accesskit("Mine");
+    input(&h, "Name").set_text_value_accesskit("Mine");
     h.run();
     let reloads = fake.with(|s| s.calls.iter().filter(|c| *c == "rules.reload").count());
     // "ddalgak rule edit caps --title …" and "rule disable pause" from another process.
@@ -780,7 +833,6 @@ fn a_cli_change_appears_and_is_never_overwritten() {
         h.query_by_label("The rules changed outside the editor.")
             .is_some()
     );
-    click(&mut h, "4 Test");
     click(&mut h, "Save");
     assert!(
         matches!(h.state().banner(), Some(ddalgak_editor::app::Banner::Error { code, .. }) if code == "rule_conflict"),
@@ -800,20 +852,19 @@ fn korean_labels() {
     opts.lang = Lang::Ko;
     let mut h = harness(EditorApp::new(opts));
     settle(&mut h);
-    for label in ["Rules", "Modes", "+ New rule"] {
+    for label in ["Rules", "Playground", "New Rule"] {
         assert!(
             h.query_all_by_label(label).count() >= 1,
             "{label} stays English"
         );
     }
-    click(&mut h, "+ New rule");
+    click(&mut h, "New Rule");
     assert!(
         h.query_all_by_label("이 키를 누르면").count() >= 1,
         "the explanation is Korean"
     );
     h.key_press(Key::Escape);
     h.run();
-    click(&mut h, "2 Action");
     for tile in [
         "Act as another key",
         "Type text",
@@ -825,9 +876,9 @@ fn korean_labels() {
     ] {
         assert!(h.query_by_label(tile).is_some(), "{tile}");
     }
-    assert!(h.query_by_label_contains("이렇게 하기").is_some());
+    assert!(h.query_by_label_contains("일어나는 일").is_some());
     click(&mut h, "Cancel");
-    click(&mut h, "Settings");
+    open_settings(&mut h, "Appearance");
     click(&mut h, "English");
     assert_eq!(h.state().prefs().lang, kim_ui::LangPref::En);
     let saved: Value =
@@ -896,12 +947,11 @@ fn export_and_import_never_open_or_run_anything() {
     let fake = sb.fake();
     let mut h = harness(app(&sb, fake.clone()));
     settle(&mut h);
-    // ADR 0096: Import and Export are in Settings (the gear).
-    click(&mut h, "Settings");
+    // ADR 0100: Import and Export are in Settings → Advanced (the gear).
+    open_settings(&mut h, "Advanced");
     click(&mut h, "Export…");
     let file = sb.root.join("shared.json");
-    h.get_by_label("File")
-        .set_text_value_accesskit(&file.display().to_string());
+    input(&h, "File").set_text_value_accesskit(&file.display().to_string());
     h.run();
     click_last_button(&mut h, "Export…");
     let exported: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
@@ -912,10 +962,9 @@ fn export_and_import_never_open_or_run_anything() {
     let other = Sandbox::new("io-target");
     let mut h2 = harness(app(&other, other.fake()));
     settle(&mut h2);
-    click(&mut h2, "Settings");
+    open_settings(&mut h2, "Advanced");
     click(&mut h2, "Import…");
-    h2.get_by_label("File")
-        .set_text_value_accesskit(&file.display().to_string());
+    input(&h2, "File").set_text_value_accesskit(&file.display().to_string());
     h2.run();
     click(&mut h2, "Check the file");
     assert!(
@@ -923,7 +972,6 @@ fn export_and_import_never_open_or_run_anything() {
         "the target is named"
     );
     click(&mut h2, "Add them turned off");
-    click(&mut h2, "Rules");
     let d = other.rules();
     let r = &d["profiles"][0]["rules"][0];
     assert_eq!(r["enabled"], false);
@@ -1005,14 +1053,13 @@ fn modes_page() {
     sb.write_rules(&three_rules());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(&mut h, "Modes");
-    assert!(h.query_by_label("Navigation").is_some());
-    click(&mut h, "Disable");
+    // ADR 0100: Settings → Modes.
+    open_settings(&mut h, "Modes");
+    click(&mut h, "Enabled: Navigation");
     let d = sb.rules();
     assert_eq!(d["profiles"][0]["modes"][1]["enabled"], false);
-    click(&mut h, "Enable");
-    h.get_by_label("New mode name")
-        .set_text_value_accesskit("Symbols");
+    click(&mut h, "Enabled: Navigation");
+    input(&h, "New mode name").set_text_value_accesskit("Symbols");
     h.run();
     click(&mut h, "+ New mode");
     let d = sb.rules();
@@ -1053,6 +1100,23 @@ fn two_profiles() -> Value {
     })
 }
 
+/// ADR 0100: a profile row's `⋯` menu in Settings → Profiles, then one of its items.
+fn profile_menu(h: &mut Harness<'static, EditorApp>, title: &str, item: &str) {
+    h.get_by_label(&format!("More actions: {title}")).click();
+    h.run();
+    click_last_button_or_item(h, item);
+}
+
+/// The `⋯` menu of the last profile row, then one of its items.
+fn last_profile_menu(h: &mut Harness<'static, EditorApp>, item: &str) {
+    h.get_all_by_label_contains("More actions: ")
+        .last()
+        .expect("a profile row")
+        .click();
+    h.run();
+    click_last_button_or_item(h, item);
+}
+
 fn profile_ids(d: &Value) -> Vec<String> {
     d["profiles"]
         .as_array()
@@ -1082,12 +1146,12 @@ fn the_header_follows_engine_changes_made_elsewhere() {
         h.query_by_label("Mode: nav").is_some(),
         "the new mode is shown"
     );
-    // ADR 0096: the rail's switch stays on and offers Resume while the engine is paused.
+    // ADR 0100: the rail's status says Paused (the controls are in Settings).
     assert!(
         matches!(h.state().engine_view(), EngineView::Running { state, .. } if state == "paused"),
         "the new state is shown"
     );
-    assert!(h.query_by_label("Resume").is_some());
+    assert!(h.query_by_label("Paused").is_some());
 }
 
 /// #77 (seen in the real editor): a mode without notes drew its rule count over its name.
@@ -1097,12 +1161,22 @@ fn a_mode_row_does_not_draw_its_count_over_its_name() {
     sb.write_rules(&three_rules());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(&mut h, "Modes");
-    let name = h.get_by_label("Navigation").rect();
-    let count = h.get_all_by_label("1 rules").last().unwrap().rect();
+    open_settings(&mut h, "Modes");
+    // ADR 0100: the rows are the design system's settings rows: the name, then the count on
+    // its own line below it (measured from what was really laid out).
+    kim_ui::inspect::force(true);
+    h.run();
+    let comps = kim_ui::inspect::take();
+    kim_ui::inspect::force(false);
+    let row = comps
+        .iter()
+        .find(|c| c.id == "row:Navigation")
+        .expect("the Navigation row");
+    let name = row.text.as_ref().expect("its name");
+    assert!(!name.truncated, "{row:?}");
     assert!(
-        count.left() >= name.right(),
-        "the count starts after the name: name {name:?}, count {count:?}"
+        row.bounds.h >= 2.0 * name.bounds.h,
+        "the count is a line of its own under the name: {row:?}"
     );
 }
 
@@ -1114,10 +1188,9 @@ fn the_profile_per_program_rows_follow_added_and_deleted_profiles() {
     sb.write_rules(&two_profiles());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(&mut h, "Profiles");
+    open_settings(&mut h, "Profiles");
     assert!(h.query_by_label("gaming").is_some());
-    h.get_by_label("New profile name")
-        .set_text_value_accesskit("Travel");
+    input(&h, "New profile name").set_text_value_accesskit("Travel");
     h.run();
     click(&mut h, "+ New profile");
     settle(&mut h);
@@ -1127,12 +1200,7 @@ fn the_profile_per_program_rows_follow_added_and_deleted_profiles() {
         "the new profile has its row"
     );
     // Delete Gaming: its row goes.
-    let n = h.get_all_by_label("Delete profile").count();
-    h.get_all_by_label("Delete profile")
-        .nth(n - 2)
-        .unwrap()
-        .click();
-    h.run();
+    profile_menu(&mut h, "Gaming", "Delete profile");
     click_last_button(&mut h, "Delete profile");
     settle(&mut h);
     assert!(!profile_ids(&sb.rules()).contains(&"gaming".to_string()));
@@ -1152,21 +1220,23 @@ fn j6_profiles_browse_switch_with_a_diff_history_export_and_import() {
     let fake = sb.fake();
     let mut h = harness(app(&sb, fake.clone()));
     settle(&mut h);
-    click(&mut h, "Profiles");
-    assert_eq!(h.state().page(), ddalgak_editor::app::Page::Profiles);
+    open_settings(&mut h, "Profiles");
+    assert_eq!(
+        h.state().settings_section(),
+        Some(ddalgak_editor::app::SettingsSection::Profiles)
+    );
     assert_eq!(h.state().profile_rows().len(), 2);
-    assert!(
-        h.query_by_label("● Active").is_some(),
-        "the active profile in words"
+    assert_eq!(
+        h.query_all_by_label("Switch…").count(),
+        1,
+        "only the other profile can be switched to"
     );
     // Search and sort.
-    h.get_by_label("Search profiles")
-        .set_text_value_accesskit("gam");
+    input(&h, "Search profiles").set_text_value_accesskit("gam");
     h.run();
     let shown: Vec<String> = h.state().profile_rows().into_iter().map(|r| r.id).collect();
     assert_eq!(shown, ["gaming"]);
-    h.get_by_label("Search profiles")
-        .set_text_value_accesskit("");
+    input(&h, "Search profiles").set_text_value_accesskit("");
     h.run();
     // Switch: the diff first, Cancel changes nothing.
     click(&mut h, "Switch…");
@@ -1178,8 +1248,10 @@ fn j6_profiles_browse_switch_with_a_diff_history_export_and_import() {
             .is_some(),
         "the right side names what the key does after the switch"
     );
+    // ADR 0100: the rule list stays behind the Settings window (it names hosts only); the diff
+    // never shows a launch target.
     assert!(
-        h.query_all_by_label_contains("example.com")
+        h.query_all_by_label_contains("https://example.com")
             .next()
             .is_none(),
         "the diff shows no launch target"
@@ -1198,50 +1270,28 @@ fn j6_profiles_browse_switch_with_a_diff_history_export_and_import() {
     );
     assert_eq!(h.state().switching_to(), None);
     // Duplicate (rules get new IDs), rename, delete with undo.
-    h.get_all_by_role_and_label(Role::Button, "Duplicate")
-        .next()
-        .unwrap()
-        .click();
-    h.run();
+    profile_menu(&mut h, "Work", "Duplicate");
     let d = sb.rules();
     assert_eq!(profile_ids(&d), ["work", "gaming", "work-2"]);
     assert_eq!(d["profiles"][2]["rules"][0]["id"], "caps-2");
-    h.get_all_by_role_and_label(Role::Button, "Rename…")
-        .last()
-        .unwrap()
-        .click();
-    h.run();
-    h.get_by_label("Profile name")
-        .set_text_value_accesskit("Work at home");
+    last_profile_menu(&mut h, "Rename…");
+    input(&h, "Profile name").set_text_value_accesskit("Work at home");
     h.run();
     click_last_button(&mut h, "Save");
     assert_eq!(sb.rules()["profiles"][2]["title"], "Work at home");
-    h.get_all_by_role_and_label(Role::Button, "Delete profile")
-        .last()
-        .unwrap()
-        .click();
-    h.run();
+    profile_menu(&mut h, "Work at home", "Delete profile");
     click_last_button(&mut h, "Delete profile");
     assert_eq!(profile_ids(&sb.rules()), ["work", "gaming"]);
     click(&mut h, "Undo");
     assert_eq!(profile_ids(&sb.rules()), ["work", "gaming", "work-2"]);
     settle(&mut h);
     // History of `work`: rename it, then restore the earlier version side by side.
-    h.get_all_by_role_and_label(Role::Button, "Rename…")
-        .next()
-        .unwrap()
-        .click();
-    h.run();
-    h.get_by_label("Profile name")
-        .set_text_value_accesskit("Office");
+    profile_menu(&mut h, "Work", "Rename…");
+    input(&h, "Profile name").set_text_value_accesskit("Office");
     h.run();
     click_last_button(&mut h, "Save");
     assert_eq!(sb.rules()["profiles"][0]["title"], "Office");
-    h.get_all_by_role_and_label(Role::Button, "History…")
-        .next()
-        .unwrap()
-        .click();
-    h.run();
+    profile_menu(&mut h, "Office", "History…");
     let older = h
         .query_all_by_label_contains("profile.apply")
         .next()
@@ -1265,13 +1315,8 @@ fn j6_profiles_browse_switch_with_a_diff_history_export_and_import() {
     );
     settle(&mut h);
     // A save point from the history.
-    h.get_all_by_role_and_label(Role::Button, "History…")
-        .next()
-        .unwrap()
-        .click();
-    h.run();
-    h.get_by_label("Label for a saved version")
-        .set_text_value_accesskit("before games");
+    profile_menu(&mut h, "Work", "History…");
+    input(&h, "Label for a saved version").set_text_value_accesskit("before games");
     h.run();
     click(&mut h, "Save this version");
     assert!(
@@ -1281,14 +1326,9 @@ fn j6_profiles_browse_switch_with_a_diff_history_export_and_import() {
     );
     click_last_button(&mut h, "Close");
     // Export `work` and import it into another, empty store.
-    h.get_all_by_role_and_label(Role::Button, "Export…")
-        .next()
-        .unwrap()
-        .click();
-    h.run();
+    profile_menu(&mut h, "Work", "Export…");
     let file = sb.root.join("work.json");
-    h.get_by_label("File")
-        .set_text_value_accesskit(&file.display().to_string());
+    input(&h, "File").set_text_value_accesskit(&file.display().to_string());
     h.run();
     click_last_button(&mut h, "Export…");
     let exported: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
@@ -1299,10 +1339,9 @@ fn j6_profiles_browse_switch_with_a_diff_history_export_and_import() {
     let other_fake = other.fake();
     let mut h2 = harness(app(&other, other_fake.clone()));
     settle(&mut h2);
-    click(&mut h2, "Profiles");
+    open_settings(&mut h2, "Profiles");
     click(&mut h2, "Import profile…");
-    h2.get_by_label("File")
-        .set_text_value_accesskit(&file.display().to_string());
+    input(&h2, "File").set_text_value_accesskit(&file.display().to_string());
     h2.run();
     click(&mut h2, "Check the file");
     assert!(
@@ -1331,8 +1370,7 @@ fn j6_profiles_browse_switch_with_a_diff_history_export_and_import() {
     let bad = other.root.join("bad.json");
     std::fs::write(&bad, b"{ \"schema\": \"ddalgak.rules\", ").unwrap();
     click(&mut h2, "Import profile…");
-    h2.get_by_label("File")
-        .set_text_value_accesskit(&bad.display().to_string());
+    input(&h2, "File").set_text_value_accesskit(&bad.display().to_string());
     h2.run();
     click(&mut h2, "Check the file");
     assert!(
@@ -1354,20 +1392,30 @@ fn the_active_profile_is_never_deleted_and_the_page_speaks_korean() {
     sb.write_rules(&two_profiles());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(&mut h, "Profiles");
-    let first = h
-        .get_all_by_role_and_label(Role::Button, "Delete profile")
-        .next()
-        .unwrap();
+    open_settings(&mut h, "Profiles");
+    h.get_by_label("More actions: Work").click();
+    h.run();
+    let item = h
+        .get_all_by_label("Delete profile")
+        .find(|n| n.accesskit_node().role() == Role::MenuItem)
+        .expect("the menu's Delete profile");
     assert!(
-        first.accesskit_node().is_disabled(),
+        item.accesskit_node().is_disabled(),
         "the active profile's Delete is disabled"
     );
-    // ADR 0096: the language is chosen in Settings; button names stay English.
-    click(&mut h, "Settings");
+    h.key_press(Key::Escape);
+    h.run();
+    // ADR 0096/0100: the language is chosen in Settings → Appearance; names stay English.
+    open_settings(&mut h, "Appearance");
     click(&mut h, "한국어");
-    click(&mut h, "Profiles");
-    assert!(h.query_by_label("● 사용 중").is_some());
+    open_settings(&mut h, "Profiles");
+    assert!(
+        h.query_all_by_label_contains("완전한 묶음")
+            .next()
+            .is_some()
+            || h.query_all_by_label_contains("프로필").next().is_some(),
+        "the explanations are Korean"
+    );
     assert!(h.query_by_label("Import profile…").is_some());
 }
 
@@ -1381,17 +1429,16 @@ fn a_macro_is_built_recorded_reordered_and_saved() {
     let fake = sb.fake();
     let mut h = harness(app(&sb, fake));
     settle(&mut h);
-    click(&mut h, "+ New rule");
+    click(&mut h, "New Rule");
     h.key_press_modifiers(Modifiers::CTRL | Modifiers::SHIFT, Key::F2);
     h.run();
     h.key_press(Key::Escape);
     h.run();
-    click(&mut h, "Next ▸");
     click(&mut h, "Type text");
-    h.get_by_label("Text").set_text_value_accesskit("안녕");
+    input(&h, "Text").set_text_value_accesskit("안녕");
     h.run();
-    // ADR 0096: several steps are folded under their own heading.
-    click(&mut h, "Several steps (a macro)");
+    // ADR 0096/0100: several steps are folded under Advanced.
+    click(&mut h, "Advanced · Several steps (a macro)");
     click(&mut h, "Add to macro");
     click(&mut h, "Add a wait");
     click(&mut h, "● Record keys");
@@ -1438,8 +1485,7 @@ fn a_macro_is_built_recorded_reordered_and_saved() {
         h.query_by_label_contains("Runs 3 steps in order, 2 times")
             .is_some()
     );
-    click(&mut h, "4 Test");
-    click(&mut h, "▶ Simulate");
+    click(&mut h, "Simulate");
     assert!(h.state().simulation().expect("simulated").fires);
     assert!(!sb.paths.rules().exists(), "nothing written before saving");
     click(&mut h, "Save and enable");
@@ -1473,9 +1519,9 @@ fn an_autohotkey_script_is_imported_through_the_preview_without_running() {
     settle(&mut h);
     let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/contracts/examples/ddalgak-ahk-v1");
-    click(&mut h, "Profiles");
+    open_settings(&mut h, "Profiles");
     click(&mut h, "Import profile…");
-    h.get_by_label("File")
+    input(&h, "File")
         .set_text_value_accesskit(&fixtures.join("02-manual.ahk").display().to_string());
     h.run();
     click(&mut h, "Check the file");
@@ -1491,7 +1537,7 @@ fn an_autohotkey_script_is_imported_through_the_preview_without_running() {
         "line and column"
     );
     assert!(h.query_by_label("Add them, not active").is_none());
-    h.get_by_label("File")
+    input(&h, "File")
         .set_text_value_accesskit(&fixtures.join("01-convertible.ahk").display().to_string());
     h.run();
     click(&mut h, "Check the file");
@@ -1533,7 +1579,9 @@ fn the_engine_switch_follows_and_drives_the_real_state() {
     settle(&mut h);
     let on = |h: &Harness<'static, EditorApp>| matches!(h.state().engine_view(), EngineView::Running { state, .. } if state != "off");
     assert!(on(&h), "the fake app runs");
-    h.get_all_by_role_and_label(Role::Switch, "Ddalgak")
+    // ADR 0100: the engine switch is in Settings → General.
+    open_settings(&mut h, "General");
+    h.get_all_by_role_and_label(Role::Switch, "Turn on Ddalgak")
         .next()
         .unwrap()
         .click();
@@ -1542,7 +1590,7 @@ fn the_engine_switch_follows_and_drives_the_real_state() {
     settle(&mut h);
     assert_eq!(fake.with(|s| s.engine.clone()), "off");
     assert!(!on(&h), "the switch shows the engine turned off");
-    h.get_all_by_role_and_label(Role::Switch, "Ddalgak")
+    h.get_all_by_role_and_label(Role::Switch, "Turn on Ddalgak")
         .next()
         .unwrap()
         .click();
@@ -1562,22 +1610,16 @@ fn hold_and_press_is_saved_as_a_layer_and_keys_can_be_picked() {
     sb.write_rules(&three_rules());
     let mut h = harness(app(&sb, sb.fake()));
     settle(&mut h);
-    click(&mut h, "+ New rule");
+    click(&mut h, "New Rule");
     click(&mut h, "Hold + press");
     // The held key, picked: Tab (CapsLock already has a rule here; a held key must be free).
-    h.get_all_by_label("Pick…").next().unwrap().click();
-    h.run();
-    click(&mut h, "Tab");
+    click(&mut h, "Pick keys by clicking: Hold");
+    click_last_button(&mut h, "Tab");
     click(&mut h, "Confirm");
     // The pressed key, picked too: RCtrl+J (a side-specific modifier stays RCtrl).
-    h.get_all_by_label("Pick…").last().unwrap().click();
-    h.run();
-    // RCtrl as a modifier (the first row; the key list also offers RCtrl alone).
-    h.get_all_by_role_and_label(Role::Button, "RCtrl")
-        .next()
-        .unwrap()
-        .click();
-    h.run();
+    click(&mut h, "Pick keys by clicking: Press");
+    // ADR 0100: RCtrl is in the Common keys, a modifier (it combines with the key).
+    click_last_button(&mut h, "RCtrl");
     h.get_by_label("Search keys").click();
     h.run();
     h.get_by_label("Search keys").type_text("J");
@@ -1589,11 +1631,9 @@ fn hold_and_press_is_saved_as_a_layer_and_keys_can_be_picked() {
         assert_eq!(t.hold_key, "Tab");
         assert_eq!(t.keys, "RCtrl+J");
     }
-    click(&mut h, "Next ▸");
     click(&mut h, "Act as another key");
     h.state_mut().form_mut().unwrap().fields.remap.to = "Down".into();
     h.run();
-    click(&mut h, "4 Test");
     click(&mut h, "Save and enable");
     click_last_button(&mut h, "Allow");
     let d = sb.rules();
@@ -1634,4 +1674,374 @@ fn hold_and_press_is_saved_as_a_layer_and_keys_can_be_picked() {
         !h.state().has_unsaved_changes(),
         "reading it back is no change"
     );
+}
+
+/// ADR 0100: the gear opens Settings as a window of its own (embedded in the harness); the gear
+/// again only brings it forward; Esc closes it; the main window keeps its open rule meanwhile.
+#[test]
+fn settings_is_a_separate_window_that_never_replaces_the_main_one() {
+    let sb = Sandbox::new("settings-window");
+    sb.write_rules(&three_rules());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape); // ends the key capture
+    h.run();
+    assert!(h.state().form().is_some());
+    open_settings(&mut h, "Profiles");
+    assert_eq!(
+        h.state().settings_section(),
+        Some(ddalgak_editor::app::SettingsSection::Profiles)
+    );
+    assert!(h.state().form().is_some(), "the rule being made stays open");
+    // The gear again: the same window, the same section (focused, not a second window).
+    h.get_all_by_role_and_label(Role::Button, "Settings")
+        .next()
+        .unwrap()
+        .click();
+    h.run();
+    assert_eq!(
+        h.state().settings_section(),
+        Some(ddalgak_editor::app::SettingsSection::Profiles)
+    );
+    assert_eq!(h.query_all_by_label("Import profile…").count(), 1);
+    h.key_press(Key::Escape);
+    h.run();
+    assert_eq!(h.state().settings_section(), None, "Esc closes Settings");
+    assert!(
+        h.state().form().is_some(),
+        "closing Settings closes nothing else"
+    );
+    assert!(
+        h.query_all_by_role_and_label(Role::Switch, "Turn on Ddalgak")
+            .next()
+            .is_none()
+    );
+}
+
+/// ADR 0100: on/off and Pause are separate switches in Settings → General; each shows the
+/// engine's answer, not the click: while the app has not answered it stays as it was, disabled,
+/// and says it is waiting. Without the app both are disabled and say why.
+#[test]
+fn engine_and_pause_switches_wait_for_the_engine() {
+    let sb = Sandbox::new("engine-switches");
+    sb.write_rules(&three_rules());
+    let fake = sb.fake();
+    let mut h = harness(app(&sb, fake.clone()));
+    settle(&mut h);
+    open_settings(&mut h, "General");
+    fake.with(|s| s.delay_ms = 600);
+    click(&mut h, "Pause automation");
+    let pause = h.get_by_role_and_label(Role::Switch, "Pause automation");
+    assert!(
+        pause.accesskit_node().is_disabled(),
+        "disabled while waiting"
+    );
+    assert!(h.state().engine_waiting(), "waiting for the app's answer");
+    assert!(
+        h.query_by_label("Changing…").is_some(),
+        "the rail says so too"
+    );
+    assert!(
+        matches!(h.state().engine_view(), EngineView::Running { state, .. } if state == "running"),
+        "not shown paused before the answer"
+    );
+    settle(&mut h);
+    std::thread::sleep(Duration::from_millis(700));
+    settle(&mut h);
+    assert_eq!(fake.with(|s| s.engine.clone()), "paused");
+    assert!(
+        matches!(h.state().engine_view(), EngineView::Running { state, .. } if state == "paused")
+    );
+    assert!(h.query_by_label("Paused").is_some(), "the rail follows");
+    // Resume is the same switch; turning Ddalgak off is the other one.
+    fake.with(|s| s.delay_ms = 0);
+    click(&mut h, "Pause automation");
+    settle(&mut h);
+    assert_eq!(fake.with(|s| s.engine.clone()), "running");
+    let calls = fake.with(|s| s.calls.clone());
+    assert!(calls.iter().any(|c| c == "engine.pause"));
+    assert!(calls.iter().any(|c| c == "engine.resume"));
+    assert!(
+        !calls.iter().any(|c| c == "engine.stop"),
+        "pause never turns it off"
+    );
+    // Without the app: both switches are disabled and say why.
+    let none = Sandbox::new("engine-switches-none");
+    none.write_rules(&three_rules());
+    let mut h2 = harness(app(&none, Arc::new(NoEngine)));
+    settle(&mut h2);
+    open_settings(&mut h2, "General");
+    for name in ["Turn on Ddalgak", "Pause automation"] {
+        assert!(
+            h2.get_by_role_and_label(Role::Switch, name)
+                .accesskit_node()
+                .is_disabled(),
+            "{name}"
+        );
+    }
+    assert!(h2.query_by_label("Not running").is_some());
+    assert!(
+        h2.query_by_label_contains("Ctrl+Alt+Shift+Esc").is_some(),
+        "the emergency chord is always shown"
+    );
+}
+
+/// ADR 0100: Filters open a popover with the real filters and an active-filter count; the row
+/// menu edits, duplicates, disables and deletes.
+#[test]
+fn the_filter_popover_and_the_row_menu() {
+    let sb = Sandbox::new("toolbar");
+    sb.write_rules(&three_rules());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    assert!(
+        h.query_by_label("Reset filters").is_none(),
+        "closed at first"
+    );
+    click(&mut h, "Filters");
+    assert!(h.query_by_label("Reset filters").is_some(), "the popover");
+    click(&mut h, "Also search snippet text");
+    assert_eq!(h.state().active_filters(), 1);
+    click(&mut h, "Reset filters");
+    assert_eq!(h.state().active_filters(), 0);
+    h.key_press(Key::Escape);
+    h.run();
+    // The row menu: Disable, then Edit opens the editor.
+    row_menu(&mut h, "CapsLock acts as Ctrl", "Disable");
+    assert_eq!(rule(&sb.rules(), "caps")["enabled"], false);
+    row_menu(&mut h, "CapsLock acts as Ctrl", "Edit");
+    assert_eq!(
+        h.state().form().and_then(|f| f.id.clone()).as_deref(),
+        Some("caps")
+    );
+}
+
+/// ADR 0100: special keys by clicking: CapsLock alone, LCtrl+Space, RCtrl+RShift+A, LAlt+Left,
+/// RAlt+Tab — saved exactly so and accepted by the engine; LShift+RShift, which the engine
+/// cannot use, is refused in the picker (Confirm stays off) instead of saved.
+#[test]
+fn the_key_picker_builds_special_and_side_specific_keys() {
+    let sb = Sandbox::new("picker");
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape);
+    h.run();
+    let pick = |h: &mut Harness<'static, EditorApp>, keys: &[&str]| {
+        click(h, "Pick keys by clicking: Keys");
+        click_last_button(h, "Clear");
+        for k in keys {
+            click_last_button(h, k);
+        }
+    };
+    for (keys, want) in [
+        (&["CapsLock"][..], "CapsLock"),
+        (&["LCtrl", "Space"][..], "LCtrl+Space"),
+        (&["RCtrl", "RShift", "A"][..], "RCtrl+RShift+A"),
+        (&["LAlt", "Left"][..], "LAlt+Left"),
+    ] {
+        if keys.contains(&"A") {
+            click(&mut h, "Pick keys by clicking: Keys");
+            click_last_button(&mut h, "Clear");
+            click_last_button(&mut h, "RCtrl");
+            click_last_button(&mut h, "RShift");
+            click(&mut h, "A–Z, 0–9");
+            click_last_button(&mut h, "A");
+        } else {
+            pick(&mut h, keys);
+        }
+        assert!(
+            h.query_by_label_contains("This combination can be used")
+                .is_some(),
+            "{want}"
+        );
+        click_last_button(&mut h, "Confirm");
+        assert_eq!(h.state().form().unwrap().fields.trigger.keys, want);
+        assert!(ddalgak::trigger::Trigger::parse(want).is_ok(), "{want}");
+    }
+    // RAlt+Tab: Windows keeps Alt+Tab (task switching) for itself, so the picker refuses it
+    // with the reason instead of saving a rule that could never fire.
+    pick(&mut h, &["RAlt", "Tab"]);
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Confirm")
+            .accesskit_node()
+            .is_disabled()
+    );
+    assert!(
+        h.query_by_label_contains("the chord is reserved (Task switching)")
+            .is_some(),
+        "the reason is shown"
+    );
+    click_last_button(&mut h, "Cancel");
+    assert_eq!(
+        h.state().form().unwrap().fields.trigger.keys,
+        "LAlt+Left",
+        "Cancel keeps the keys"
+    );
+    // Left and right Shift together: the engine cannot use it, so the picker says so.
+    pick(&mut h, &["LShift", "RShift"]);
+    assert!(
+        h.get_by_role_and_label(Role::Button, "Confirm")
+            .accesskit_node()
+            .is_disabled(),
+        "Confirm is off for a chord the engine refuses"
+    );
+    assert!(
+        h.query_by_label_contains("This combination can be used")
+            .is_none(),
+        "no false promise"
+    );
+    // A key is removed on its own.
+    click_last_button(&mut h, "RShift  ×");
+    assert!(
+        h.query_by_label_contains("This combination can be used")
+            .is_some()
+    );
+    click_last_button(&mut h, "Confirm");
+    assert_eq!(h.state().form().unwrap().fields.trigger.keys, "LShift");
+}
+
+/// ADR 0100: Start at sign-in writes only the Run value (a memory store here) and says so.
+#[test]
+fn start_at_sign_in_writes_only_its_run_value() {
+    let sb = Sandbox::new("startup");
+    sb.write_rules(&three_rules());
+    let mut opts = Options::for_test(sb.paths.clone(), sb.fake());
+    std::fs::write(&opts.gui_exe, b"").unwrap();
+    opts.startup = Box::new(ddalgak::startup::Memory::default());
+    let gui = opts.gui_exe.clone();
+    let mut h = harness(EditorApp::new(opts));
+    settle(&mut h);
+    open_settings(&mut h, "General");
+    click(&mut h, "Start at sign-in");
+    assert_eq!(
+        h.state().startup_command().as_deref(),
+        Some(ddalgak::startup::command_for(&gui).as_str())
+    );
+    assert!(
+        h.query_by_label_contains("will start when you sign in")
+            .is_some()
+    );
+    click(&mut h, "Start at sign-in");
+    assert_eq!(h.state().startup_command(), None);
+}
+
+/// ADR 0100: a global shortcut is set with the picker into hotkeys.json (checked by the hotkey
+/// contract) and turned off again; the page says when the tray app uses it.
+#[test]
+fn a_global_shortcut_is_picked_saved_and_turned_off() {
+    let sb = Sandbox::new("global-shortcut");
+    sb.write_rules(&three_rules());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    open_settings(&mut h, "Shortcuts");
+    h.get_all_by_role_and_label(Role::Button, "Pick")
+        .next()
+        .unwrap()
+        .click();
+    h.run();
+    for k in ["Ctrl", "Alt", "F1–F24", "F9"] {
+        click_last_button_or_item(&mut h, k);
+    }
+    click_last_button(&mut h, "Confirm");
+    let saved = std::fs::read_to_string(sb.paths.hotkeys()).expect("hotkeys.json written");
+    assert!(
+        saved.contains("engine.toggle") && saved.contains("Ctrl+Alt+F9"),
+        "{saved}"
+    );
+    assert!(h.query_by_label_contains("Restart Ddalgak").is_some());
+    assert_eq!(
+        ddalgak::shortcuts::Shortcuts::load(&sb.paths, false)
+            .list
+            .iter()
+            .find(|s| s.action == "engine.toggle")
+            .map(|s| s.keys.clone())
+            .as_deref(),
+        Some("Ctrl+Alt+F9")
+    );
+    click_last_button(&mut h, "Off");
+    assert!(
+        ddalgak::shortcuts::Shortcuts::load(&sb.paths, false)
+            .list
+            .iter()
+            .all(|s| s.action != "engine.toggle")
+    );
+}
+
+/// ADR 0100: Settings → Modes switches the running engine's mode (and only through the app).
+#[test]
+fn a_mode_is_switched_from_settings() {
+    let sb = Sandbox::new("mode-switch");
+    sb.write_rules(&three_rules());
+    let fake = sb.fake();
+    let mut h = harness(app(&sb, fake.clone()));
+    settle(&mut h);
+    open_settings(&mut h, "Modes");
+    click(&mut h, "Switch");
+    settle(&mut h);
+    assert!(fake.with(|s| s.calls.iter().any(|c| c == "mode.set")));
+    assert_eq!(fake.with(|s| s.mode.clone()).as_deref(), Some("nav"));
+    assert!(h.query_by_label_contains("Mode switched").is_some());
+}
+
+/// ADR 0100 (found on the real desktop): Settings → Modes adds the mode to the profile it shows,
+/// even while a rule of another profile is open in the main window.
+#[test]
+fn a_mode_added_in_settings_goes_to_the_active_profile() {
+    let sb = Sandbox::new("mode-in-profile");
+    sb.write_rules(&two_profiles());
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape);
+    h.run();
+    assert_eq!(h.state().form().unwrap().profile, "work");
+    open_settings(&mut h, "Profiles");
+    click(&mut h, "Switch…");
+    click(&mut h, "Switch to this profile");
+    assert_eq!(sb.rules()["active_profile"], "gaming");
+    open_settings(&mut h, "Modes");
+    input(&h, "New mode name").set_text_value_accesskit("Symbols");
+    h.run();
+    click(&mut h, "+ New mode");
+    let d = sb.rules();
+    let titles = |i: usize| -> Vec<String> {
+        d["profiles"][i]["modes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["title"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(
+        titles(1).contains(&"Symbols".to_string()),
+        "{:?}",
+        titles(1)
+    );
+    assert!(
+        !titles(0).contains(&"Symbols".to_string()),
+        "{:?}",
+        titles(0)
+    );
+}
+
+/// ADR 0100 (found on the real desktop): choosing a theme keeps the window's language; only
+/// the language choice changes it.
+#[test]
+fn choosing_a_theme_keeps_the_language() {
+    let sb = Sandbox::new("theme-lang");
+    sb.write_rules(&three_rules());
+    let mut opts = Options::for_test(sb.paths.clone(), sb.fake());
+    opts.lang = Lang::Ko;
+    let mut h = harness(EditorApp::new(opts));
+    settle(&mut h);
+    open_settings(&mut h, "Appearance");
+    click(&mut h, "Light");
+    assert_eq!(
+        h.state().lang,
+        Lang::Ko,
+        "the theme changed, the language stayed"
+    );
+    assert_eq!(h.state().prefs().theme, kim_ui::ThemePref::Light);
 }

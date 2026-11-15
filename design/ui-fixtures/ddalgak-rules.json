@@ -1,0 +1,47 @@
+{
+  "schema": "ddalgak.rules",
+  "schema_version": 1,
+  "hotkey_contract": 1,
+  "revision": 1,
+  "active_profile": "default",
+  "profiles": [
+    {
+      "id": "default",
+      "title": "Default",
+      "default_mode": "base",
+      "modes": [
+        { "id": "base", "title": "Base" },
+        { "id": "nav", "title": "Navigation" }
+      ],
+      "rules": [
+        { "id": "caps", "title": "Caps as Ctrl", "enabled": true,
+          "consent": { "input-injection": { "granted_at": "2026-11-04T09:00:00Z", "via": "gui" } },
+          "trigger": { "keys": "CapsLock" },
+          "steps": [ { "type": "remap", "to": "LCtrl", "tap": "Escape" } ] },
+        { "id": "github", "title": "Open GitHub", "enabled": false,
+          "trigger": { "keys": "Ctrl+Shift+F9" },
+          "steps": [ { "type": "open_url", "url": "https://github.com/" } ] },
+        { "id": "mail", "title": "My email", "enabled": true,
+          "consent": { "input-injection": { "granted_at": "2026-11-04T09:00:00Z", "via": "gui" } },
+          "trigger": { "keys": "Ctrl+Alt+M" },
+          "steps": [ { "type": "type_text", "text": "mail@example.com" } ] },
+        { "id": "hangul", "title": "Right Alt is Hangul", "enabled": true,
+          "consent": { "input-injection": { "granted_at": "2026-11-04T09:00:00Z", "via": "gui" } },
+          "trigger": { "keys": "RAlt" },
+          "steps": [ { "type": "remap", "to": "HangulMode" } ] }
+      ]
+    },
+    {
+      "id": "gaming",
+      "title": "Gaming",
+      "default_mode": "base",
+      "modes": [ { "id": "base", "title": "Base" } ],
+      "rules": [
+        { "id": "g-ins", "title": "Block Insert", "enabled": true,
+          "consent": { "input-injection": { "granted_at": "2026-11-04T09:00:00Z", "via": "gui" } },
+          "trigger": { "keys": "Insert" },
+          "steps": [ { "type": "block" } ] }
+      ]
+    }
+  ]
+}

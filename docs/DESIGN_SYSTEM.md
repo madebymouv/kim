@@ -314,16 +314,70 @@ assets — is in [SUBAK_BRAND](SUBAK_BRAND.md) (Step 44).
 
 - Every program's main window has a small gear in its lower-right corner (ghost icon button,
   28 points, 12 from both edges; selected while Settings is open). Settings never fill the main
-  view.
+  view: **the gear opens Settings in a window of its own** (ADR 0100; `size::SETTINGS_WIDTH ×
+  HEIGHT`, or `SETTINGS_WINDOW_WIDTH × HEIGHT` for many sections), titled *Program Settings*;
+  the gear again brings the open window forward, Esc or the close button closes it, the main
+  window keeps its state, dialogs opened from Settings open in it. Subak keeps its native gear
+  menu (nothing covers the terminal).
 - A settings view: the sections on a left rail (`bg.raised`), the selected section on the
   right: its title (15 semibold), then **setting groups** (an 11 px semibold heading in
   `text.secondary` over a `bg.raised` panel with a subtle border, radius 6) of **rows**
   (title 12 px, description 11 px muted, the control right-aligned; a wide control below its
   text), thin dividers between rows. Common settings first; rarely used ones in an *Advanced*
   section (progressive disclosure). Changes apply at once; destructive ones ask.
-- Kim Manager (reference): General (Appearance: Theme, Size, Language; Installing and
-  updating: Offline mode, Check for updates when Kim starts, Channel), Shortcuts, Catalog,
-  About, and Done at the bottom of the rail (Esc too).
+- Kim Manager: General (Appearance: Theme, Size, Language; Installing and updating: Offline
+  mode, Check for updates when Kim starts, Channel), Shortcuts, Catalog, About — in the *Kim
+  Settings* window (ADR 0100; no Done button: the window closes).
+- Ddalgak (ADR 0100): General (Turn on Ddalgak and Pause automation as two switches that show
+  the engine's answer, never the click; the emergency chord; start at sign-in), Profiles,
+  Modes, Shortcuts, Appearance, Advanced — in the *Ddalgak Settings* window.
+
+### 3.12 Toolbars, search, filters and row menus (ADR 0100, `kim-ui::forms`)
+
+- **One toolbar, one system.** Controls of a toolbar share `size::CONTROL` (28), one centre
+  line and the toolbar gap `space::S` (8); a gap of two or more is a deliberate spring (Cancel
+  left, Save right). The audit checks all three (`toolbar-height`, `toolbar-align`,
+  `toolbar-gap`) for every parent named `….toolbar` or `….footer`.
+- **Search field**: fills the room the other controls leave; a drawn magnifier, the hint, a clear
+  button (24 hit square) once text is typed; Esc clears.
+- **Filters**: a secondary icon-and-text button (funnel) with an accent count badge while filters
+  are active, opening a **popover** (`size::POPOVER_WIDTH`, `bg.overlay`, radius 6, closes on a
+  click outside or Esc) with the real filters and *Reset filters*.
+- **Primary action**: one primary button per view (*New Rule*).
+- **List rows with detail** (`size::LIST_ROW_DETAIL` = 52): name (semibold) and keycaps over a
+  one-line muted summary; on the right badges, a switch and a `⋯` **icon button** (28 square)
+  opening a **menu** of `size::MENU_ITEM` items (danger items in the danger colour, after a
+  divider). The text block is clipped to its room in a narrow window.
+- **Icons** of the shared components are drawn vectors (more, keyboard, record, close, plus,
+  filter), never an icon font.
+
+### 3.13 Forms (ADR 0100)
+
+- A form is **one page** of numbered **form sections** (raised cards, radius 10, padding 16, a
+  20 px step badge, title 13 semibold, a one-line subtitle) in a column of at most
+  `size::FORM_MAX_WIDTH` (720), with a fixed footer for Cancel and Save. Only the fields the
+  current choice needs are shown; rare options fold under *Advanced*.
+- **Labelled fields**: the label (11 semibold, `text.secondary`) above the control, an optional
+  muted help line below, 8 after. Text fields, number fields, dropdowns, checkboxes, segmented
+  choices and buttons are all 28 high; text areas grow by rows.
+- **Choice cards** (`size::CHOICE_CARD_HEIGHT` 56, at least `CHOICE_CARD_MIN_WIDTH` 148, equal
+  widths in a grid): icon and title on one line, one muted example line, both elided; selected:
+  accent outline on `accent.soft`.
+- Problems appear once the user changed something (a new, untouched form shows none); Save stays
+  off while any remains, with "Fix the marked fields to save." beside it.
+
+### 3.14 Key picker (ADR 0100, `kim-ui::keys`)
+
+- The chosen keys as removable chips (`LCtrl ×` + `CapsLock ×`) with the chord in words
+  ("Left Ctrl + CapsLock" / "왼쪽 Ctrl + CapsLock"), then the program's verdict: *This
+  combination can be used* or the reason it cannot (the program's own parser and reserved
+  chords), and Confirm only for a usable chord.
+- Categories as a segmented choice: Common (the left/right modifiers, CapsLock, Tab, Space,
+  Enter, Escape, Backspace, Delete, arrows), Modifiers, F1–F24, A–Z/0–9, Navigation, Mouse,
+  More; a search across all keys; keys are buttons of `size::KEY` (28) and at least
+  `KEY_MIN_WIDTH` (36) in a fixed-height area (4 rows), so the dialog never resizes.
+- Left and right modifiers are distinct keys; an either-side `Ctrl` replaces `LCtrl`/`RCtrl`.
+  Recording keys and clicking them always coexist.
 
 ### 3.11 Window structure (ADR 0092)
 

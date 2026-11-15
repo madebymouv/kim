@@ -368,26 +368,29 @@ impl EditorApp {
                 ui.end_row();
             });
         ui.horizontal_wrapped(|ui| {
-            ui.checkbox(&mut self.play.paused, t("play.paused"));
-            ui.checkbox(&mut self.play.ime, t("play.ime"));
-            ui.checkbox(&mut self.play.injected, t("play.injected"));
+            kim_ui::checkbox(ui, &mut self.play.paused, t("play.paused"));
+            kim_ui::checkbox(ui, &mut self.play.ime, t("play.ime"));
+            kim_ui::checkbox(ui, &mut self.play.injected, t("play.injected"));
             if has_form {
-                ui.checkbox(&mut self.play.with_form, t("play.with_form"));
+                kim_ui::checkbox(ui, &mut self.play.with_form, t("play.with_form"));
             }
         });
         ui.separator();
         ui.horizontal_wrapped(|ui| {
-            ui.radio_value(&mut self.play.live, false, t("play.simulate"));
-            ui.radio_value(&mut self.play.live, true, t("play.live"));
+            kim_ui::segmented(
+                ui,
+                &mut self.play.live,
+                &[(false, t("play.simulate")), (true, t("play.live"))],
+            );
         });
         if self.play.live {
-            ui.checkbox(&mut self.play.live_consent, t("play.live_consent"));
+            kim_ui::checkbox(ui, &mut self.play.live_consent, t("play.live_consent"));
         }
         let can_run =
             !self.play.keys.trim().is_empty() && (!self.play.live || self.play.live_consent);
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(can_run, egui::Button::new(t("play.run")))
+                .add_enabled(can_run, kim_ui::Button::secondary(t("play.run")))
                 .clicked()
             {
                 self.play.opened.clear();
@@ -400,12 +403,15 @@ impl EditorApp {
                 .and_then(|v| v["effects"].as_array().map(Vec::len))
                 .unwrap_or(0);
             if ui
-                .add_enabled(self.play.shown < total, egui::Button::new(t("play.step")))
+                .add_enabled(
+                    self.play.shown < total,
+                    kim_ui::Button::secondary(t("play.step")),
+                )
                 .clicked()
             {
                 self.play.shown += 1;
             }
-            if ui.button(t("play.reset")).clicked() {
+            if ui.add(kim_ui::Button::secondary(t("play.reset"))).clicked() {
                 self.play.reset();
             }
         });
@@ -458,7 +464,9 @@ impl EditorApp {
                         e["summary"].as_str().unwrap_or("")
                     ));
                     if e["needs_confirmation"] == true
-                        && ui.button(t("play.confirm_open")).clicked()
+                        && ui
+                            .add(kim_ui::Button::secondary(t("play.confirm_open")))
+                            .clicked()
                     {
                         confirm = e["step"].as_u64().map(|n| n as usize);
                     }

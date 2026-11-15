@@ -1,17 +1,21 @@
-//! The editor window (docs/DDALGAK_GUI_JOURNEYS.md §2, J1–J4, J6, J7; ADR 0049, ADR 0052).
+//! The editor window (docs/DDALGAK_GUI_JOURNEYS.md §2, J1–J4, J6, J7; ADR 0049, ADR 0052,
+//! ADR 0100).
 //!
-//! Header (engine state in a glyph *and* a word, the engine buttons, profile and mode, the
-//! language switch), navigation rail (Rules, Modes, Profiles), the rule list with search, filters, grouping,
-//! drag ordering, multi-select and badges, the detail or four-step form panel, and the status
-//! line with the truthful save state. Every control is reachable from the keyboard; `F6` cycles
-//! the regions; destructive actions confirm with the safe choice focused.
+//! The main window does one thing: rules. A rail (the name, the engine's state as a status, the
+//! primary activities Rules and Playground), the Rules page (one toolbar: search, Filters in a
+//! popover, New Rule; the list with grouping, drag ordering, multi-select, badges and a row
+//! menu), the rule editor (one page: Trigger, Action, the action's settings, Test and save) and
+//! the status line with the truthful save state and the settings gear. Engine on/off, Pause,
+//! profiles, modes, shortcuts and appearance are in the separate Settings window
+//! (`app/settings.rs`). Every control is reachable from the keyboard; `F6` cycles the regions;
+//! destructive actions confirm with the safe choice focused.
 //!
 //! Changes go through [`crate::repo`] (one locked, re-read, reviewed store transaction each) and
 //! are confirmed by the running app through [`crate::sync`]. The window never performs an effect
 //! of a rule: **Test** is the simulate mode of the playground ([`crate::form::RuleForm::simulate`]).
 
 use crate::capture::{self, Capture, Captured};
-use crate::form::{self, Effect, RuleForm, Simulation, Stage};
+use crate::form::{self, Effect, RuleForm, Simulation};
 use crate::i18n::Lang;
 use crate::listing::{self, BadgeKind, Filter, Grouping, Row, StateFilter};
 use crate::repo::{self, CommitError, Committed, Repo, UndoEntry};
@@ -31,10 +35,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+mod editor;
 mod macros;
 mod playground;
 mod profiles;
+mod rules;
+mod settings;
 mod view;
+
+pub use settings::SettingsSection;
 
 /// How the editor starts.
 pub struct Options {
@@ -51,6 +60,11 @@ pub struct Options {
     pub cursor: Point,
     /// What the playground opens a confirmed program or website with (Step 76; tests: none).
     pub launcher: Arc<dyn ddalgak::launch::Launcher>,
+    /// ADR 0100: where Settings → Start at sign-in reads and writes (the user's Run key; tests:
+    /// memory).
+    pub startup: Box<dyn ddalgak::startup::Store + Send>,
+    /// The tray app that start at sign-in starts.
+    pub gui_exe: std::path::PathBuf,
 }
 
 impl std::fmt::Debug for Options {
@@ -65,6 +79,7 @@ impl std::fmt::Debug for Options {
 impl Options {
     /// Options for tests: an isolated rules folder, a single 1920×1080 monitor, no watcher.
     pub fn for_test(paths: Paths, engine: Arc<dyn Engine>) -> Options {
+        let gui_exe = paths.config.join("ddalgak-gui.exe");
         Options {
             paths,
             engine,
@@ -74,6 +89,8 @@ impl Options {
             layout: Layout::single(1920, 1080),
             cursor: Point::new(960, 540),
             launcher: Arc::new(ddalgak::launch::NoLauncher),
+            startup: Box::new(ddalgak::startup::Memory::default()),
+            gui_exe,
         }
     }
 }
@@ -89,18 +106,14 @@ pub enum Banner {
     Info(String),
 }
 
-/// The pages of the navigation rail.
+/// The pages of the navigation rail (ADR 0100: only the primary activities; profiles, modes
+/// and preferences are sections of the Settings window).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Page {
     #[default]
     Rules,
-    Modes,
-    /// Step 75: the profile browser (J6).
-    Profiles,
     /// Step 76: the test playground (J5).
     Playground,
-    /// ADR 0096: the gear's page.
-    Settings,
 }
 
 /// ADR 0096: the editor's own preferences (`editor.json` next to `rules.json`): its theme and
@@ -257,6 +270,12 @@ enum Act {
     SaveForm,
     CloseForm,
     Engine(Request),
+    /// ADR 0100: the Settings window (opened or focused on a section) and its actions.
+    OpenSettings(SettingsSection),
+    SetStartup(bool),
+    Release,
+    ModeSet(String),
+    Shortcut(kim_hotkeys::edit::Edit),
     Export(Vec<String>),
     Import,
     Help,
@@ -266,7 +285,10 @@ enum Act {
     CloseDialog,
     ReloadFromDisk,
     ModeEnabled(String, bool),
+    /// A new mode in the open rule's profile (the rule editor's Switch-mode action).
     NewMode(String),
+    /// ADR 0100: a new mode in this profile (Settings → Modes, whatever rule is open meanwhile).
+    NewModeIn(String, String),
     // Step 75: profiles.
     ProfileAdd(String),
     OpenSwitch(String),
@@ -336,8 +358,31 @@ pub struct EditorApp {
     /// ADR 0096: Settings → Theme and Language, and the theme last applied.
     prefs: EditorPrefs,
     applied_theme: Option<kim_ui::Theme>,
-    /// ADR 0096: the rule list's filters are shown (otherwise only the search and New).
-    show_filters: bool,
+    /// ADR 0100: the Settings window: open on a section (`None`: closed), to be brought forward,
+    /// whether the open dialog belongs to it, whether an act is applied from it, and whether a UI
+    /// audit measures it.
+    settings: Option<SettingsSection>,
+    settings_raise: bool,
+    dialog_in_settings: bool,
+    dialog_from_settings: bool,
+    audit_settings: bool,
+    /// The filters popover opens for a UI audit.
+    audit_filters: bool,
+    /// A UI audit of an action's settings scrolls the editor to them.
+    audit_details: bool,
+    /// An engine request the app has not answered yet, and the last failed one (Try again).
+    engine_pending: Option<(Request, Instant)>,
+    engine_error: Option<(String, String, Request)>,
+    startup: Box<dyn ddalgak::startup::Store + Send>,
+    gui_exe: std::path::PathBuf,
+    /// A result line of a Settings action (saved shortcut, start at sign-in, release).
+    settings_note: Option<(kim_ui::Tone, String)>,
+    /// The key picker of a global shortcut (its action).
+    shortcut_picker: Option<(String, kim_ui::keys::KeyPicker)>,
+    /// The document check found an error: Save stays off.
+    doc_blocked: bool,
+    /// Counts opened rules: each opens at the top of its page (its own scroll position).
+    form_gen: u64,
     /// ADR 0096: the key picker, open for this field.
     key_picker: Option<(CaptureTarget, kim_ui::keys::KeyPicker)>,
     config_dir: std::path::PathBuf,
@@ -432,7 +477,21 @@ impl EditorApp {
             themed: false,
             prefs,
             applied_theme: None,
-            show_filters: false,
+            settings: None,
+            settings_raise: false,
+            dialog_in_settings: false,
+            dialog_from_settings: false,
+            audit_settings: false,
+            audit_filters: false,
+            audit_details: false,
+            engine_pending: None,
+            engine_error: None,
+            startup: opts.startup,
+            gui_exe: opts.gui_exe,
+            settings_note: None,
+            shortcut_picker: None,
+            doc_blocked: false,
+            form_gen: 0,
             key_picker: None,
             config_dir: opts.paths.config.clone(),
             visible: Vec::new(),
@@ -600,8 +659,19 @@ impl EditorApp {
         };
         let keys = view::trigger_keys();
         let mut picked = kim_ui::keys::Picked::None;
-        let r = kim_ui::dialog(ctx, "ddalgak-key-picker", "Pick keys", |ui| {
-            picked = picker.ui(ui, &keys, true, lang);
+        // ADR 0100: the picker only confirms what the engine can use (its own key parser and
+        // reserved keys), so a picked rule never fails later.
+        let check = |chord: &str| -> Option<String> {
+            match ddalgak::trigger::Trigger::parse(chord) {
+                Err(e) => Some(e.to_string()),
+                Ok(t) if target == CaptureTarget::Trigger || target == CaptureTarget::HoldKey => {
+                    t.reservation().map(|why| format!("{chord}: {why}"))
+                }
+                Ok(_) => None,
+            }
+        };
+        let r = kim_ui::dialog_sized(ctx, "ddalgak-key-picker", "Pick keys", 560.0, |ui| {
+            picked = picker.ui_checked(ui, &keys, true, lang, &check);
         });
         match picked {
             kim_ui::keys::Picked::Confirm(chord) => {
@@ -623,6 +693,16 @@ impl EditorApp {
                 details: Vec::new(),
             });
         }
+    }
+
+    /// ADR 0100: an engine request the app has not answered yet.
+    pub fn engine_waiting(&self) -> bool {
+        self.engine_pending.is_some()
+    }
+
+    /// ADR 0100: what start at sign-in holds now (`None`: off).
+    pub fn startup_command(&self) -> Option<String> {
+        self.startup.get().ok().flatten()
     }
 
     /// The editor's preferences (tests).
@@ -707,14 +787,21 @@ impl EditorApp {
                     }
                     self.confirm_switch(&r.result);
                 }
-                Job::Engine(_) => {
+                Job::Engine(req) => {
+                    // ADR 0100: the switches follow the answer, never the click.
+                    self.engine_pending = None;
                     if let Err(e) = &r.result {
-                        self.banner = Some(Banner::Error {
-                            code: e.code.clone(),
-                            message: e.message.clone(),
-                            details: Vec::new(),
-                        });
+                        self.engine_error = Some((e.code.clone(), e.message.clone(), *req));
+                        if self.settings.is_none() {
+                            self.banner = Some(Banner::Error {
+                                code: e.code.clone(),
+                                message: e.message.clone(),
+                                details: Vec::new(),
+                            });
+                        }
                     }
+                    self.status_pending = false;
+                    self.ask_status();
                     // The engine state changed: what is active changed with it.
                     if self.loaded.state.usable() {
                         let rev = self.loaded.revision();
@@ -723,6 +810,19 @@ impl EditorApp {
                     }
                 }
                 Job::Status => self.status_pending = false,
+                Job::Mode(_) | Job::Release => {
+                    let lang = self.lang;
+                    self.settings_note = Some(match &r.result {
+                        Ok(_) if matches!(r.job, Job::Release) => (
+                            kim_ui::Tone::Success,
+                            lang.t("settings.released").to_string(),
+                        ),
+                        Ok(_) => (kim_ui::Tone::Success, lang.t("modes.switched").to_string()),
+                        Err(e) => (kim_ui::Tone::Error, format!("{} ({})", e.message, e.code)),
+                    });
+                    self.status_pending = false;
+                    self.ask_status();
+                }
             }
         }
         if self.changed.swap(false, Ordering::SeqCst) {
@@ -846,6 +946,16 @@ impl EditorApp {
     }
 
     fn apply(&mut self, act: Act) {
+        let had_dialog = self.dialog.is_some();
+        self.apply_act(act);
+        if self.dialog.is_none() {
+            self.dialog_in_settings = false;
+        } else if !had_dialog {
+            self.dialog_in_settings = self.dialog_from_settings && self.settings.is_some();
+        }
+    }
+
+    fn apply_act(&mut self, act: Act) {
         match act {
             Act::New(effect) => {
                 if self.has_unsaved_changes() {
@@ -857,6 +967,7 @@ impl EditorApp {
                     .first()
                     .and_then(|id| self.rows.iter().find(|r| &r.id == id))
                     .map_or_else(|| self.active_profile_id(), |r| r.profile.clone());
+                self.form_gen += 1;
                 self.form = Some(match effect {
                     Some(e) => RuleForm::starter(&p, e, self.lang),
                     None => RuleForm::new(&p),
@@ -900,6 +1011,7 @@ impl EditorApp {
                         f.fields.trigger.hold_key = key;
                         f.pristine = f.fields.clone();
                     }
+                    self.form_gen += 1;
                     self.form = Some(f);
                     self.external_change = false;
                     self.test = None;
@@ -1049,7 +1161,12 @@ impl EditorApp {
                     self.capture.active = false;
                 }
             }
-            Act::Engine(r) => self.link.send(Job::Engine(r)),
+            Act::Engine(r) => self.request_engine(r),
+            Act::OpenSettings(s) => self.open_settings(s),
+            Act::SetStartup(on) => self.set_startup(on),
+            Act::Release => self.link.send(Job::Release),
+            Act::ModeSet(m) => self.link.send(Job::Mode(ddalgak::ipc::ModeCmd::Set(m))),
+            Act::Shortcut(e) => self.edit_global_shortcut(&e),
             Act::Export(ids) => {
                 let ids = if ids.is_empty() {
                     self.rows.iter().map(|r| r.id.clone()).collect()
@@ -1152,24 +1269,31 @@ impl EditorApp {
                     .form
                     .as_ref()
                     .map_or_else(|| self.active_profile_id(), |f| f.profile.clone());
-                let fields = ddalgak::mode_edit::ModeFields {
-                    title: Some(title.trim().to_string()),
-                    ..Default::default()
-                };
-                match self.repo.commit_modes("mode.add", move |d| {
-                    ddalgak::mode_edit::add(d, Some(&p), None, &fields)
-                }) {
-                    Ok(c) => {
-                        let created = c.change.created_mode.clone();
-                        self.after_commit("Added a mode".into(), &c);
-                        self.new_mode_title.clear();
-                        if let (Some(f), Some(m)) = (self.form.as_mut(), created) {
-                            f.fields.mode.mode = m;
-                        }
-                    }
-                    Err(e) => self.fail(&e),
+                self.add_mode(p, &title, true);
+            }
+            Act::NewModeIn(p, title) => self.add_mode(p, &title, false),
+        }
+    }
+
+    /// Adds a mode named `title` to profile `p`; `for_form`: the open rule's Switch-mode action
+    /// then targets it.
+    fn add_mode(&mut self, p: String, title: &str, for_form: bool) {
+        let fields = ddalgak::mode_edit::ModeFields {
+            title: Some(title.trim().to_string()),
+            ..Default::default()
+        };
+        match self.repo.commit_modes("mode.add", move |d| {
+            ddalgak::mode_edit::add(d, Some(&p), None, &fields)
+        }) {
+            Ok(c) => {
+                let created = c.change.created_mode.clone();
+                self.after_commit("Added a mode".into(), &c);
+                self.new_mode_title.clear();
+                if for_form && let (Some(f), Some(m)) = (self.form.as_mut(), created) {
+                    f.fields.mode.mode = m;
                 }
             }
+            Err(e) => self.fail(&e),
         }
     }
 
@@ -1322,6 +1446,11 @@ impl EditorApp {
     // --- Keyboard ------------------------------------------------------------------------------
 
     fn keys(&mut self, ctx: &egui::Context) {
+        // ADR 0100: an embedded Settings window (a backend with one window, the tests) takes the
+        // keys; a native one has its own input anyway.
+        if self.settings.is_some() && ctx.embed_viewports() {
+            return;
+        }
         let events = ctx.input(|i| i.events.clone());
         // The capture box gets every key while it records (Tab still leaves it).
         if self.capture.active && self.form.is_some() && self.dialog.is_none() {
@@ -1538,35 +1667,77 @@ impl eframe::App for EditorApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let screen = self.audit_screen_name();
         EditorApp::ui(self, ui);
-        // ADR 0099: the geometry report while a developer asks for it (nothing otherwise).
-        kim_ui::inspect::finish_frame(ui.ctx(), "ddalgak", &screen);
+        // ADR 0099: the geometry report while a developer asks for it (nothing otherwise); a
+        // Settings audit is written by the Settings window (ADR 0100).
+        if !self.audits_settings() {
+            kim_ui::inspect::finish_frame(ui.ctx(), "ddalgak", &screen);
+        }
     }
 }
 
 impl EditorApp {
-    /// ADR 0099: opens the view a UI audit asks for (`KIM_UI_SCREEN`: `rules`, `new-rule`,
-    /// `modes`, `profiles`, `playground`, `settings`).
+    /// ADR 0099/0100: opens the view a UI audit asks for (`KIM_UI_SCREEN`): `rules`, `filters`
+    /// (the filter popover), `new-rule`, `key-picker` (CapsLock with Left Ctrl), `action-text`,
+    /// `action-remap`, `action-url`, `playground`, `settings-<section>` (the Settings window,
+    /// measured alone).
     pub fn audit_screen(&mut self, screen: &str) {
+        let fill = |me: &mut EditorApp, effect: Effect, keys: &str| {
+            me.start_new(Some(effect));
+            me.audit_details = true;
+            if let Some(f) = me.form.as_mut() {
+                f.fields.trigger.keys = keys.into();
+                match effect {
+                    Effect::TypeText => f.fields.text.text = "Kind regards,\nMina".into(),
+                    Effect::Remap => f.fields.remap.to = "LCtrl".into(),
+                    Effect::OpenUrl => f.fields.url = "github.com".into(),
+                    _ => {}
+                }
+            }
+        };
         match screen {
             "new-rule" => self.start_new(None),
-            "modes" => self.page = Page::Modes,
-            "profiles" => self.page = Page::Profiles,
+            "filters" => self.audit_filters = true,
+            "rules-search" => self.filter.query = "mail".into(),
+            "key-picker" => {
+                self.start_new(None);
+                let mut p = kim_ui::keys::KeyPicker::default();
+                p.toggle("LCtrl");
+                p.toggle("CapsLock");
+                self.key_picker = Some((CaptureTarget::Trigger, p));
+            }
+            "action-text" => fill(self, Effect::TypeText, "Ctrl+Alt+M"),
+            "action-remap" => fill(self, Effect::Remap, "CapsLock"),
+            "action-url" => fill(self, Effect::OpenUrl, "Ctrl+Shift+F9"),
             "playground" => self.page = Page::Playground,
-            "settings" => self.page = Page::Settings,
+            s if s.starts_with("settings") => {
+                let section = s
+                    .strip_prefix("settings-")
+                    .and_then(SettingsSection::parse)
+                    .unwrap_or_default();
+                self.open_settings(section);
+                self.audit_settings = true;
+            }
             _ => self.page = Page::Rules,
         }
     }
 
     /// The view shown, for the geometry report.
     pub fn audit_screen_name(&self) -> String {
+        if self.key_picker.is_some() {
+            return "key-picker".into();
+        }
         match self.page {
+            Page::Rules if self.form.is_some() && self.audit_details => "action-settings",
             Page::Rules if self.form.is_some() => "rule-editor",
+            Page::Rules if self.audit_filters => "filters",
             Page::Rules => "rules",
-            Page::Modes => "modes",
-            Page::Profiles => "profiles",
             Page::Playground => "playground",
-            Page::Settings => "settings",
         }
         .into()
+    }
+
+    /// Whether a UI audit measures the Settings window (the main window then writes nothing).
+    pub fn audits_settings(&self) -> bool {
+        self.audit_settings
     }
 }

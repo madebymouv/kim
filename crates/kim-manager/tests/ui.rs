@@ -593,7 +593,8 @@ fn settings_open_from_the_gear_and_persist() {
     h.get_by_label("Catalog").click();
     h.run();
     assert!(h.query_by_label("Refresh now").is_some());
-    h.get_by_label("Done").click();
+    // ADR 0100: Settings is a window of its own; Esc closes it.
+    h.key_press(egui::Key::Escape);
     h.run();
     assert!(!h.state().settings_visible());
     assert!(h.query_by_label("Subak, not installed").is_some());
@@ -1112,7 +1113,7 @@ fn descriptions_follow_the_chosen_language() {
         h.query_by_label_contains("Kim은 도구를 스스로").is_some(),
         "the note is Korean"
     );
-    for english in ["General", "Offline mode", "Done", "Light"] {
+    for english in ["General", "Offline mode", "Light"] {
         assert!(
             h.query_all_by_label(english).count() >= 1,
             "{english} stays English"

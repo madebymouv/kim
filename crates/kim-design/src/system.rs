@@ -103,3 +103,123 @@ pub fn work_area_logical() -> Option<(f32, f32)> {
 pub fn work_area_logical() -> Option<(f32, f32)> {
     None
 }
+
+/// ADR 0100: the client area of this process's visible top-level window titled `title`, copied
+/// from the screen as RGBA (width, height, pixels) — for a UI audit's photograph of a window
+/// egui cannot photograph itself (a child viewport). `None` when there is no such window.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn grab_window(title: &str) -> Option<(usize, usize, Vec<u8>)> {
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
+    use windows_sys::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, ClientToScreen, CreateCompatibleBitmap,
+        CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC,
+        SRCCOPY, SelectObject,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetClientRect, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    };
+
+    struct Find {
+        pid: u32,
+        title: Vec<u16>,
+        hwnd: HWND,
+    }
+    unsafe extern "system" fn each(h: HWND, l: LPARAM) -> i32 {
+        // SAFETY: `l` is the `Find` passed to `EnumWindows` below, alive for the whole call.
+        let f = unsafe { &mut *(l as *mut Find) };
+        let mut pid = 0u32;
+        // SAFETY: plain queries of a window handle Windows just gave us.
+        unsafe { GetWindowThreadProcessId(h, &mut pid) };
+        // SAFETY: a plain query of the same window handle.
+        let visible = unsafe { IsWindowVisible(h) } != 0;
+        if pid != f.pid || !visible {
+            return 1;
+        }
+        let mut buf = [0u16; 256];
+        // SAFETY: the buffer holds 256 UTF-16 units, as passed.
+        let n = unsafe { GetWindowTextW(h, buf.as_mut_ptr(), 256) };
+        if n > 0 && buf[..n as usize] == f.title[..] {
+            f.hwnd = h;
+            return 0;
+        }
+        1
+    }
+    let mut f = Find {
+        // SAFETY: no arguments, no preconditions.
+        pid: unsafe { GetCurrentProcessId() },
+        title: title.encode_utf16().collect(),
+        hwnd: std::ptr::null_mut(),
+    };
+    // SAFETY: the callback only reads windows and writes `f`, which outlives the call.
+    unsafe { EnumWindows(Some(each), &mut f as *mut Find as LPARAM) };
+    if f.hwnd.is_null() {
+        return None;
+    }
+    let mut rc = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    let mut at = POINT { x: 0, y: 0 };
+    // SAFETY: a window of this process found above; both out-pointers are valid.
+    unsafe {
+        GetClientRect(f.hwnd, &mut rc);
+        ClientToScreen(f.hwnd, &mut at);
+    }
+    let (w, h) = (rc.right - rc.left, rc.bottom - rc.top);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    let mut px = vec![0u8; (w * h * 4) as usize];
+    // SAFETY: the usual GDI copy of a screen rectangle into a 32-bit top-down DIB; every
+    // object created here is released before returning.
+    let ok = unsafe {
+        let screen = GetDC(std::ptr::null_mut());
+        let mem = CreateCompatibleDC(screen);
+        let bmp = CreateCompatibleBitmap(screen, w, h);
+        let old = SelectObject(mem, bmp);
+        let copied = BitBlt(mem, 0, 0, w, h, screen, at.x, at.y, SRCCOPY) != 0;
+        let mut bi: BITMAPINFO = std::mem::zeroed();
+        bi.bmiHeader = BITMAPINFOHEADER {
+            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            ..std::mem::zeroed()
+        };
+        let lines = GetDIBits(
+            mem,
+            bmp,
+            0,
+            h as u32,
+            px.as_mut_ptr().cast(),
+            &mut bi,
+            DIB_RGB_COLORS,
+        );
+        SelectObject(mem, old);
+        DeleteObject(bmp);
+        DeleteDC(mem);
+        ReleaseDC(std::ptr::null_mut(), screen);
+        copied && lines == h
+    };
+    if !ok {
+        return None;
+    }
+    let rgba: Vec<u8> = px
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|b| [b[2], b[1], b[0], 255])
+        .collect();
+    Some((w as usize, h as usize, rgba))
+}
+
+#[cfg(not(windows))]
+pub fn grab_window(_: &str) -> Option<(usize, usize, Vec<u8>)> {
+    None
+}

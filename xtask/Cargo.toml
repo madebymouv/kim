@@ -12,10 +12,10 @@ workspace = true
 
 [dependencies]
 getrandom = "0.4.3"
-kim = { version = "0.0.3", path = "../crates/kim" }
+kim = { version = "0.0.4", path = "../crates/kim" }
 # ADR 0099: `cargo xtask ui-audit` checks geometry reports against the design contract and
 # compares screenshots (PNG) with the curated baselines.
-kim-design = { version = "0.0.2", path = "../crates/kim-design" }
+kim-design = { version = "0.0.3", path = "../crates/kim-design" }
 png = { version = "0.18.1", default-features = false }
 regex = "1.13.1"
 serde_json = "1.0.154"

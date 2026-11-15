@@ -9,7 +9,7 @@
 //! on the screenshots the same run takes (docs/UI_QUALITY_PIPELINE.md).
 
 use crate::inspect::{Component, Report};
-use crate::{Theme, font, size};
+use crate::{Theme, font, size, space};
 use std::collections::BTreeMap;
 
 /// Alignment and size tolerance: one physical pixel.
@@ -103,7 +103,7 @@ fn expect(kind: &str) -> Expect {
             ..NONE
         },
         "list-row" => Expect {
-            heights: &[size::LIST_ROW],
+            heights: &[size::LIST_ROW, size::LIST_ROW_DETAIL],
             uniform_h: true,
             uniform_w: true,
             even_gaps: true,
@@ -133,6 +133,18 @@ fn expect(kind: &str) -> Expect {
             uniform_h: true,
             uniform_w: true,
             even_gaps: true,
+            ..NONE
+        },
+        // ADR 0100: the form and toolbar components.
+        "choice-card" => Expect {
+            heights: &[size::CHOICE_CARD_HEIGHT],
+            min_width: Some(size::CHOICE_CARD_MIN_WIDTH),
+            uniform_h: true,
+            uniform_w: true,
+            ..NONE
+        },
+        "checkbox" | "number-input" => Expect {
+            heights: &[size::CONTROL],
             ..NONE
         },
         "tab-new" | "icon-button" => Expect {
@@ -251,7 +263,12 @@ pub fn audit(r: &Report) -> Vec<Finding> {
                 format!("{}–{}", px((lo * s).round()), px((hi * s).round())),
             );
         }
-        let min_width = if c.has("compact") {
+        let min_width = if c.has("key") {
+            // A key of the key picker: never narrower than a two-letter cap.
+            Some(size::KEY_MIN_WIDTH)
+        } else if c.has("chip") {
+            None
+        } else if c.has("compact") {
             ex.min_width.map(|_| size::BUTTON_MIN_WIDTH_COMPACT)
         } else {
             ex.min_width
@@ -411,7 +428,7 @@ pub fn audit(r: &Report) -> Vec<Finding> {
             .min_by(|a, b| a.bounds.x.total_cmp(&b.bounds.x));
         if let Some(c) = first {
             let gap = c.bounds.x - bar.bounds.x;
-            let max = (crate::space::S * s).round() + TOL_PX;
+            let max = (space::S * s).round() + TOL_PX;
             if gap > max {
                 fail(
                     c,
@@ -506,6 +523,110 @@ pub fn audit(r: &Report) -> Vec<Finding> {
                     px(*g0),
                 );
             }
+        }
+    }
+    // ADR 0100: one toolbar, one system: every control of a toolbar or a footer (a parent whose
+    // name ends in `.toolbar` or `.footer`) has the control height and the same vertical centre.
+    for (parent, list) in r
+        .components
+        .iter()
+        .filter(|c| c.visible && !c.clipped && c.interactive)
+        .filter_map(|c| {
+            let p = c.parent.as_deref()?;
+            (p.ends_with(".toolbar") || p.ends_with(".footer")).then_some((p, c))
+        })
+        .fold(BTreeMap::<&str, Vec<&Component>>::new(), |mut m, (p, c)| {
+            m.entry(p).or_default().push(c);
+            m
+        })
+    {
+        let want = (size::CONTROL * s).round();
+        for c in &list {
+            if (c.bounds.h - want).abs() > TOL_PX {
+                fail(
+                    c,
+                    Level::Fail,
+                    "toolbar-height",
+                    format!("a control of `{parent}` is not the control height"),
+                    px(c.bounds.h),
+                    px(want),
+                );
+            }
+        }
+        // One gap between neighbours: the toolbar gap (`space::S`), never less, never an overlap.
+        // A gap of two toolbar gaps or more is a deliberate spring (Cancel left, Save right).
+        let mut row: Vec<&&Component> = list.iter().collect();
+        row.sort_by(|a, b| a.bounds.x.total_cmp(&b.bounds.x));
+        let gap = (space::S * s).round();
+        for w in row.windows(2) {
+            let g = w[1].bounds.x - w[0].bounds.right();
+            if g < 2.0 * gap && (g - gap).abs() > TOL_PX {
+                fail(
+                    w[1],
+                    Level::Fail,
+                    "toolbar-gap",
+                    format!("the gap before this control of `{parent}` is not the toolbar gap"),
+                    px(g),
+                    px(gap),
+                );
+            }
+        }
+        let mid = |c: &Component| c.bounds.y + c.bounds.h / 2.0;
+        if let Some(first) = list.first()
+            && let Some(c) = list.iter().find(|c| (mid(c) - mid(first)).abs() > TOL_PX)
+        {
+            fail(
+                c,
+                Level::Fail,
+                "toolbar-align",
+                format!("the controls of `{parent}` are not on one line"),
+                px(mid(c)),
+                px(mid(first)),
+            );
+        }
+    }
+    // ADR 0092/0100: the settings gear sits in the window's lower-right corner.
+    if let Some(win) = r.components.iter().find(|c| c.kind == "region") {
+        let reach = ((size::GEAR + size::GEAR_INSET) * s).round() + TOL_PX;
+        for g in r
+            .components
+            .iter()
+            .filter(|c| c.visible && c.kind == "gear")
+        {
+            let right = win.bounds.right() - g.bounds.right();
+            let bottom = win.bounds.bottom() - g.bounds.bottom();
+            if right > reach || bottom > reach || right < -TOL_PX || bottom < -TOL_PX {
+                fail(
+                    g,
+                    Level::Fail,
+                    "gear-corner",
+                    "the settings gear is not in the lower-right corner".into(),
+                    format!(
+                        "{} from the right, {} from the bottom",
+                        px(right),
+                        px(bottom)
+                    ),
+                    format!("0–{} from both", px(reach)),
+                );
+            }
+        }
+    }
+    // ADR 0100: a form column keeps a readable width.
+    for c in r
+        .components
+        .iter()
+        .filter(|c| c.visible && c.kind == "form-section")
+    {
+        let max = (size::FORM_MAX_WIDTH * s).round() + TOL_PX;
+        if c.bounds.w > max {
+            fail(
+                c,
+                Level::Fail,
+                "form-width",
+                "a form section is wider than the form column".into(),
+                px(c.bounds.w),
+                format!("≤ {}", px(max)),
+            );
         }
     }
     // Interactive siblings (any type, same parent) never overlap, unless one holds the other.
@@ -657,6 +778,47 @@ mod tests {
                 role: "ui".into(),
             })
             .colors(crate::DARK.text_secondary, crate::DARK.bg_raised)
+    }
+
+    /// ADR 0100: a toolbar whose search field is 24 high next to 28-high buttons, a button 3 px
+    /// lower, and a gear away from the corner are each reported with actual and expected.
+    #[test]
+    fn a_mismatched_toolbar_and_a_lost_gear_fail() {
+        let mut r = report(1.0);
+        r.components = vec![
+            Component::new("w", "region", Rect::new(0.0, 0.0, 800.0, 600.0)),
+            Component::new("search", "text-input", Rect::new(10.0, 10.0, 400.0, 24.0))
+                .parent("rules.toolbar")
+                .interactive(),
+            Component::new("filters", "button", Rect::new(420.0, 8.0, 80.0, 28.0))
+                .parent("rules.toolbar")
+                .interactive(),
+            Component::new("new", "button", Rect::new(510.0, 11.0, 80.0, 28.0))
+                .parent("rules.toolbar")
+                .interactive(),
+            Component::new("gear", "gear", Rect::new(700.0, 500.0, 28.0, 28.0)).interactive(),
+        ];
+        let f = audit(&r);
+        let rules: Vec<(&str, &str)> = f
+            .iter()
+            .filter(|x| x.level == Level::Fail)
+            .map(|x| (x.component.as_str(), x.rule))
+            .collect();
+        assert!(rules.contains(&("search", "toolbar-height")), "{rules:?}");
+        assert!(rules.contains(&("new", "toolbar-align")), "{rules:?}");
+        assert!(rules.contains(&("gear", "gear-corner")), "{rules:?}");
+        // The same toolbar built right passes.
+        r.components[1].bounds = Rect::new(12.0, 8.0, 400.0, 28.0);
+        r.components[3].bounds = Rect::new(508.0, 8.0, 80.0, 28.0);
+        r.components[4].bounds = Rect::new(760.0, 560.0, 28.0, 28.0);
+        let f = audit(&r);
+        assert!(
+            f.iter().all(|x| x.level != Level::Fail),
+            "{:?}",
+            f.iter()
+                .filter(|x| x.level == Level::Fail)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

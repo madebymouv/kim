@@ -33,6 +33,9 @@ pub enum ButtonKind {
 #[derive(Debug)]
 pub struct Button {
     text: String,
+    /// ADR 0100: the name for screen readers and the UI audit when the text alone is not enough
+    /// (a "Type" button beside one of several key fields).
+    name: Option<String>,
     kind: ButtonKind,
     compact: bool,
     min_width: f32,
@@ -43,6 +46,7 @@ impl Button {
     pub fn new(kind: ButtonKind, text: impl Into<String>) -> Button {
         Button {
             text: text.into(),
+            name: None,
             kind,
             compact: false,
             min_width: if kind == ButtonKind::Ghost {
@@ -75,6 +79,11 @@ impl Button {
         self.min_width = w;
         self
     }
+    /// The button's name for screen readers and the UI audit (its text stays as it is).
+    pub fn named(mut self, name: impl Into<String>) -> Button {
+        self.name = Some(name.into());
+        self
+    }
     /// Shown pressed in (a toggle-like toolbar button).
     pub fn selected(mut self, on: bool) -> Button {
         self.selected = on;
@@ -103,7 +112,7 @@ impl Widget for Button {
         );
         let w = (galley.size().x + 2.0 * pad).max(self.min_width);
         let (rect, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
-        let text = self.text.clone();
+        let text = self.name.clone().unwrap_or_else(|| self.text.clone());
         resp.widget_info(|| WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), &text));
         if ui.is_rect_visible(rect) {
             let hot = resp.hovered() && resp.enabled();
@@ -181,6 +190,12 @@ impl Widget for Button {
                 if self.compact {
                     states.push("compact");
                 }
+                // ADR 0100: a key of the key picker and a removable chip have their own widths.
+                if self.min_width == size::KEY_MIN_WIDTH {
+                    states.push("key");
+                } else if self.min_width == 0.0 && self.kind != ButtonKind::Ghost {
+                    states.push("chip");
+                }
                 if self.selected {
                     states.push("selected");
                 }
@@ -189,7 +204,7 @@ impl Widget for Button {
                 }
                 inspect::record(
                     ui,
-                    &format!("button:{}", self.text),
+                    &format!("button:{text}"),
                     "button",
                     rect,
                     Some(Painted {
@@ -560,18 +575,25 @@ pub fn dropdown<T: PartialEq + Clone>(
         .map(|(_, l)| l.clone())
         .unwrap_or_default();
     let mut changed = false;
-    let r = egui::ComboBox::from_id_salt(id_salt)
-        .selected_text(current)
-        .width(180.0)
-        .height(320.0)
-        .show_ui(ui, |ui| {
-            for (v, l) in options {
-                if ui.selectable_label(v == value, l.as_str()).clicked() && v != value {
-                    *value = v.clone();
-                    changed = true;
-                }
-            }
-        });
+    // ADR 0100: a dropdown is a control: `size::CONTROL` high like a button or a text field.
+    let r = ui
+        .scope(|ui| {
+            ui.spacing_mut().interact_size.y = size::CONTROL;
+            egui::ComboBox::from_id_salt(id_salt)
+                .selected_text(current)
+                .width(dropdown_width(ui, options))
+                .height(320.0)
+                .show_ui(ui, |ui| {
+                    ui.spacing_mut().interact_size.y = size::MENU_ITEM;
+                    for (v, l) in options {
+                        if ui.selectable_label(v == value, l.as_str()).clicked() && v != value {
+                            *value = v.clone();
+                            changed = true;
+                        }
+                    }
+                })
+        })
+        .inner;
     let l = label.to_string();
     inspect::record(
         ui,
@@ -587,6 +609,24 @@ pub fn dropdown<T: PartialEq + Clone>(
     r.response
         .widget_info(|| WidgetInfo::labeled(egui::Role::ComboBox, true, &l));
     changed
+}
+
+/// The width of a dropdown: its longest option and the arrow, at least 120 and at most 240.
+fn dropdown_width<T>(ui: &Ui, options: &[(T, String)]) -> f32 {
+    let w = options
+        .iter()
+        .map(|(_, l)| {
+            ui.painter()
+                .layout_no_wrap(
+                    l.clone(),
+                    ui_font(ui.ctx(), font::BODY, false),
+                    Color32::PLACEHOLDER,
+                )
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max);
+    (w + 2.0 * space::S + size::ICON_M + space::S).clamp(120.0, 240.0)
 }
 
 /// A single-line text field at the control height with a hint; `label` is its accessible name
@@ -1335,6 +1375,34 @@ pub fn dialog<R>(
 ) -> egui::ModalResponse<R> {
     let c = Colors::get(ctx);
     let width = dialog_width(ctx);
+    modal(ctx, id).show(ctx, |ui| {
+        ui.set_width(width);
+        if short(ui.ctx()) {
+            ui.spacing_mut().item_spacing.y = space::XS;
+        }
+        ui.label(
+            RichText::new(title_text)
+                .font(ui_font(ui.ctx(), font::TITLE, true))
+                .color(c.text_primary),
+        );
+        ui.add_space(space::S);
+        body(ui)
+    })
+}
+
+/// ADR 0100: a dialog of `width` (a picker that needs more room than the standard dialog),
+/// narrower in a narrow window; otherwise like [`dialog`].
+pub fn dialog_sized<R>(
+    ctx: &egui::Context,
+    id: &str,
+    title_text: &str,
+    width: f32,
+    body: impl FnOnce(&mut Ui) -> R,
+) -> egui::ModalResponse<R> {
+    let c = Colors::get(ctx);
+    let width = width
+        .min(ctx.content_rect().width() - 2.0 * space::L - 2.0 * space::DIALOG)
+        .max(160.0);
     modal(ctx, id).show(ctx, |ui| {
         ui.set_width(width);
         if short(ui.ctx()) {

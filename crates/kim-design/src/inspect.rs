@@ -363,7 +363,11 @@ impl Report {
         }
         let mut s = serde_json::to_string_pretty(&self.to_json()).unwrap_or_default();
         s.push('\n');
-        std::fs::write(path, s)
+        // Written whole or not at all: a test reading the live report while a window rewrites it
+        // every frame never sees half a file (ADR 0100).
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, s)?;
+        std::fs::rename(&tmp, path)
     }
 }
 

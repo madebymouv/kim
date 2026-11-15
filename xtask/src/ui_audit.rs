@@ -85,7 +85,27 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "advanced",
             ],
         ),
-        ("ddalgak", &["rules", "new-rule", "profiles", "settings"]),
+        // ADR 0100: the Rules page with rules and without, the filters popover, the rule editor,
+        // the key picker, two action forms and every section of the Settings window.
+        (
+            "ddalgak",
+            &[
+                "rules",
+                "rules-empty",
+                "rules-search",
+                "filters",
+                "new-rule",
+                "key-picker",
+                "action-text",
+                "action-remap",
+                "settings-general",
+                "settings-profiles",
+                "settings-modes",
+                "settings-shortcuts",
+                "settings-appearance",
+                "settings-advanced",
+            ],
+        ),
     ];
     for (app, list) in screens {
         for s in list {
@@ -94,7 +114,14 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 let base = z == 1.0
                     && matches!(
                         *s,
-                        "launcher" | "settings" | "general" | "capture" | "rules" | "new-rule"
+                        "launcher"
+                            | "settings"
+                            | "general"
+                            | "capture"
+                            | "rules"
+                            | "new-rule"
+                            | "key-picker"
+                            | "settings-general"
                     );
                 out.push(egui_run(app, s, z, "dark", "en", base));
             }
@@ -260,6 +287,9 @@ fn sandbox(dir: &Path) -> (PathBuf, PathBuf) {
     (r, l)
 }
 
+/// ADR 0100: the rules a Ddalgak audit shows (no consent: nothing here can run).
+const DDALGAK_FIXTURE: &str = include_str!("../../design/ui-fixtures/ddalgak-rules.json");
+
 /// One egui program's view.
 fn run_egui(root: &Path, out: &Path, r: &Run) -> Result<(PathBuf, PathBuf), String> {
     let (roaming, local) = sandbox(&out.join("sandbox").join(&r.name));
@@ -286,14 +316,23 @@ fn run_egui(root: &Path, out: &Path, r: &Run) -> Result<(PathBuf, PathBuf), Stri
                 format!("kim-ui-audit-noeul-{}", std::process::id()),
             ],
         ),
-        _ => (
-            "ddalgak-editor",
-            vec![
-                "--no-hotkeys".into(),
-                "--endpoint".into(),
-                format!("kim-ui-audit-ddalgak-{}", std::process::id()),
-            ],
-        ),
+        _ => {
+            // ADR 0100: a realistic rules file (two profiles, two modes, four rules) unless the
+            // run photographs the empty state.
+            if r.screen != "rules-empty" {
+                let d = roaming.join("mouv").join("ddalgak");
+                let _ = std::fs::create_dir_all(&d);
+                let _ = std::fs::write(d.join("rules.json"), DDALGAK_FIXTURE);
+            }
+            (
+                "ddalgak-editor",
+                vec![
+                    "--no-hotkeys".into(),
+                    "--endpoint".into(),
+                    format!("kim-ui-audit-ddalgak-{}", std::process::id()),
+                ],
+            )
+        }
     };
     let child = command(&exe(root, bin))
         .args(&args)

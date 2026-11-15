@@ -365,6 +365,20 @@ pub mod size {
     pub const CAPTION_BUTTON_WIDTH: f32 = 46.0;
     pub const PROGRESS: f32 = 4.0;
     pub const STATUS_DOT: f32 = 8.0;
+
+    /// ADR 0100: a list row with a second line (a rule: its name and keys over what it does).
+    pub const LIST_ROW_DETAIL: f32 = 52.0;
+    /// A choice card (an action type): icon and title over a one-line example.
+    pub const CHOICE_CARD_HEIGHT: f32 = 56.0;
+    pub const CHOICE_CARD_MIN_WIDTH: f32 = 148.0;
+    /// A key of the key picker: the control height, never narrower than a 2-letter cap.
+    pub const KEY: f32 = 28.0;
+    pub const KEY_MIN_WIDTH: f32 = 36.0;
+    /// A form column never grows wider than this (readable line length in a wide window).
+    pub const FORM_MAX_WIDTH: f32 = 720.0;
+    /// A settings window with several sections (its own native window, ADR 0100).
+    pub const SETTINGS_WINDOW_WIDTH: f32 = 760.0;
+    pub const SETTINGS_WINDOW_HEIGHT: f32 = 560.0;
 }
 
 /// Interaction states as opacities over the base colours.

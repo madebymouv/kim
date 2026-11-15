@@ -100,7 +100,9 @@ impl EditorApp {
                     if full {
                         ui.label(small(lang.t("macro.full"), c.warning));
                     }
-                    stop = ui.button(lang.t("macro.stop")).clicked();
+                    stop = ui
+                        .add(kim_ui::Button::secondary(lang.t("macro.stop")))
+                        .clicked();
                 });
         }
         ui.horizontal_wrapped(|ui| {
@@ -108,7 +110,7 @@ impl EditorApp {
             if ui
                 .add_enabled(
                     can_add && !recording,
-                    egui::Button::new(lang.t("macro.add")),
+                    kim_ui::Button::secondary(lang.t("macro.add")),
                 )
                 .clicked()
             {
@@ -117,13 +119,20 @@ impl EditorApp {
             if ui
                 .add_enabled(
                     !recording && f.fields.macro_steps.len() < 32,
-                    egui::Button::new(lang.t("macro.add_wait")),
+                    kim_ui::Button::secondary(lang.t("macro.add_wait")),
                 )
                 .clicked()
             {
                 f.add_delay(500);
             }
-            if !recording && ui.button(format!("● {}", lang.t("macro.record"))).clicked() {
+            if !recording
+                && ui
+                    .add(kim_ui::Button::secondary(format!(
+                        "● {}",
+                        lang.t("macro.record")
+                    )))
+                    .clicked()
+            {
                 start = true;
             }
             if !recording
@@ -140,7 +149,7 @@ impl EditorApp {
                 if ui
                     .add_enabled(
                         !recording && f.fields.macro_steps.len() < 32,
-                        egui::Button::new(lang.t(&format!("macro.add_{kind}"))),
+                        kim_ui::Button::secondary(lang.t(&format!("macro.add_{kind}"))),
                     )
                     .clicked()
                 {
@@ -191,7 +200,7 @@ impl EditorApp {
                         i + 1
                     );
                     if ui
-                        .add_enabled(on && !recording, egui::Button::new(label))
+                        .add_enabled(on && !recording, kim_ui::Button::secondary(label))
                         .on_hover_text(&name)
                         .accessible_name(&name)
                         .clicked()
@@ -226,7 +235,11 @@ impl EditorApp {
                 ui.label(lang.t("macro.times"));
                 ui.add(egui::DragValue::new(&mut f.fields.times).range(1..=100))
                     .accessible_name(lang.t("macro.times"));
-                ui.checkbox(&mut f.fields.continue_on_error, lang.t("macro.continue"));
+                kim_ui::checkbox(
+                    ui,
+                    &mut f.fields.continue_on_error,
+                    lang.t("macro.continue"),
+                );
             });
         }
         if start {

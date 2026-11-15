@@ -50,7 +50,7 @@ fix the code. Keep the baseline set small (`design/ui-baselines/`, one or two vi
 | `KIM_UI_SNAPSHOT=<file>` | every program | screenshot of the same frame (egui: PNG; Subak: BMP, converted) |
 | `KIM_UI_EXIT=1` | egui programs | close once report and screenshot are written |
 | `KIM_UI_ZOOM=<1.0…2.0>` | every program | the UI zoom instead of `ui.json` / Auto |
-| `KIM_UI_SCREEN=<view>` | egui programs | open a view: Kim `launcher`, `settings`, `settings-shortcuts`, `settings-catalog`, `settings-about`; Noeul `general` … `advanced`; Ddalgak `rules`, `new-rule`, `modes`, `profiles`, `playground`, `settings` |
+| `KIM_UI_SCREEN=<view>` | egui programs | open a view: Kim `launcher`, `settings`, `settings-shortcuts`, `settings-catalog`, `settings-about`; Noeul `general` … `advanced`; Ddalgak `rules`, `rules-empty`, `rules-search`, `filters`, `new-rule`, `key-picker`, `action-text`, `action-remap`, `action-url`, `playground`, `settings-general` … `settings-advanced` (ADR 0100; a `settings-*` view is measured and photographed in the Settings window itself; Ddalgak runs read `design/ui-fixtures/ddalgak-rules.json`) |
 | `KIM_UI_THEME=dark|light`, `KIM_UI_LANG=en|ko` | all `kim-ui` / `kim-design` users | theme and language of the run |
 | `KIM_UI_POS=x,y` | egui programs | window position |
 | `SUBAK_TEST_SCREEN_ZOOM`, `SUBAK_TEST_DPI` | `subak-gui --test-offscreen`, debug builds | UI zoom and DPI fixtures |
@@ -67,7 +67,16 @@ computing where they *should* be.
 scale, ±0.6 px; icons and terminal text exempt), `min-readable` (≥ 10 logical px), `centered`
 (label centre within 1.5 px of the control's), `uniform-size` (repeated tabs, nav items, list rows,
 menu items, tiles), `even-spacing`, `leading-gap`, `overlap` (pointer areas of interactive
-siblings of any type), `contrast` (WCAG 4.5:1 text), `palette` (warning), `disabled-distinct`.
+siblings of any type), `contrast` (WCAG 4.5:1 text), `palette` (warning), `disabled-distinct`;
+ADR 0100: `toolbar-height`, `toolbar-align`, `toolbar-gap` (every control of a parent named
+`….toolbar` / `….footer`: the control height, one centre line, the toolbar gap or a deliberate
+spring of two gaps or more), `gear-corner`, `form-width` (form sections ≤ `size::FORM_MAX_WIDTH`),
+choice cards (height, minimum width, uniform), checkbox and number-field heights, key-picker keys
+≥ `size::KEY_MIN_WIDTH`.
+
+A real-desktop test can read the live reports: with `KIM_UI_INSPECT` set (and no
+`KIM_UI_EXIT`) a window rewrites its report every frame, atomically, and Ddalgak's Settings
+window writes its own next to it (`….settings.json`).
 
 To cover a new component: record it in its `kim-ui` widget with `inspect::record` (or in the
 Win32 layout's parts), give it a `kind` the rules know (or add an `expect()` entry in

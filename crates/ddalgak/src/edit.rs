@@ -167,8 +167,12 @@ pub fn canonical_trigger(input: &str) -> Result<String, TriggerError> {
 /// outputs only (`max == 1`); `send_keys` presses keys.
 pub fn canonical_output(input: &str, max: usize) -> Result<String, String> {
     let parts: Vec<&str> = input.split_whitespace().collect();
-    if parts.is_empty() || parts.len() > max {
-        return Err(format!("`{input}`: give one to {max} keys or chords"));
+    // ADR 0100: an empty field said "``: give one to 1 keys or chords" in the editor.
+    if parts.is_empty() {
+        return Err("choose a key".into());
+    }
+    if parts.len() > max {
+        return Err(format!("`{input}`: give at most {max} keys or chords"));
     }
     let mut out = Vec::new();
     for p in parts {

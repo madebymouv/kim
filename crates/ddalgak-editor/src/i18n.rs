@@ -76,6 +76,249 @@ pub fn is_name(key: &str) -> bool {
 
 /// `(key, English, 한국어)`.
 pub const LABELS: &[(&str, &str, &str)] = &[
+    (
+        "engine.desc_running",
+        "On: your rules are working.",
+        "켜짐: 규칙이 작동하고 있습니다.",
+    ),
+    (
+        "engine.desc_paused",
+        "On, but paused: rules wait until you resume (engine controls keep working).",
+        "켜져 있지만 일시 정지됨: 다시 시작할 때까지 규칙이 멈춥니다 (엔진 제어 규칙은 작동).",
+    ),
+    (
+        "engine.desc_off",
+        "Off: no key or button is changed.",
+        "꺼짐: 어떤 키나 버튼도 바뀌지 않습니다.",
+    ),
+    (
+        "engine.desc_not_running",
+        "Ddalgak's tray app is not running. Start Ddalgak from Kim or the Start menu.",
+        "딸깍 트레이 앱이 실행 중이 아닙니다. Kim이나 시작 메뉴에서 딸깍을 실행하세요.",
+    ),
+    (
+        "engine.turning_on",
+        "Turning on… waiting for Ddalgak to answer.",
+        "켜는 중… 딸깍의 응답을 기다립니다.",
+    ),
+    (
+        "engine.turning_off",
+        "Turning off… waiting for Ddalgak to answer.",
+        "끄는 중… 딸깍의 응답을 기다립니다.",
+    ),
+    (
+        "engine.pausing",
+        "Pausing… waiting for Ddalgak to answer.",
+        "일시 정지하는 중… 딸깍의 응답을 기다립니다.",
+    ),
+    (
+        "engine.resuming",
+        "Resuming… waiting for Ddalgak to answer.",
+        "다시 시작하는 중… 딸깍의 응답을 기다립니다.",
+    ),
+    (
+        "engine.pause_desc",
+        "Stops all rules for a while; held keys are released. Different from turning Ddalgak off.",
+        "잠시 모든 규칙을 멈추고 눌린 키를 놓습니다. 딸깍을 끄는 것과는 다릅니다.",
+    ),
+    (
+        "engine.pause_needs_on",
+        "Available while Ddalgak is on.",
+        "딸깍이 켜져 있을 때 쓸 수 있습니다.",
+    ),
+    (
+        "engine.timeout",
+        "Ddalgak did not answer within 5 seconds; nothing is assumed changed.",
+        "딸깍이 5초 안에 응답하지 않았습니다. 바뀐 것으로 간주하지 않습니다.",
+    ),
+    ("engine.status_on", "On", "켜짐"),
+    ("engine.status_paused", "Paused", "일시 정지"),
+    ("engine.status_off", "Off", "꺼짐"),
+    ("engine.status_not_running", "Not running", "실행 안 됨"),
+    ("engine.status_changing", "Changing…", "바꾸는 중…"),
+    (
+        "engine.status_hint",
+        "Ddalgak's state. Turn it on or off and pause it in Settings (the gear, lower right).",
+        "딸깍의 상태입니다. 켜기·끄기와 일시 정지는 설정(오른쪽 아래 톱니)에서 합니다.",
+    ),
+    ("field.clip.op", "What to do", "할 일"),
+    ("field.clip.to", "Change it to", "바꿀 형태"),
+    ("field.mouse.kind", "Mouse action", "마우스 동작"),
+    (
+        "field.program_more",
+        "More program options",
+        "프로그램 추가 옵션",
+    ),
+    (
+        "field.tap_help",
+        "Optional: a quick tap of the key sends this instead.",
+        "선택: 키를 짧게 누르면 대신 이 키를 보냅니다.",
+    ),
+    ("field.text_hint", "The text to type", "입력할 글자"),
+    ("field.win.op", "Window action", "창 동작"),
+    (
+        "form.abbreviation_help",
+        "Type this in any program; Ddalgak replaces it when you end the word.",
+        "아무 프로그램에서나 이것을 입력하고 단어를 끝내면 딸깍이 바꿉니다.",
+    ),
+    (
+        "form.trigger_sub",
+        "What starts the rule",
+        "규칙을 시작하는 것",
+    ),
+    ("form.action_sub", "What happens", "일어나는 일"),
+    (
+        "form.test_sub",
+        "Check the rule without pressing anything, then save it",
+        "아무것도 누르지 않고 규칙을 확인한 뒤 저장하세요",
+    ),
+    (
+        "form.advanced_sub",
+        "conditions, priority, description",
+        "조건, 우선순위, 설명",
+    ),
+    (
+        "form.back_hint",
+        "Back to the list (unsaved changes are asked about first)",
+        "목록으로 (저장하지 않은 변경은 먼저 물어봅니다)",
+    ),
+    (
+        "form.blocked",
+        "Fix the marked fields to save.",
+        "표시된 항목을 고치면 저장할 수 있습니다.",
+    ),
+    (
+        "form.capture_empty",
+        "Click, then press keys",
+        "클릭한 뒤 키를 누르세요",
+    ),
+    ("form.days", "Days", "요일"),
+    (
+        "form.fill_in",
+        "Choose the keys and an action to save the rule.",
+        "키와 동작을 고르면 규칙을 저장할 수 있습니다.",
+    ),
+    (
+        "form.fires",
+        "Runs when the keys are",
+        "키를 이렇게 하면 실행",
+    ),
+    ("form.opens", "Opens", "열리는 주소"),
+    (
+        "form.pick_keys",
+        "Pick keys by clicking",
+        "클릭으로 키 고르기",
+    ),
+    ("form.record", "Record keys", "키 녹화"),
+    (
+        "form.combo_label",
+        "How the keys are pressed",
+        "키를 누르는 방식",
+    ),
+    ("form.sentence_keys", "choose keys", "키를 고르세요"),
+    (
+        "form.sentence_action",
+        "choose an action",
+        "동작을 고르세요",
+    ),
+    (
+        "form.title_hint",
+        "A short name for the list",
+        "목록에 보일 짧은 이름",
+    ),
+    ("form.trigger_options", "Trigger options", "트리거 옵션"),
+    ("form.keys", "Keys", "키"),
+    ("list.more", "More actions", "더 보기"),
+    ("modes.active_now", "active now", "지금 사용 중"),
+    (
+        "modes.switch_hint",
+        "Switch the running engine to this mode now",
+        "실행 중인 엔진을 지금 이 모드로 바꿉니다",
+    ),
+    ("modes.switched", "Mode switched.", "모드를 바꿨습니다."),
+    (
+        "settings.emergency_desc",
+        "Turns Ddalgak off at once and releases held keys, even when a rule, the window or another shortcut does not respond. It cannot be changed or turned off.",
+        "규칙이나 창, 다른 단축키가 응답하지 않아도 딸깍을 즉시 끄고 눌린 키를 놓습니다. 바꾸거나 끌 수 없습니다.",
+    ),
+    (
+        "settings.modes_of",
+        "Modes of the active profile",
+        "현재 프로필의 모드",
+    ),
+    (
+        "settings.release_desc",
+        "Releases every key and button Ddalgak holds, for a key that seems stuck.",
+        "키가 눌린 채 멈춘 것 같을 때 딸깍이 누르고 있는 모든 키와 버튼을 놓습니다.",
+    ),
+    (
+        "settings.released",
+        "Held keys were released.",
+        "눌린 키를 놓았습니다.",
+    ),
+    (
+        "settings.size_note",
+        "The size of all Kim windows is set in Kim Manager → Settings → Size.",
+        "모든 Kim 창의 크기는 Kim Manager → 설정 → Size에서 정합니다.",
+    ),
+    (
+        "settings.startup_desc",
+        "Starts Ddalgak's tray app when you sign in. The engine stays off until you turn it on.",
+        "로그인할 때 딸깍 트레이 앱을 시작합니다. 엔진은 직접 켤 때까지 꺼져 있습니다.",
+    ),
+    (
+        "settings.startup_foreign",
+        "A start-at-sign-in entry exists but starts another copy of Ddalgak.",
+        "로그인 시 시작 항목이 있지만 다른 위치의 딸깍을 시작합니다.",
+    ),
+    (
+        "settings.startup_unreadable",
+        "The start-at-sign-in setting could not be read",
+        "로그인 시 시작 설정을 읽을 수 없습니다",
+    ),
+    (
+        "settings.startup_on",
+        "Ddalgak will start when you sign in.",
+        "로그인할 때 딸깍이 시작됩니다.",
+    ),
+    (
+        "settings.startup_off",
+        "Ddalgak will not start at sign-in.",
+        "로그인할 때 딸깍이 시작되지 않습니다.",
+    ),
+    ("shortcuts.emergency", "Emergency off", "긴급 끄기"),
+    (
+        "shortcuts.intro",
+        "Shortcuts that work in every program. Pick keys to set one; Ddalgak uses the change the next time its tray app starts.",
+        "모든 프로그램에서 작동하는 단축키입니다. 키를 골라 설정하세요. 딸깍 트레이 앱을 다음에 시작할 때 적용됩니다.",
+    ),
+    ("shortcuts.off", "Off", "꺼짐"),
+    ("form.type_keys", "Type", "입력"),
+    (
+        "form.settings_sub",
+        "Only what this action needs",
+        "이 동작에 필요한 것만",
+    ),
+    (
+        "shortcuts.list_off",
+        "The rule list's shortcuts are off in this window (--no-hotkeys).",
+        "이 창에서는 규칙 목록 단축키가 꺼져 있습니다 (--no-hotkeys).",
+    ),
+    (
+        "profiles.transfer",
+        "Profiles are exported to a file you choose; an import shows what it adds first and turns nothing on.",
+        "프로필은 고른 파일로 내보냅니다. 가져오기는 먼저 추가될 내용을 보여 주고 아무것도 켜지 않습니다.",
+    ),
+    (
+        "shortcuts.safe_mode",
+        "hotkeys.json cannot be used, so nothing was changed",
+        "hotkeys.json을 쓸 수 없어 아무것도 바꾸지 않았습니다",
+    ),
+    (
+        "shortcuts.saved",
+        "Saved. Restart Ddalgak's tray app to use it.",
+        "저장했습니다. 딸깍 트레이 앱을 다시 시작하면 적용됩니다.",
+    ),
     ("app.title", "Ddalgak rules", "딸깍 규칙"),
     ("lang.switch", "한국어", "English"),
     ("nav.rules", "Rules", "규칙"),
@@ -473,7 +716,7 @@ pub const LABELS: &[(&str, &str, &str)] = &[
         "Also search snippet text",
         "글자 내용도 검색",
     ),
-    ("list.new", "+ New rule", "+ 새 규칙"),
+    ("list.new", "New Rule", "+ 새 규칙"),
     (
         "list.empty",
         "No rules yet. Ddalgak does nothing until you make one.",
@@ -1260,6 +1503,7 @@ pub const LABELS: &[(&str, &str, &str)] = &[
 /// the schema's own) stay English, as the rule summaries do (docs/DDALGAK_GUI_JOURNEYS.md §5).
 pub const PROBLEMS: &[(&str, &str)] = &[
     ("choose what the rule does", "규칙이 할 일을 고르세요"),
+    ("choose a key", "키를 고르세요"),
     ("100–1000 ms", "100–1000 ms 사이로 정하세요"),
     ("0–1000 ms", "0–1000 ms 사이로 정하세요"),
     ("200–5000 ms", "200–5000 ms 사이로 정하세요"),
@@ -1456,6 +1700,9 @@ mod tests {
             include_str!("app.rs"),
             include_str!("app/view.rs"),
             include_str!("app/profiles.rs"),
+            include_str!("app/settings.rs"),
+            include_str!("app/rules.rs"),
+            include_str!("app/editor.rs"),
         ]
         .concat();
         let keys: BTreeSet<&str> = LABELS.iter().map(|(k, _, _)| *k).collect();

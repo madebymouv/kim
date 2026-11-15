@@ -36,7 +36,7 @@ fn title(ui: &mut egui::Ui, text: &str) {
 
 /// The safe choice of a dialog: focused when the dialog opens.
 fn cancel_button(ui: &mut egui::Ui, label: &str, focus: bool) -> bool {
-    let r = ui.button(label);
+    let r = ui.add(kim_ui::Button::secondary(label));
     if focus {
         r.request_focus();
     }
@@ -58,83 +58,99 @@ impl EditorApp {
         self.page
     }
 
+    /// ADR 0100: Settings → Profiles: search and sort, every profile as a row (Use, and a menu
+    /// with Duplicate, Rename…, History…, Export…, Delete…), a new profile, import and export,
+    /// and switching profiles by program.
     pub(super) fn profiles_page(&mut self, ui: &mut egui::Ui) {
-        let c = Colors::get();
+        use kim_design::{size, space};
         let lang = self.lang;
-        self.banner_ui(ui);
-        title(ui, lang.t("nav.profiles"));
-        ui.label(small(lang.t("profiles.note"), c.text_muted));
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.profile_search)
-                    .hint_text(lang.t("profiles.search"))
-                    .desired_width(220.0),
-            )
-            .accessible_name(lang.t("profiles.search"));
-            let label = ui.label(small(lang.t("profiles.sort"), c.text_secondary));
-            egui::ComboBox::from_id_salt("profile-sort")
-                .selected_text(lang.t(&format!("sort.{}", self.profile_sort.as_str())))
-                .show_ui(ui, |ui| {
-                    for s in Sort::ALL {
-                        ui.selectable_value(
-                            &mut self.profile_sort,
-                            s,
-                            lang.t(&format!("sort.{}", s.as_str())),
-                        );
-                    }
-                })
-                .response
-                .labelled_by(label.id);
+        ui.label(kim_ui::caption(ui, lang.t("profiles.note")));
+        ui.add_space(space::S);
+        let sorts: Vec<(Sort, String)> = Sort::ALL
+            .iter()
+            .map(|s| (*s, lang.t(&format!("sort.{}", s.as_str())).to_string()))
+            .collect();
+        kim_ui::toolbar(ui, |ui| {
+            let w = kim_ui::remaining_width(ui, 200.0);
+            kim_ui::search_field(
+                ui,
+                &mut self.profile_search,
+                lang.t("profiles.search"),
+                lang.t("profiles.search"),
+                w,
+            );
+            kim_ui::dropdown(
+                ui,
+                "profile-sort",
+                lang.t("profiles.sort"),
+                &mut self.profile_sort,
+                &sorts,
+            );
         });
-        ui.add_space(6.0);
+        ui.add_space(space::M);
         let rows = self.profile_rows();
         if rows.is_empty() {
-            ui.label(small(lang.t("profiles.none_match"), c.text_muted));
+            ui.label(kim_ui::caption(ui, lang.t("profiles.none_match")));
         }
-        egui::ScrollArea::vertical()
-            .id_salt("profiles-scroll")
-            .max_height(ui.available_height() - 90.0)
-            .show(ui, |ui| {
-                for r in &rows {
-                    self.profile_row_ui(ui, r);
-                    ui.separator();
+        kim_ui::setting_group(ui, "All profiles", |ui| {
+            for (i, r) in rows.iter().enumerate() {
+                if i > 0 {
+                    kim_ui::row_divider(ui);
                 }
-            });
-        ui.add_space(6.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.new_profile_title)
-                    .hint_text(lang.t("profiles.new"))
-                    .desired_width(200.0),
-            )
-            .accessible_name(lang.t("profiles.new"));
-            if ui
-                .add_enabled(
-                    !self.new_profile_title.trim().is_empty(),
-                    egui::Button::new(lang.t("profiles.add")),
-                )
-                .clicked()
-            {
-                self.acts
-                    .push(Act::ProfileAdd(self.new_profile_title.trim().to_string()));
-            }
-            ui.separator();
-            if ui.button(lang.t("profiles.import")).clicked() {
-                self.acts.push(Act::OpenProfileImport);
-            }
-            if ui.button(lang.t("profiles.export_all")).clicked() {
-                let ids = rows.iter().map(|r| r.id.clone()).collect();
-                self.acts.push(Act::OpenProfileExport(ids));
+                self.profile_row_ui(ui, r);
             }
         });
+        let mut add = false;
+        kim_ui::setting_group(ui, "New profile", |ui| {
+            kim_ui::toolbar(ui, |ui| {
+                let w = kim_ui::remaining_width(ui, size::BUTTON_MIN_WIDTH + 40.0);
+                let r = kim_ui::text_field(
+                    ui,
+                    &mut self.new_profile_title,
+                    lang.t("profiles.new"),
+                    lang.t("profiles.new"),
+                    w,
+                );
+                add |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                add |= ui
+                    .add_enabled(
+                        !self.new_profile_title.trim().is_empty(),
+                        kim_ui::Button::secondary(lang.t("profiles.add")),
+                    )
+                    .clicked();
+            });
+            kim_ui::row_divider(ui);
+            kim_ui::setting_row(
+                ui,
+                "Import and export",
+                Some(lang.t("profiles.transfer")),
+                |ui| {
+                    if ui
+                        .add(kim_ui::Button::secondary(lang.t("profiles.export_all")))
+                        .clicked()
+                    {
+                        let ids = rows.iter().map(|r| r.id.clone()).collect();
+                        self.acts.push(Act::OpenProfileExport(ids));
+                    }
+                    if ui
+                        .add(kim_ui::Button::secondary(lang.t("profiles.import")))
+                        .clicked()
+                    {
+                        self.acts.push(Act::OpenProfileImport);
+                    }
+                },
+            );
+        });
+        if add && !self.new_profile_title.trim().is_empty() {
+            self.acts
+                .push(Act::ProfileAdd(self.new_profile_title.trim().to_string()));
+        }
         self.app_profiles_ui(ui);
     }
 
     /// #100 (ADR 0087): *Switch profiles by program*: off until the user turns it on; one line of
     /// program file names per profile; saved into `settings.app_profiles`.
     fn app_profiles_ui(&mut self, ui: &mut egui::Ui) {
-        let c = Colors::get();
         let lang = self.lang;
         let Some(doc) = self.doc() else {
             return;
@@ -177,24 +193,39 @@ impl EditorApp {
             };
             self.app_map = Some((enabled, rows));
         }
-        ui.add_space(8.0);
-        ui.label(egui::RichText::new(lang.t("profiles.by_app")).strong());
-        ui.label(small(lang.t("profiles.by_app_note"), c.text_muted));
+        let titles: Vec<(String, String)> = self
+            .doc()
+            .map(|d| {
+                d.profiles
+                    .iter()
+                    .map(|p| (p.id.clone(), p.title.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut save = false;
         if let Some((enabled, rows)) = self.app_map.as_mut() {
-            ui.checkbox(enabled, lang.t("profiles.by_app_on"));
-            for (id, apps) in rows.iter_mut() {
-                ui.horizontal(|ui| {
-                    let l = ui.label(small(id.as_str(), c.text_secondary));
-                    ui.add(
-                        egui::TextEdit::singleline(apps)
-                            .hint_text("Code.exe, devenv.exe")
-                            .desired_width(320.0),
-                    )
-                    .labelled_by(l.id);
+            kim_ui::setting_group(ui, lang.t("profiles.by_app"), |ui| {
+                ui.add(
+                    kim_ui::SwitchRow::new(enabled, lang.t("profiles.by_app_on"))
+                        .description(lang.t("profiles.by_app_note")),
+                );
+                for (id, apps) in rows.iter_mut() {
+                    kim_ui::row_divider(ui);
+                    let title = titles
+                        .iter()
+                        .find(|(p, _)| p == id)
+                        .map_or(id.as_str(), |(_, t)| t.as_str());
+                    kim_ui::setting_row(ui, title, None, |ui| {
+                        kim_ui::text_field(ui, apps, id, "Code.exe, devenv.exe", 280.0);
+                    });
+                }
+                kim_ui::row_divider(ui);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    save = ui
+                        .add(kim_ui::Button::secondary(lang.t("profiles.by_app_save")))
+                        .clicked();
                 });
-            }
-            save = ui.button(lang.t("profiles.by_app_save")).clicked();
+            });
         }
         if save && let Some((enabled, rows)) = self.app_map.clone() {
             let rows: Vec<(String, Vec<String>)> = rows
@@ -221,62 +252,75 @@ impl EditorApp {
         }
     }
 
+    /// One profile: its title (Active marked in words), its facts, Use and the `⋯` menu.
     fn profile_row_ui(&mut self, ui: &mut egui::Ui, r: &profile::Row) {
-        let c = Colors::get();
         let lang = self.lang;
-        ui.horizontal_wrapped(|ui| {
-            if r.active {
-                ui.label(
-                    egui::RichText::new(lang.t("profiles.active"))
-                        .color(c.success)
-                        .strong(),
-                );
-            }
-            ui.label(egui::RichText::new(&r.title).strong());
-            ui.label(small(format!("({})", r.id), c.text_muted));
-            let mut facts = vec![
-                format!(
-                    "{} {} ({} {})",
-                    r.rules,
-                    lang.t("status.rules"),
-                    r.rules_on,
-                    lang.t("profiles.on")
-                ),
-                format!("{} {}", r.modes, lang.t("profiles.modes")),
-            ];
-            if !r.enabled {
-                facts.push(lang.t("state.disabled").to_string());
-            }
-            if r.errors > 0 {
-                facts.push(format!("{} {}", r.errors, lang.t("profiles.errors")));
-            }
-            ui.label(small(facts.join(" · "), c.text_secondary));
-        });
-        if let Some(d) = &r.description {
-            ui.label(small(d, c.text_muted));
+        let mut facts = Vec::new();
+        if r.active {
+            facts.push(
+                lang.t("profiles.active")
+                    .trim_start_matches("● ")
+                    .to_string(),
+            );
         }
-        ui.horizontal_wrapped(|ui| {
-            if !r.active && ui.button(lang.t("btn.switch")).clicked() {
-                self.acts.push(Act::OpenSwitch(r.id.clone()));
-            }
-            if ui.button(lang.t("btn.duplicate")).clicked() {
-                self.acts.push(Act::DuplicateProfile(r.id.clone()));
-            }
-            if ui.button(lang.t("btn.rename")).clicked() {
-                self.acts.push(Act::OpenEditProfile(r.id.clone()));
-            }
-            if ui.button(lang.t("btn.history")).clicked() {
-                self.acts.push(Act::OpenHistory(r.id.clone()));
-            }
-            if ui.button(lang.t("btn.export")).clicked() {
-                self.acts.push(Act::OpenProfileExport(vec![r.id.clone()]));
-            }
-            if ui
-                .add_enabled(!r.active, egui::Button::new(lang.t("btn.delete_profile")))
-                .on_disabled_hover_text(lang.t("profiles.active_cannot_delete"))
-                .clicked()
+        facts.push(format!(
+            "{} {} ({} {})",
+            r.rules,
+            lang.t("status.rules"),
+            r.rules_on,
+            lang.t("profiles.on")
+        ));
+        facts.push(format!("{} {}", r.modes, lang.t("profiles.modes")));
+        if !r.enabled {
+            facts.push(lang.t("state.disabled").to_string());
+        }
+        if r.errors > 0 {
+            facts.push(format!("{} {}", r.errors, lang.t("profiles.errors")));
+        }
+        let mut desc = facts.join(" · ");
+        if let Some(d) = &r.description {
+            desc = format!("{d}\n{desc}");
+        }
+        kim_ui::setting_row(ui, &r.title, Some(&desc), |ui| {
+            let more = kim_ui::icon_button(
+                ui,
+                kim_ui::Icon::More,
+                &format!("{}: {}", lang.t("list.more"), r.title),
+            );
+            egui::Popup::menu(&more)
+                .frame(kim_ui::popover_frame(ui.ctx()))
+                .width(180.0)
+                .show(|ui| {
+                    ui.set_min_width(180.0);
+                    if kim_ui::menu_item(ui, lang.t("btn.duplicate"), false).clicked() {
+                        self.acts.push(Act::DuplicateProfile(r.id.clone()));
+                    }
+                    if kim_ui::menu_item(ui, lang.t("btn.rename"), false).clicked() {
+                        self.acts.push(Act::OpenEditProfile(r.id.clone()));
+                    }
+                    if kim_ui::menu_item(ui, lang.t("btn.history"), false).clicked() {
+                        self.acts.push(Act::OpenHistory(r.id.clone()));
+                    }
+                    if kim_ui::menu_item(ui, lang.t("btn.export"), false).clicked() {
+                        self.acts.push(Act::OpenProfileExport(vec![r.id.clone()]));
+                    }
+                    kim_ui::row_divider(ui);
+                    let del = ui.add_enabled_ui(!r.active, |ui| {
+                        kim_ui::menu_item(ui, lang.t("btn.delete_profile"), true)
+                    });
+                    let del = del
+                        .inner
+                        .on_disabled_hover_text(lang.t("profiles.active_cannot_delete"));
+                    if del.clicked() {
+                        self.acts.push(Act::AskDeleteProfile(r.id.clone()));
+                    }
+                });
+            if !r.active
+                && ui
+                    .add(kim_ui::Button::secondary(lang.t("btn.switch")))
+                    .clicked()
             {
-                self.acts.push(Act::AskDeleteProfile(r.id.clone()));
+                self.acts.push(Act::OpenSwitch(r.id.clone()));
             }
         });
     }
@@ -372,7 +416,10 @@ impl EditorApp {
                     if cancel_button(ui, lang.t("btn.cancel"), focus) {
                         self.acts.push(Act::CloseDialog);
                     }
-                    if ui.button(lang.t("btn.switch_to")).clicked() {
+                    if ui
+                        .add(kim_ui::Button::secondary(lang.t("btn.switch_to")))
+                        .clicked()
+                    {
                         self.acts.push(Act::ApplyProfile(to.clone()));
                     }
                 });
@@ -396,13 +443,16 @@ impl EditorApp {
                 )
                 .accessible_name(lang.t("field.profile_description"));
                 ui.horizontal(|ui| {
-                    if ui.button(lang.t("btn.cancel")).clicked() {
+                    if ui
+                        .add(kim_ui::Button::secondary(lang.t("btn.cancel")))
+                        .clicked()
+                    {
                         self.acts.push(Act::CloseDialog);
                     }
                     if ui
                         .add_enabled(
                             !name.trim().is_empty(),
-                            egui::Button::new(lang.t("btn.save")),
+                            kim_ui::Button::secondary(lang.t("btn.save")),
                         )
                         .clicked()
                     {
@@ -432,9 +482,7 @@ impl EditorApp {
                         self.acts.push(Act::CloseDialog);
                     }
                     if ui
-                        .add(egui::Button::new(
-                            egui::RichText::new(lang.t("btn.delete_profile")).color(c.danger),
-                        ))
+                        .add(kim_ui::Button::danger(lang.t("btn.delete_profile")))
                         .clicked()
                     {
                         self.acts.push(Act::DeleteProfile(id.clone()));
@@ -456,16 +504,23 @@ impl EditorApp {
                 if focus {
                     r.request_focus();
                 }
-                ui.checkbox(&mut env_values, lang.t("field.env_values"));
+                kim_ui::checkbox(ui, &mut env_values, lang.t("field.env_values"));
                 let mut new_done = done.clone();
                 if let Some(d) = &done {
                     ui.label(egui::RichText::new(d).color(c.success));
                 }
                 ui.horizontal(|ui| {
-                    if ui.button(lang.t("btn.close")).clicked() {
+                    if ui
+                        .add(kim_ui::Button::secondary(lang.t("btn.close")))
+                        .clicked()
+                    {
                         self.acts.push(Act::CloseDialog);
                     }
-                    if done.is_none() && ui.button(lang.t("btn.export")).clicked() {
+                    if done.is_none()
+                        && ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.export")))
+                            .clicked()
+                    {
                         new_done = Some(self.export_profiles(&ids, &path, env_values));
                     }
                 });
@@ -496,7 +551,10 @@ impl EditorApp {
                     r.request_focus();
                 }
                 let mut next = (plan.clone(), error.clone(), ahk.clone());
-                if ui.button(lang.t("dialog.check")).clicked() {
+                if ui
+                    .add(kim_ui::Button::secondary(lang.t("dialog.check")))
+                    .clicked()
+                {
                     next = match self.plan_profile_import(&path) {
                         Ok((p, r)) => (Some(Box::new(p)), None, r),
                         Err((e, r)) => (None, Some(e), r),
@@ -509,7 +567,9 @@ impl EditorApp {
                         self.acts.push(Act::CloseDialog);
                     }
                     if let Some(p) = plan.as_ref().filter(|p| !p.profiles.is_empty())
-                        && ui.button(lang.t("btn.import_profiles")).clicked()
+                        && ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.import_profiles")))
+                            .clicked()
                     {
                         self.acts.push(Act::ImportProfiles(p.clone()));
                     }
@@ -656,18 +716,27 @@ impl EditorApp {
                             .desired_width(180.0),
                     )
                     .accessible_name(lang.t("field.save_label"));
-                    if current.is_some() && ui.button(lang.t("btn.save_point")).clicked() {
+                    if current.is_some()
+                        && ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.save_point")))
+                            .clicked()
+                    {
                         self.acts
                             .push(Act::SaveProfileVersion(id.clone(), label.clone()));
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button(lang.t("btn.close")).clicked() {
+                    if ui
+                        .add(kim_ui::Button::secondary(lang.t("btn.close")))
+                        .clicked()
+                    {
                         self.acts.push(Act::CloseDialog);
                     }
                     let target = profile::rollback_target(&versions, current.as_ref());
                     if let Some(t) = target
-                        && ui.button(lang.t("btn.rollback")).clicked()
+                        && ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.rollback")))
+                            .clicked()
                     {
                         self.acts.push(Act::RestoreProfile(
                             Box::new(t.profile.clone()),
@@ -676,7 +745,9 @@ impl EditorApp {
                     }
                     if let Some(v) = pick.and_then(|i| versions.get(i))
                         && !v.current
-                        && ui.button(lang.t("btn.restore_version")).clicked()
+                        && ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.restore_version")))
+                            .clicked()
                     {
                         self.acts.push(Act::RestoreProfile(
                             Box::new(v.profile.clone()),

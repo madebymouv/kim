@@ -1,18 +1,12 @@
-//! Drawing the editor window: header, navigation rail, rule list, detail and form panel, status
-//! line and dialogs. Every frame only reads the state and records [`Act`]s, applied afterwards.
+//! Drawing the editor's main window (ADR 0100): the rail (the name, a small engine status, the
+//! two primary activities: Rules and Playground), the page, the status line with the settings
+//! gear in its lower-right corner, and the dialogs. Settings live in their own window
+//! (`app/settings.rs`); the Rules page is `app/rules.rs`, the rule editor `app/editor.rs`.
+//! Every frame only reads the state and records [`Act`]s, applied afterwards.
 
 use super::*;
-use crate::form::Combo;
 use crate::theme;
-
-/// The drag-and-drop payload of a rule row (reordering within its profile).
-#[derive(Clone, Debug)]
-struct DragRule {
-    id: String,
-    profile: String,
-}
-
-const ROW_H: f32 = 46.0;
+use kim_design::{size, space};
 
 fn small(text: impl Into<String>, color: egui::Color32) -> egui::RichText {
     egui::RichText::new(text.into())
@@ -20,31 +14,9 @@ fn small(text: impl Into<String>, color: egui::Color32) -> egui::RichText {
         .color(color)
 }
 
-fn badge_color(k: BadgeKind) -> egui::Color32 {
-    let c = Colors::get();
-    match k {
-        BadgeKind::Conflict | BadgeKind::Problem => c.danger,
-        BadgeKind::Warning | BadgeKind::Inactive => c.warning,
-        BadgeKind::Review => c.info,
-    }
-}
-
-/// A small field with its visible label in front; the label names it for screen readers.
-fn labeled(ui: &mut egui::Ui, label: &str, w: impl egui::Widget) -> egui::Response {
-    ui.horizontal(|ui| {
-        let l = ui.label(small(label, Colors::get().text_secondary));
-        ui.add(w).labelled_by(l.id)
-    })
-    .inner
-}
-
 /// A primary (accent) button.
 fn primary(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    let c = Colors::get();
-    ui.add(
-        egui::Button::new(egui::RichText::new(text).color(c.text_on_accent).strong())
-            .fill(c.accent),
-    )
+    ui.add(kim_ui::Button::primary(text))
 }
 
 impl EditorApp {
@@ -61,6 +33,7 @@ impl EditorApp {
         }
         self.poll();
         self.refresh_status(&ctx);
+        self.check_engine_timeout();
         // Step 78: while recording, keys go to the recorder only (before any shortcut).
         self.record_events(&ctx);
         if ctx.input(|i| i.viewport().close_requested()) && !self.close_now && !self.request_close()
@@ -74,57 +47,49 @@ impl EditorApp {
         self.keys(&ctx);
         self.apply_theme(&ctx);
         let c = Colors::get();
-        // ADR 0096: no top bar. A rail with the engine switch and the sections, a status line
-        // with the settings gear in its right corner, and the page.
         egui::Panel::bottom("status")
             .frame(
                 egui::Frame::new()
                     .fill(c.bg_raised)
-                    .inner_margin(egui::Margin::symmetric(12, 4)),
+                    .inner_margin(egui::Margin::symmetric(space::M as i8, space::XS as i8)),
             )
             .show(ui, |ui| self.status_line(ui));
         egui::Panel::left("nav")
             .resizable(false)
-            .exact_size(kim_design::size::NAV_WIDTH)
+            .exact_size(size::NAV_WIDTH)
             .frame(
                 egui::Frame::new()
                     .fill(c.bg_raised)
-                    .inner_margin(egui::Margin::symmetric(8, 12)),
+                    .inner_margin(egui::Margin::symmetric(space::S as i8, space::L as i8)),
             )
-            .show(ui, |ui| self.nav(ui));
+            .show(ui, |ui| {
+                kim_ui::inspect::scope("ddalgak.nav", || self.nav(ui));
+            });
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
                     .fill(c.bg_base)
-                    .inner_margin(egui::Margin::symmetric(20, 14)),
+                    .inner_margin(egui::Margin::symmetric(space::XL as i8, space::L as i8)),
             )
             .show(ui, |ui| match self.page {
-                Page::Modes => self.modes_page(ui),
-                Page::Profiles => self.profiles_page(ui),
-                Page::Settings => {
-                    egui::ScrollArea::vertical()
-                        .id_salt("settings-scroll")
-                        .show(ui, |ui| self.settings_page(ui));
-                }
                 Page::Playground => {
                     egui::ScrollArea::vertical()
                         .id_salt("playground-scroll")
                         .show(ui, |ui| self.playground_page(ui));
                 }
-                // ADR 0096: a rule opens in its own page, the list stays clean.
-                Page::Rules if self.form.is_some() => {
-                    egui::ScrollArea::vertical()
-                        .id_salt("detail-scroll")
-                        .show(ui, |ui| self.detail(ui));
-                }
-                Page::Rules => self.list(ui),
+                // ADR 0096/0100: a rule opens in its own page, the list stays clean.
+                Page::Rules if self.form.is_some() => self.editor_page(ui),
+                Page::Rules => self.rules_page(ui),
             });
-        if self.dialog.is_some() {
+        if self.dialog.is_some() && !self.dialog_in_settings {
             self.dialog_ui(&ctx);
         }
         for a in std::mem::take(&mut self.acts) {
             self.apply(a);
         }
+        // ADR 0100: Settings, a window of its own (after the main window's acts are applied, so
+        // what it does is applied as its own).
+        self.settings_window(&ctx);
     }
 
     fn compute_visible(&mut self) {
@@ -146,82 +111,86 @@ impl EditorApp {
             .collect();
     }
 
-    // --- Header, navigation, status ----------------------------------------------------------
+    // --- Rail and status ---------------------------------------------------------------------
 
-    /// ADR 0096: the rail: the program's name, the switch that turns the engine on or off (it
-    /// shows the engine's real state; while the tray app does not run it is disabled and says
-    /// why), the profile and mode, and the sections.
+    /// The engine's state in words for the rail's indicator (never a control: Settings has the
+    /// switches) and its tone.
+    pub(super) fn engine_status(&self) -> (Option<kim_ui::Tone>, &'static str) {
+        let lang = self.lang;
+        if self.engine_pending.is_some() {
+            return (Some(kim_ui::Tone::Info), lang.t("engine.status_changing"));
+        }
+        match &self.engine {
+            EngineView::Running { state, .. } => match state.as_str() {
+                "running" => (Some(kim_ui::Tone::Success), lang.t("engine.status_on")),
+                "paused" => (Some(kim_ui::Tone::Warning), lang.t("engine.status_paused")),
+                _ => (None, lang.t("engine.status_off")),
+            },
+            EngineView::Unknown => (None, lang.t("engine.unknown")),
+            EngineView::NotRunning | EngineView::Error { .. } => (
+                Some(kim_ui::Tone::Error),
+                lang.t("engine.status_not_running"),
+            ),
+        }
+    }
+
+    /// ADR 0100: the rail: the name, the engine's state (a status, not a switch), the profile
+    /// and mode only when there is a choice, and the primary activities.
     fn nav(&mut self, ui: &mut egui::Ui) {
         let c = Colors::get();
         let lang = self.lang;
         ui.horizontal(|ui| {
-            ui.add_space(4.0);
+            ui.add_space(space::XS);
             kim_ui::title(ui, "Ddalgak");
         });
-        ui.add_space(8.0);
-        let state = match &self.engine {
-            EngineView::Running { state, .. } => Some(state.clone()),
-            _ => None,
-        };
-        let mut on = matches!(state.as_deref(), Some(s) if s != "off");
-        let caption = match state.as_deref() {
-            Some("running") => lang.t("engine.state_running"),
-            Some("paused") => lang.t("engine.state_paused"),
-            Some(_) => lang.t("engine.state_off"),
-            None => lang.t(self.engine.label_key()),
-        };
-        let enabled = state.is_some();
-        let r = ui
-            .add_enabled(
-                enabled,
-                kim_ui::SwitchRow::new(&mut on, "Ddalgak").description(caption),
-            )
-            .on_disabled_hover_text(lang.t("engine.start_hint"));
-        if r.changed() {
-            self.acts
-                .push(Act::Engine(if on { Request::Start } else { Request::Stop }));
-        }
-        if let Some(s) = state.as_deref().filter(|s| *s != "off") {
-            let (label, req) = if s == "paused" {
-                ("Resume", Request::Resume)
+        ui.add_space(space::XS);
+        ui.horizontal(|ui| {
+            ui.add_space(space::XS);
+            let (tone, text) = self.engine_status();
+            kim_ui::status_indicator(ui, tone, text).on_hover_text(lang.t("engine.status_hint"));
+        });
+        let multiple = self.doc().is_some_and(|d| d.profiles.len() > 1);
+        if multiple {
+            let pid = self.active_profile_id();
+            let ptitle = self
+                .profile(&pid)
+                .map_or_else(|| pid.clone(), |p| p.title.clone());
+            let ptitle = if self.switching_to() == Some(pid.as_str()) {
+                format!("{ptitle} ({})", lang.t("profiles.switching"))
             } else {
-                ("Pause", Request::Pause)
+                ptitle
             };
-            if ui.add(kim_ui::Button::ghost(label).compact()).clicked() {
-                self.acts.push(Act::Engine(req));
-            }
+            ui.horizontal(|ui| {
+                ui.add_space(space::XS);
+                ui.label(small(
+                    format!("{}: {ptitle}", lang.t("header.profile")),
+                    c.text_muted,
+                ));
+            });
         }
-        let pid = self.active_profile_id();
-        let ptitle = self
-            .profile(&pid)
-            .map_or_else(|| pid.clone(), |p| p.title.clone());
-        let ptitle = if self.switching_to() == Some(pid.as_str()) {
-            format!("{ptitle} ({})", lang.t("profiles.switching"))
-        } else {
-            ptitle
-        };
-        ui.label(small(
-            format!("{}: {ptitle}", lang.t("header.profile")),
-            c.text_muted,
-        ));
+        let several_modes = self
+            .profile(&self.active_profile_id())
+            .is_some_and(|p| p.modes.len() > 1);
         if let EngineView::Running {
             mode: Some(m),
             state,
             ..
         } = &self.engine
             && state != "off"
+            && several_modes
         {
-            ui.label(small(
-                format!("{}: {m}", lang.t("header.mode")),
-                c.text_muted,
-            ));
+            ui.horizontal(|ui| {
+                ui.add_space(space::XS);
+                ui.label(small(
+                    format!("{}: {m}", lang.t("header.mode")),
+                    c.text_muted,
+                ));
+            });
         }
-        ui.add_space(12.0);
+        ui.add_space(space::L);
         ui.spacing_mut().item_spacing.y = 2.0;
         for (i, (p, key)) in [
             (Page::Rules, "nav.rules"),
-            (Page::Modes, "nav.modes"),
-            (Page::Profiles, "nav.profiles"),
             (Page::Playground, "nav.playground"),
         ]
         .into_iter()
@@ -246,88 +215,6 @@ impl EditorApp {
         }
     }
 
-    /// ADR 0096: Settings (the gear): appearance, language, the engine, rules data and help.
-    fn settings_page(&mut self, ui: &mut egui::Ui) {
-        let lang = self.lang;
-        kim_ui::title(ui, "Settings");
-        ui.add_space(8.0);
-        let mut changed = false;
-        kim_ui::setting_group(ui, "Appearance", |ui| {
-            kim_ui::setting_row(ui, "Theme", Some(lang.t("settings.theme")), |ui| {
-                changed |= kim_ui::segmented(
-                    ui,
-                    &mut self.prefs.theme,
-                    &[
-                        (kim_ui::ThemePref::System, "System"),
-                        (kim_ui::ThemePref::Dark, "Dark"),
-                        (kim_ui::ThemePref::Light, "Light"),
-                    ],
-                );
-            });
-            kim_ui::row_divider(ui);
-            let system = kim_ui::LangPref::System.label();
-            kim_ui::setting_row(ui, "Language", Some(lang.t("settings.language")), |ui| {
-                if kim_ui::segmented(
-                    ui,
-                    &mut self.prefs.lang,
-                    &[
-                        (kim_ui::LangPref::System, system.as_str()),
-                        (kim_ui::LangPref::En, "English"),
-                        (kim_ui::LangPref::Ko, "한국어"),
-                    ],
-                ) {
-                    changed = true;
-                }
-            });
-        });
-        if changed {
-            self.lang = match self.prefs.lang.resolve() {
-                kim_ui::Lang::Ko => Lang::Ko,
-                kim_ui::Lang::En => Lang::En,
-            };
-            self.save_prefs();
-        }
-        let lang = self.lang;
-        kim_ui::setting_group(ui, "Engine", |ui| {
-            ui.label(small(
-                lang.t("header.emergency"),
-                Colors::get().text_secondary,
-            ));
-            ui.label(small(
-                lang.t("settings.engine_note"),
-                Colors::get().text_muted,
-            ));
-        });
-        kim_ui::setting_group(ui, "Data", |ui| {
-            kim_ui::setting_row(
-                ui,
-                "Import and export",
-                Some(lang.t("settings.transfer")),
-                |ui| {
-                    if ui
-                        .add(kim_ui::Button::secondary(lang.t("btn.export")))
-                        .clicked()
-                    {
-                        self.acts.push(Act::Export(Vec::new()));
-                    }
-                    if ui
-                        .add(kim_ui::Button::secondary(lang.t("btn.import")))
-                        .clicked()
-                    {
-                        self.acts.push(Act::Import);
-                    }
-                },
-            );
-        });
-        kim_ui::setting_group(ui, "Help", |ui| {
-            kim_ui::setting_row(ui, "Keyboard shortcuts", Some(lang.t("help.f1")), |ui| {
-                if ui.add(kim_ui::Button::secondary("Open")).clicked() {
-                    self.acts.push(Act::Help);
-                }
-            });
-        });
-    }
-
     fn status_line(&mut self, ui: &mut egui::Ui) {
         let c = Colors::get();
         ui.horizontal_wrapped(|ui| {
@@ -335,6 +222,10 @@ impl EditorApp {
             let problems = self.rows.iter().filter(|r| r.has_problems()).count();
             let review = self.rows.iter().filter(|r| r.needs_review).count();
             let mut parts = vec![format!("{n} {}", self.t("status.rules"))];
+            if self.page == Page::Rules && self.form.is_none() {
+                // The Rules page's title shows the count.
+                parts.clear();
+            }
             if problems > 0 {
                 parts.push(format!("{problems} {}", self.t("status.problems")));
             }
@@ -358,7 +249,8 @@ impl EditorApp {
                 SaveState::KeptPrevious { .. } | SaveState::Unconfirmed { .. } => c.warning,
                 _ => c.text_secondary,
             };
-            let mut line = format!("{} ({} {r})", self.t(key), self.t("status.revision"));
+            let mut line = self.t(key).to_string();
+            let rev_note = format!("{} {r}", self.t("status.revision"));
             match &self.save {
                 SaveState::KeptPrevious { reason, .. } => line.push_str(&format!(": {reason}")),
                 SaveState::Unconfirmed { why, .. } => line.push_str(&format!(": {why}")),
@@ -374,10 +266,11 @@ impl EditorApp {
                     self.loaded.state.problem().unwrap_or_default()
                 );
             }
-            ui.label(small(parts.join(" · "), c.text_secondary));
-            ui.label(small("·", c.text_muted));
-            ui.label(small(line, color))
-                .on_hover_text(format!("{:?}", self.save));
+            if !parts.is_empty() {
+                ui.label(small(parts.join(" · "), c.text_secondary));
+                ui.label(small("·", c.text_muted));
+            }
+            ui.label(small(line, color)).on_hover_text(rev_note);
             if let Some(t) = self.toast.clone() {
                 ui.separator();
                 ui.label(small(t.text, c.text_primary));
@@ -398,14 +291,13 @@ impl EditorApp {
             }
             // ADR 0092/0096: the settings gear in the window's lower-right corner.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let (rect, _) = ui.allocate_exact_size(
-                    egui::Vec2::splat(kim_design::size::GEAR),
-                    egui::Sense::hover(),
-                );
-                let open = self.page == Page::Settings;
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::Vec2::splat(size::GEAR), egui::Sense::hover());
+                let open = self.settings.is_some();
                 if kim_ui::gear_at(ui, rect, "Settings", open).clicked() {
+                    // ADR 0100: a separate window; again: brings it forward.
                     self.acts
-                        .push(Act::Page(if open { Page::Rules } else { Page::Settings }));
+                        .push(Act::OpenSettings(self.settings.unwrap_or_default()));
                 }
             });
         });
@@ -432,7 +324,10 @@ impl EditorApp {
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(egui::RichText::new(text).color(color));
-                    if ui.small_button(self.t("btn.dismiss")).clicked() {
+                    if ui
+                        .add(kim_ui::Button::ghost(self.t("btn.dismiss")).compact())
+                        .clicked()
+                    {
                         self.banner = None;
                     }
                 });
@@ -442,620 +337,7 @@ impl EditorApp {
             });
     }
 
-    // --- The rule list -------------------------------------------------------------------------
-
-    fn list(&mut self, ui: &mut egui::Ui) {
-        let c = Colors::get();
-        let lang = self.lang;
-        self.banner_ui(ui);
-        ui.horizontal_wrapped(|ui| {
-            let search = ui.add(
-                egui::TextEdit::singleline(&mut self.filter.query)
-                    .hint_text(lang.t("list.search"))
-                    .desired_width(240.0),
-            );
-            let search = search.accessible_name(lang.t("list.search_label"));
-            self.anchors[1] = Some(search.id);
-            if std::mem::take(&mut self.focus_search) {
-                search.request_focus();
-            }
-            if ui
-                .add(kim_ui::Button::primary(lang.t("list.new")))
-                .on_hover_text(self.shortcuts.keys_of("rules.new").unwrap_or_default())
-                .clicked()
-            {
-                self.acts.push(Act::New(None));
-            }
-            if ui
-                .add(kim_ui::Button::ghost("Filters").selected(self.show_filters))
-                .on_hover_text(lang.t("list.filters_hint"))
-                .clicked()
-            {
-                self.show_filters = !self.show_filters;
-            }
-        });
-        let narrowed = Filter {
-            query: String::new(),
-            ..self.filter.clone()
-        } != Filter::default();
-        if self.show_filters || narrowed {
-            ui.horizontal_wrapped(|ui| {
-                egui::ComboBox::from_id_salt("filter-state")
-                    .selected_text(format!(
-                        "{}: {}",
-                        lang.t("filter.state"),
-                        lang.t(self.filter.state.key())
-                    ))
-                    .show_ui(ui, |ui| {
-                        for s in StateFilter::ALL {
-                            ui.selectable_value(&mut self.filter.state, s, lang.t(s.key()));
-                        }
-                    })
-                    .response
-                    .accessible_name(lang.t("filter.state"));
-                let (modes, apps) = self.doc().map(listing::filter_choices).unwrap_or_default();
-                let profiles: Vec<(String, String)> = self
-                    .doc()
-                    .map(|d| {
-                        d.profiles
-                            .iter()
-                            .map(|p| (p.id.clone(), p.title.clone()))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let any = lang.t("filter.any");
-                if profiles.len() > 1 {
-                    let cur = self
-                        .filter
-                        .profile
-                        .as_ref()
-                        .and_then(|p| profiles.iter().find(|x| &x.0 == p))
-                        .map_or(any.to_string(), |x| x.1.clone());
-                    egui::ComboBox::from_id_salt("filter-profile")
-                        .selected_text(format!("{}: {cur}", lang.t("filter.profile")))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.filter.profile, None, any);
-                            for (id, t) in &profiles {
-                                ui.selectable_value(&mut self.filter.profile, Some(id.clone()), t);
-                            }
-                        })
-                        .response
-                        .accessible_name(lang.t("filter.profile"));
-                }
-                if modes.len() > 1 {
-                    let cur = self
-                        .filter
-                        .mode
-                        .as_ref()
-                        .and_then(|m| modes.iter().find(|x| &x.0 == m))
-                        .map_or(any.to_string(), |x| x.1.clone());
-                    egui::ComboBox::from_id_salt("filter-mode")
-                        .selected_text(format!("{}: {cur}", lang.t("filter.mode")))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.filter.mode, None, any);
-                            for (id, t) in &modes {
-                                ui.selectable_value(&mut self.filter.mode, Some(id.clone()), t);
-                            }
-                        })
-                        .response
-                        .accessible_name(lang.t("filter.mode"));
-                }
-                if !apps.is_empty() {
-                    let cur = self.filter.app.clone().unwrap_or_else(|| any.to_string());
-                    egui::ComboBox::from_id_salt("filter-app")
-                        .selected_text(format!("{}: {cur}", lang.t("filter.app")))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.filter.app, None, any);
-                            for a in &apps {
-                                ui.selectable_value(&mut self.filter.app, Some(a.clone()), a);
-                            }
-                        })
-                        .response
-                        .accessible_name(lang.t("filter.app"));
-                }
-                egui::ComboBox::from_id_salt("grouping")
-                    .selected_text(format!(
-                        "{}: {}",
-                        lang.t("group.label"),
-                        lang.t(self.grouping.key())
-                    ))
-                    .show_ui(ui, |ui| {
-                        for g in Grouping::ALL {
-                            ui.selectable_value(&mut self.grouping, g, lang.t(g.key()));
-                        }
-                    })
-                    .response
-                    .accessible_name(lang.t("group.label"));
-                ui.checkbox(&mut self.filter.snippet_text, lang.t("list.snippet_search"));
-            });
-        }
-        if self.selected.len() > 1 {
-            let sel = self.selected.clone();
-            egui::Frame::new()
-                .fill(c.accent_soft)
-                .corner_radius(4)
-                .inner_margin(6)
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(format!("{} {}", sel.len(), lang.t("bulk.selected")));
-                        if ui
-                            .add(kim_ui::Button::ghost(lang.t("btn.enable")).compact())
-                            .clicked()
-                        {
-                            self.acts.push(Act::SetEnabled(sel.clone(), true));
-                        }
-                        if ui
-                            .add(kim_ui::Button::ghost(lang.t("btn.disable")).compact())
-                            .clicked()
-                        {
-                            self.acts.push(Act::SetEnabled(sel.clone(), false));
-                        }
-                        if ui
-                            .add(kim_ui::Button::ghost(lang.t("btn.duplicate")).compact())
-                            .clicked()
-                        {
-                            self.acts.push(Act::Duplicate(sel.clone()));
-                        }
-                        if ui
-                            .add(kim_ui::Button::ghost(lang.t("btn.delete")).compact())
-                            .clicked()
-                        {
-                            self.acts.push(Act::AskDelete(sel.clone()));
-                        }
-                        if ui
-                            .add(kim_ui::Button::ghost(lang.t("btn.export")).compact())
-                            .clicked()
-                        {
-                            self.acts.push(Act::Export(sel.clone()));
-                        }
-                        if ui.button(lang.t("bulk.clear")).clicked() {
-                            self.selected.clear();
-                        }
-                    });
-                });
-        }
-        ui.add_space(4.0);
-        if self.rows.is_empty() {
-            self.empty_state(ui);
-            return;
-        }
-        if self.visible.is_empty() {
-            ui.label(small(lang.t("list.no_match"), c.text_muted));
-            return;
-        }
-        let shown: Vec<usize> = (0..self.rows.len())
-            .filter(|i| self.filter.matches(&self.rows[*i]))
-            .collect();
-        let groups = listing::group(
-            &self.rows,
-            &shown,
-            self.grouping,
-            lang.t("group.every_mode"),
-            lang.t("group.every_app"),
-        );
-        if self.grouping == Grouping::None {
-            let rows = groups
-                .into_iter()
-                .next()
-                .map(|g| g.rows)
-                .unwrap_or_default();
-            egui::ScrollArea::vertical()
-                .id_salt("rules")
-                .auto_shrink([false, false])
-                .show_rows(ui, ROW_H, rows.len(), |ui, range| {
-                    for i in &rows[range] {
-                        self.row_ui(ui, *i);
-                    }
-                });
-        } else {
-            egui::ScrollArea::vertical()
-                .id_salt("rules")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    for (gi, g) in groups.iter().enumerate() {
-                        ui.add_space(if gi == 0 { 0.0 } else { 6.0 });
-                        ui.label(
-                            egui::RichText::new(&g.heading)
-                                .size(Metrics::get().emphasis)
-                                .color(c.text_secondary)
-                                .strong(),
-                        );
-                        for i in &g.rows {
-                            self.row_ui(ui, *i);
-                        }
-                    }
-                });
-        }
-    }
-
-    /// ADR 0099: the design system's empty state — a centred title, one muted sentence, the
-    /// starters as quiet buttons (the primary action, + New rule, stays in the top row) and the
-    /// emergency stop as a caption.
-    fn empty_state(&mut self, ui: &mut egui::Ui) {
-        let c = Colors::get();
-        let lang = self.lang;
-        ui.vertical_centered(|ui| {
-            ui.add_space(kim_ui::design::space::XXL * 2.0);
-            ui.label(
-                egui::RichText::new(lang.t("list.empty_title"))
-                    .font(kim_ui::ui_font(ui.ctx(), kim_ui::design::font::TITLE, true))
-                    .color(c.text_primary),
-            );
-            ui.add_space(kim_ui::design::space::XS);
-            ui.label(egui::RichText::new(lang.t("list.empty_body")).color(c.text_muted));
-            ui.add_space(kim_ui::design::space::L);
-            // The starters, centred as one row.
-            let starters = [
-                ("list.starter_remap", Effect::Remap),
-                ("list.starter_text", Effect::TypeText),
-                ("list.starter_program", Effect::OpenProgram),
-            ];
-            let gap = kim_ui::design::space::S;
-            let widths: Vec<f32> = starters
-                .iter()
-                .map(|(k, _)| {
-                    ui.painter()
-                        .layout_no_wrap(
-                            lang.t(k).to_string(),
-                            kim_ui::ui_font(ui.ctx(), kim_ui::design::font::BODY, false),
-                            egui::Color32::PLACEHOLDER,
-                        )
-                        .size()
-                        .x
-                        .max(
-                            kim_ui::design::size::BUTTON_MIN_WIDTH
-                                - 2.0 * kim_ui::design::size::BUTTON_PAD_X,
-                        )
-                        + 2.0 * kim_ui::design::size::BUTTON_PAD_X
-                })
-                .collect();
-            let total = widths.iter().sum::<f32>() + gap * (widths.len() - 1) as f32;
-            let left = (ui.available_width() - total).max(0.0) / 2.0;
-            ui.horizontal(|ui| {
-                ui.add_space(left);
-                ui.spacing_mut().item_spacing.x = gap;
-                for (key, e) in starters {
-                    if ui.add(kim_ui::Button::secondary(lang.t(key))).clicked() {
-                        self.acts.push(Act::New(Some(e)));
-                    }
-                }
-            });
-            ui.add_space(kim_ui::design::space::XL);
-            ui.label(small(lang.t("header.emergency"), c.text_muted));
-        });
-    }
-
-    fn row_state(&self, r: &Row) -> (String, egui::Color32) {
-        let c = Colors::get();
-        let lang = self.lang;
-        let active_now = self.save.is_active(self.loaded.revision());
-        match r.state {
-            "active" if active_now => (format!("● {}", lang.t("state.active")), c.success),
-            "active" => (format!("○ {}", lang.t("state.ready")), c.text_muted),
-            "disabled" => (lang.t("state.disabled").to_string(), c.text_muted),
-            "other_mode" => (lang.t("state.other_mode").to_string(), c.text_muted),
-            "other_profile" => (lang.t("state.other_profile").to_string(), c.text_muted),
-            _ => (
-                format!(
-                    "{}: {}",
-                    lang.t("badge.inactive"),
-                    r.code.unwrap_or("rule_invalid")
-                ),
-                c.warning,
-            ),
-        }
-    }
-
-    fn row_ui(&mut self, ui: &mut egui::Ui, i: usize) {
-        let c = Colors::get();
-        let lang = self.lang;
-        let r = self.rows[i].clone();
-        let selected = self.selected.contains(&r.id);
-        let at_cursor = self.cursor_row.as_deref() == Some(r.id.as_str());
-        let trigger = self.trigger_display(&r);
-        let frame = egui::Frame::new()
-            .fill(if selected {
-                c.bg_selected
-            } else {
-                egui::Color32::TRANSPARENT
-            })
-            .stroke(egui::Stroke::new(
-                if at_cursor { 2.0 } else { 0.0 },
-                if at_cursor {
-                    c.focus
-                } else {
-                    egui::Color32::TRANSPARENT
-                },
-            ))
-            .corner_radius(6)
-            .inner_margin(egui::Margin::symmetric(8, 4));
-        let out = frame.show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.set_min_height(ROW_H - 10.0);
-            ui.horizontal(|ui| {
-                let handle = ui
-                    .add(
-                        egui::Button::new(small("≡", c.text_muted))
-                            .frame(false)
-                            .sense(egui::Sense::drag()),
-                    )
-                    .on_hover_text(lang.t("list.drag"))
-                    .accessible_name(format!("{}: {}", lang.t("list.drag"), r.title));
-                handle.dnd_set_drag_payload(DragRule {
-                    id: r.id.clone(),
-                    profile: r.profile.clone(),
-                });
-                let mut on = r.enabled;
-                if ui
-                    .add(kim_ui::Switch::new(
-                        &mut on,
-                        format!("{}: {}", lang.t("filter.enabled"), r.title),
-                    ))
-                    .changed()
-                {
-                    self.acts.push(Act::SetEnabled(vec![r.id.clone()], on));
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add(kim_ui::Button::ghost(lang.t("btn.delete")).compact())
-                        .accessible_name(format!("{}: {}", lang.t("btn.delete"), r.title))
-                        .clicked()
-                    {
-                        self.acts.push(Act::AskDelete(vec![r.id.clone()]));
-                    }
-                    if ui
-                        .add(kim_ui::Button::ghost(lang.t("btn.duplicate")).compact())
-                        .accessible_name(format!("{}: {}", lang.t("btn.duplicate"), r.title))
-                        .clicked()
-                    {
-                        self.acts.push(Act::Duplicate(vec![r.id.clone()]));
-                    }
-                    if r.editable
-                        && ui
-                            .add(kim_ui::Button::ghost(lang.t("btn.edit")).compact())
-                            .accessible_name(format!("{}: {}", lang.t("btn.edit"), r.title))
-                            .clicked()
-                    {
-                        self.acts.push(Act::Edit(r.id.clone()));
-                    }
-                    for b in r.badges.iter().rev() {
-                        ui.label(small(
-                            format!("{} {}", b.kind.glyph(), lang.t(b.kind.key())),
-                            badge_color(b.kind),
-                        ))
-                        .on_hover_text(format!("{} ({})", b.message, b.code));
-                    }
-                    // A "hold + press" rule lives in its layer: not "in another mode".
-                    let layered = trigger != r.trigger && r.state == "other_mode";
-                    if !layered && !r.state.starts_with("active") && r.state != "disabled" {
-                        let (state, color) = self.row_state(&r);
-                        ui.label(small(state, color));
-                    }
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        let name = egui::RichText::new(&r.title)
-                            .font(kim_ui::ui_font(ui.ctx(), Metrics::get().body, true))
-                            .color(if r.enabled {
-                                c.text_primary
-                            } else {
-                                c.text_secondary
-                            });
-                        let resp = ui
-                            .add(
-                                egui::Button::selectable(selected, name)
-                                    .frame(false)
-                                    .truncate(),
-                            )
-                            .on_hover_text(format!("{trigger}  →  {}", r.summary))
-                            .accessible_name(format!("{}  →  {}", r.trigger, r.summary));
-                        if !trigger.is_empty() {
-                            kim_ui::keycaps(ui, &trigger);
-                        }
-                        ui.add(
-                            egui::Label::new(small(format!("→ {}", r.summary), c.text_muted))
-                                .truncate(),
-                        );
-                        if resp.clicked() {
-                            let m = ui.input(|i| i.modifiers);
-                            if (m.ctrl || m.shift) || !r.editable {
-                                self.acts.push(Act::Select {
-                                    id: r.id.clone(),
-                                    ctrl: m.ctrl,
-                                    shift: m.shift,
-                                });
-                            } else {
-                                self.acts.push(Act::Edit(r.id.clone()));
-                            }
-                        }
-                    });
-                });
-            });
-        });
-        let rect = out.response.rect;
-        let zone = ui.interact(
-            rect,
-            egui::Id::unique(("row-drop", &r.id)),
-            egui::Sense::hover(),
-        );
-        if let Some(p) = zone.dnd_hover_payload::<DragRule>()
-            && p.profile == r.profile
-            && p.id != r.id
-        {
-            let y = ui
-                .input(|i| i.pointer.hover_pos())
-                .map_or(rect.center().y, |p| p.y);
-            let line_y = if y < rect.center().y {
-                rect.top()
-            } else {
-                rect.bottom()
-            };
-            ui.painter()
-                .hline(rect.x_range(), line_y, egui::Stroke::new(2.0, c.accent));
-        }
-        if let Some(p) = zone.dnd_release_payload::<DragRule>()
-            && p.profile == r.profile
-            && p.id != r.id
-        {
-            let y = ui
-                .input(|i| i.pointer.interact_pos())
-                .map_or(rect.center().y, |p| p.y);
-            let pos = if y < rect.center().y {
-                Position::Before(r.id.clone())
-            } else {
-                Position::After(r.id.clone())
-            };
-            self.acts.push(Act::Move(p.id.clone(), pos));
-        }
-    }
-
-    // --- Detail ----------------------------------------------------------------------------------
-
-    fn detail(&mut self, ui: &mut egui::Ui) {
-        let c = Colors::get();
-        let lang = self.lang;
-        if self.form.is_some() {
-            self.form_ui(ui);
-            return;
-        }
-        if self.selected.len() > 1 {
-            ui.label(small(lang.t("bulk.hint"), c.text_muted));
-            return;
-        }
-        let Some(id) = self.selected.first().cloned() else {
-            ui.label(small(lang.t("detail.select_hint"), c.text_muted));
-            return;
-        };
-        let Some(row) = self.rows.iter().find(|r| r.id == id).cloned() else {
-            return;
-        };
-        let rule = self.doc().and_then(|d| {
-            let (pi, ri) = d.find_rule(&id)?;
-            d.profiles[pi].rules[ri].rule().cloned()
-        });
-        ui.label(
-            egui::RichText::new(&row.title)
-                .size(Metrics::get().title)
-                .strong(),
-        );
-        if let Some(d) = &row.description {
-            ui.label(small(d, c.text_secondary));
-        }
-        ui.add_space(6.0);
-        egui::Grid::new("detail-grid")
-            .num_columns(2)
-            .spacing([12.0, 6.0])
-            .show(ui, |ui| {
-                ui.label(small(lang.t("form.when_press"), c.text_muted));
-                ui.label(egui::RichText::new(&row.trigger).monospace());
-                ui.end_row();
-                ui.label(small(lang.t("form.do"), c.text_muted));
-                ui.label(&row.summary);
-                ui.end_row();
-                ui.label(small(lang.t("filter.mode"), c.text_muted));
-                ui.label(if row.mode_titles.is_empty() {
-                    lang.t("group.every_mode").to_string()
-                } else {
-                    row.mode_titles.join(", ")
-                });
-                ui.end_row();
-                if !row.apps.is_empty() {
-                    ui.label(small(lang.t("filter.app"), c.text_muted));
-                    ui.label(row.apps.join(", "));
-                    ui.end_row();
-                }
-                let (state, color) = self.row_state(&row);
-                ui.label(small(lang.t("detail.state"), c.text_muted));
-                ui.label(egui::RichText::new(state).color(color));
-                ui.end_row();
-                if let Some(r) = &rule {
-                    let needed = r.permissions_needed();
-                    if !needed.is_empty() {
-                        ui.label(small(lang.t("form.permission"), c.text_muted));
-                        ui.horizontal_wrapped(|ui| {
-                            let missing = ddalgak::validate::missing_consent(r);
-                            for p in needed {
-                                let short = lang.t(&format!("perm.short.{}", p.as_str()));
-                                if missing.contains(&p) {
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "? {short}: {}",
-                                            lang.t("perm.missing")
-                                        ))
-                                        .color(c.info),
-                                    );
-                                } else {
-                                    ui.label(
-                                        egui::RichText::new(format!("✓ {short}")).color(c.success),
-                                    );
-                                }
-                            }
-                        });
-                        ui.end_row();
-                    }
-                }
-            });
-        if let Some(reason) = &row.reason {
-            ui.label(small(reason, c.warning));
-        }
-        for b in &row.badges {
-            ui.label(
-                egui::RichText::new(format!(
-                    "{} {}: {} ({})",
-                    b.kind.glyph(),
-                    lang.t(b.kind.key()),
-                    b.message,
-                    b.code
-                ))
-                .color(badge_color(b.kind)),
-            );
-        }
-        ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            let edit = ui.add_enabled(row.editable, egui::Button::new(lang.t("btn.edit")));
-            self.anchors[2] = Some(edit.id);
-            if edit.clicked() {
-                self.acts.push(Act::Edit(id.clone()));
-            }
-            if ui
-                .add_enabled(rule.is_some(), egui::Button::new(lang.t("btn.test")))
-                .clicked()
-            {
-                self.acts.push(Act::Test(id.clone()));
-            }
-            if ui.button(lang.t("btn.duplicate")).clicked() {
-                self.acts.push(Act::Duplicate(vec![id.clone()]));
-            }
-            let toggle = if row.enabled {
-                "btn.disable"
-            } else {
-                "btn.enable"
-            };
-            if ui.button(lang.t(toggle)).clicked() {
-                self.acts
-                    .push(Act::SetEnabled(vec![id.clone()], !row.enabled));
-            }
-            if ui.button(lang.t("btn.delete")).clicked() {
-                self.acts.push(Act::AskDelete(vec![id.clone()]));
-            }
-        });
-        if !row.editable {
-            let why = rule
-                .as_ref()
-                .and_then(|r| RuleForm::edit(&row.profile, r).unsupported)
-                .unwrap_or_else(|| "it does not fit this version's rule format".into());
-            ui.label(small(
-                format!("{}: {why}", lang.t("form.not_editable")),
-                c.text_muted,
-            ));
-        }
-        if let Some((tid, sim)) = &self.test
-            && *tid == id
-        {
-            ui.add_space(8.0);
-            Self::simulation_ui(ui, lang, sim, &self.layout);
-        }
-    }
-
-    fn simulation_ui(ui: &mut egui::Ui, lang: Lang, sim: &Simulation, layout: &Layout) {
+    pub(super) fn simulation_ui(ui: &mut egui::Ui, lang: Lang, sim: &Simulation, layout: &Layout) {
         let c = Colors::get();
         egui::Frame::new()
             .fill(c.bg_overlay)
@@ -1091,331 +373,12 @@ impl EditorApp {
             });
     }
 
-    // --- The form --------------------------------------------------------------------------------
-
-    fn form_ui(&mut self, ui: &mut egui::Ui) {
-        let c = Colors::get();
-        let lang = self.lang;
-        let profile = {
-            let pid = self
-                .form
-                .as_ref()
-                .map(|f| f.profile.clone())
-                .unwrap_or_default();
-            self.loaded
-                .doc
-                .as_ref()
-                .and_then(|d| d.profile(&pid))
-                .cloned()
-        };
-        let Some(f) = self.form.as_mut() else {
-            return;
-        };
-        let heading = if f.id.is_some() {
-            "form.edit"
-        } else {
-            "form.new"
-        };
-        // ADR 0096: the rule has its own page: back to the list, its title, and the four steps
-        // (Trigger → Action → Details → Test) as one control.
-        let mut back = false;
-        let mut test = None;
-        ui.horizontal(|ui| {
-            back = ui.add(kim_ui::Button::ghost("← Rules").compact()).clicked();
-            kim_ui::title(ui, lang.t(heading));
-            if let Some(id) = f.id.clone()
-                && ui
-                    .add(kim_ui::Button::ghost("Test in Playground").compact())
-                    .on_hover_text(lang.t("play.hint_rule"))
-                    .clicked()
-            {
-                test = Some(id);
-            }
-        });
-        if let Some(id) = test {
-            self.acts.push(Act::Test(id));
-        }
-        ui.add_space(6.0);
-        let names: Vec<(Stage, &str)> = Stage::ALL.iter().map(|s| (*s, lang.t(s.key()))).collect();
-        kim_ui::segmented(ui, &mut f.stage, &names);
-        ui.add_space(6.0);
-        if back {
-            self.acts.push(Act::CloseForm);
-        }
-        if self.banner.is_some() {
-            self.banner_ui(ui);
-        }
-        let Some(f) = self.form.as_mut() else {
-            return;
-        };
-        if let Some(why) = f.unsupported.clone() {
-            ui.label(
-                egui::RichText::new(format!("{}: {why}", lang.t("form.not_editable")))
-                    .color(c.warning),
-            );
-            if ui.button(lang.t("btn.close")).clicked() {
-                self.acts.push(Act::CloseForm);
-            }
-            return;
-        }
-        if self.external_change {
-            egui::Frame::new()
-                .stroke(egui::Stroke::new(1.0, c.warning))
-                .inner_margin(6)
-                .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(lang.t("form.changed_elsewhere")).color(c.warning),
-                    );
-                    if ui.button(lang.t("btn.reload")).clicked() {
-                        self.acts.push(Act::ReloadFromDisk);
-                    }
-                });
-        }
-        let keys = if f.fields.trigger.combo == Combo::Hold
-            && !f.fields.trigger.hold_key.trim().is_empty()
-        {
-            format!(
-                "{} + {}",
-                f.fields.trigger.hold_key.trim(),
-                f.trigger_text()
-            )
-        } else {
-            f.trigger_text()
-        };
-        // ADR 0099: the rule's sentence only once it says something (no lone dash on a new
-        // rule).
-        let summary = f.summary(profile.as_ref());
-        let sentence = match (keys.trim().is_empty(), summary.trim().is_empty()) {
-            (true, true) => None,
-            (true, false) => Some(summary),
-            (false, true) => Some(keys),
-            (false, false) => Some(format!("{keys} — {summary}")),
-        };
-        if let Some(s) = sentence.filter(|s| s.trim() != "—") {
-            ui.label(small(s, c.text_secondary));
-        }
-        ui.separator();
-        let problems = f.problems(profile.as_ref());
-        // ADR 0099: a new, untouched form shows no errors yet (Next stays disabled until the
-        // problems are solved); they appear as soon as the user changes something.
-        let shown: Vec<_> = if f.id.is_none() && f.fields == f.pristine {
-            Vec::new()
-        } else {
-            problems.clone()
-        };
-        let stage = f.stage;
-        let mut capture = std::mem::take(&mut self.capture);
-        let mut target = self.capture_target;
-        let mut acts = Vec::new();
-        let mut pick = None;
-        match stage {
-            Stage::Keys => {
-                pick = keys_stage(ui, lang, f, &mut capture, &mut target, &shown);
-            }
-            Stage::Effect => effect_stage(ui, lang, f, profile.as_ref()),
-            Stage::Details => details_stage(
-                ui,
-                lang,
-                f,
-                profile.as_ref(),
-                &mut capture,
-                &mut target,
-                &shown,
-                &self.layout,
-                self.cursor,
-                &mut self.new_mode_title,
-                &mut acts,
-                std::mem::take(&mut self.focus_title),
-            ),
-            Stage::Try => {}
-        }
-        self.capture = capture;
-        self.capture_target = target;
-        self.acts.extend(acts);
-        if let Some(t) = pick {
-            self.capture.active = false;
-            self.key_picker = Some((t, kim_ui::keys::KeyPicker::default()));
-        }
-        self.key_picker_dialog(ui.ctx());
-        if stage == Stage::Details {
-            // ADR 0096: several steps (a macro) are an advanced use: folded unless the rule
-            // already has steps or one is being recorded.
-            let open = self
-                .form
-                .as_ref()
-                .is_some_and(|f| !f.fields.macro_steps.is_empty())
-                || self.recorder.is_on()
-                || self.mouse_rec.is_some();
-            egui::CollapsingHeader::new(self.lang.t("macro.title"))
-                .id_salt("macro-section")
-                .default_open(open)
-                .show(ui, |ui| self.macro_section(ui, profile.as_ref()));
-        }
-        if stage == Stage::Try {
-            self.try_stage(ui, profile.as_ref(), &problems);
-        }
-        let Some(f) = self.form.as_mut() else {
-            return;
-        };
-        ui.add_space(8.0);
-        ui.separator();
-        ui.horizontal_wrapped(|ui| {
-            let idx = Stage::ALL.iter().position(|s| *s == f.stage).unwrap_or(0);
-            if idx > 0
-                && ui
-                    .add(kim_ui::Button::secondary(lang.t("btn.back")))
-                    .clicked()
-            {
-                f.stage = Stage::ALL[idx - 1];
-            }
-            if idx + 1 < Stage::ALL.len() {
-                let blocked = match f.stage {
-                    Stage::Keys => {
-                        problems.iter().any(|p| p.path.starts_with("trigger"))
-                            || (f.fields.trigger.combo == Combo::Hold
-                                && !f.fields.trigger.hotstring
-                                && !f.fields.trigger.scheduled
-                                && f.fields.trigger.hold_key.trim().is_empty())
-                    }
-                    Stage::Effect => f.fields.effect.is_none(),
-                    _ => false,
-                };
-                if ui
-                    .add_enabled(!blocked, kim_ui::Button::primary(lang.t("btn.next")))
-                    .clicked()
-                {
-                    f.stage = Stage::ALL[idx + 1];
-                }
-            }
-            if ui
-                .add(kim_ui::Button::ghost(lang.t("btn.cancel")))
-                .clicked()
-            {
-                self.acts.push(Act::CloseForm);
-            }
-        });
-    }
-
-    fn try_stage(
-        &mut self,
-        ui: &mut egui::Ui,
-        profile: Option<&Profile>,
-        problems: &[ddalgak::text::FieldProblem],
-    ) {
-        let c = Colors::get();
-        let lang = self.lang;
-        let key = (
-            self.form.as_ref().map(|f| f.fields.clone()),
-            self.loaded.hash,
-        );
-        let doc_problems = match &self.doc_check {
-            Some((k, p)) if *k == key => p.clone(),
-            _ => {
-                let p = self.candidate_problems(profile);
-                self.doc_check = Some((key, p.clone()));
-                p
-            }
-        };
-        let Some(f) = self.form.as_mut() else {
-            return;
-        };
-        ui.label(small(lang.t("form.try_intro"), c.text_muted));
-        let can = problems.is_empty();
-        if ui
-            .add_enabled(
-                can,
-                egui::Button::new(format!("▶ {}", lang.t("form.simulate"))),
-            )
-            .clicked()
-        {
-            let sim = f.simulate(profile, &self.layout, self.cursor);
-            self.test = Some((f.id.clone().unwrap_or_default(), sim));
-        }
-        if let Some((_, sim)) = &self.test {
-            Self::simulation_ui(ui, lang, sim, &self.layout);
-        }
-        for p in problems {
-            ui.label(
-                egui::RichText::new(format!("✕ {}", lang.problem(&p.message))).color(c.danger),
-            );
-        }
-        for p in &doc_problems {
-            let color = if p.severity == ddalgak::validate::Severity::Error {
-                c.danger
-            } else {
-                c.warning
-            };
-            let glyph = if p.severity == ddalgak::validate::Severity::Error {
-                "✕"
-            } else {
-                "⚠"
-            };
-            ui.label(
-                egui::RichText::new(format!("{glyph} {} ({})", p.message, p.code)).color(color),
-            );
-            for o in &p.offers {
-                if let ddalgak::validate::Offer::Rebind(k) = o
-                    && ui
-                        .button(format!("{} {k}", lang.t("form.try_keys")))
-                        .clicked()
-                {
-                    f.fields.trigger.keys = k.clone();
-                    f.stage = Stage::Keys;
-                }
-            }
-        }
-        let perms = f.permissions(profile);
-        if !perms.is_empty() {
-            let words: Vec<&str> = perms
-                .iter()
-                .map(|p| lang.t(&format!("perm.short.{}", p.as_str())))
-                .collect();
-            ui.label(small(
-                format!("{}: {}", lang.t("form.permission"), words.join(", ")),
-                c.text_secondary,
-            ));
-        }
-        let blocked = !problems.is_empty()
-            || doc_problems
-                .iter()
-                .any(|p| p.severity == ddalgak::validate::Severity::Error);
-        ui.add_space(6.0);
-        ui.horizontal_wrapped(|ui| {
-            if f.id.is_some() {
-                ui.checkbox(&mut f.fields.enabled, lang.t("form.enabled"));
-                if ui
-                    .add_enabled(!blocked && f.dirty(), egui::Button::new(lang.t("btn.save")))
-                    .clicked()
-                {
-                    self.acts.push(Act::SaveForm);
-                }
-            } else {
-                if ui
-                    .add_enabled(!blocked, egui::Button::new(lang.t("btn.save_off")))
-                    .clicked()
-                {
-                    f.fields.enabled = false;
-                    self.acts.push(Act::SaveForm);
-                }
-                let c = Colors::get();
-                let save = ui.add_enabled(
-                    !blocked,
-                    egui::Button::new(
-                        egui::RichText::new(lang.t("btn.save_enable")).color(c.text_on_accent),
-                    )
-                    .fill(c.accent),
-                );
-                if save.clicked() {
-                    f.fields.enabled = true;
-                    self.acts.push(Act::SaveForm);
-                }
-            }
-        });
-    }
-
     /// The document checks for the form's rule as if it were saved now (duplicate triggers,
     /// collisions with Ddalgak's own shortcuts, warnings), for the Try step.
-    fn candidate_problems(&self, profile: Option<&Profile>) -> Vec<ddalgak::validate::Problem> {
+    pub(super) fn candidate_problems(
+        &self,
+        profile: Option<&Profile>,
+    ) -> Vec<ddalgak::validate::Problem> {
         let (Some(f), Some(doc)) = (&self.form, &self.loaded.doc) else {
             return Vec::new();
         };
@@ -1451,86 +414,9 @@ impl EditorApp {
             .collect()
     }
 
-    // --- Modes page ------------------------------------------------------------------------------
-
-    fn modes_page(&mut self, ui: &mut egui::Ui) {
-        let c = Colors::get();
-        let lang = self.lang;
-        self.banner_ui(ui);
-        let pid = self.active_profile_id();
-        let Some(p) = self.profile(&pid).cloned() else {
-            return;
-        };
-        ui.label(
-            egui::RichText::new(format!("{} · {}", lang.t("nav.modes"), p.title))
-                .size(Metrics::get().title)
-                .strong(),
-        );
-        for m in &p.modes {
-            let is_default = m.id == p.default_mode;
-            ui.horizontal_wrapped(|ui| {
-                if let Some(icon) = &m.icon {
-                    ui.label(egui::RichText::new(format!("[{icon}]")).monospace());
-                }
-                ui.label(egui::RichText::new(&m.title).strong());
-                let mut notes = Vec::new();
-                if is_default {
-                    notes.push(lang.t("modes.default").to_string());
-                }
-                if let Some(parent) = &m.parent {
-                    let pt = p
-                        .modes
-                        .iter()
-                        .find(|x| &x.id == parent)
-                        .map_or(parent.as_str(), |x| x.title.as_str());
-                    notes.push(format!("{} {pt}", lang.t("modes.layer_over")));
-                }
-                let on = m.enabled != Some(false);
-                if !on {
-                    notes.push(lang.t("state.disabled").to_string());
-                }
-                // An empty label here drew the next one over the mode's name (#77: "nav" under
-                // "94 rules" in the real editor).
-                if !notes.is_empty() {
-                    ui.label(small(notes.join(" · "), c.text_muted));
-                }
-                let rules = ddalgak::mode_edit::rules_of(&p, &m.id).len();
-                ui.label(small(
-                    format!("{rules} {}", lang.t("status.rules")),
-                    c.text_muted,
-                ));
-                if !is_default {
-                    let label = if on { "btn.disable" } else { "btn.enable" };
-                    if ui.small_button(lang.t(label)).clicked() {
-                        self.acts.push(Act::ModeEnabled(m.id.clone(), !on));
-                    }
-                }
-            });
-        }
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.new_mode_title)
-                    .hint_text(lang.t("field.new_mode"))
-                    .desired_width(200.0),
-            )
-            .accessible_name(lang.t("field.new_mode"));
-            if ui
-                .add_enabled(
-                    !self.new_mode_title.trim().is_empty(),
-                    egui::Button::new(lang.t("modes.add")),
-                )
-                .clicked()
-            {
-                self.acts.push(Act::NewMode(self.new_mode_title.clone()));
-            }
-        });
-        ui.label(small(lang.t("modes.note"), c.text_muted));
-    }
-
     // --- Dialogs ---------------------------------------------------------------------------------
 
-    fn dialog_ui(&mut self, ctx: &egui::Context) {
+    pub(super) fn dialog_ui(&mut self, ctx: &egui::Context) {
         let c = Colors::get();
         let lang = self.lang;
         let Some(dialog) = self.dialog.clone() else {
@@ -1553,7 +439,7 @@ impl EditorApp {
                         titles.join(", ")
                     ));
                     ui.horizontal(|ui| {
-                        let cancel = ui.button(lang.t("btn.cancel"));
+                        let cancel = ui.add(kim_ui::Button::secondary(lang.t("btn.cancel")));
                         if focus {
                             cancel.request_focus();
                         }
@@ -1561,14 +447,11 @@ impl EditorApp {
                             self.acts.push(Act::CloseDialog);
                         }
                         if ui
-                            .add(egui::Button::new(
-                                egui::RichText::new(format!(
-                                    "{} ({})",
-                                    lang.t("btn.delete"),
-                                    ids.len()
-                                ))
-                                .color(c.danger),
-                            ))
+                            .add(kim_ui::Button::danger(format!(
+                                "{} ({})",
+                                lang.t("btn.delete"),
+                                ids.len()
+                            )))
                             .clicked()
                         {
                             self.acts.push(Act::Delete(ids.clone()));
@@ -1583,14 +466,17 @@ impl EditorApp {
                     );
                     ui.label(lang.t("dialog.discard_text"));
                     ui.horizontal(|ui| {
-                        let keep = ui.button(lang.t("btn.keep_editing"));
+                        let keep = ui.add(kim_ui::Button::secondary(lang.t("btn.keep_editing")));
                         if focus {
                             keep.request_focus();
                         }
                         if keep.clicked() {
                             self.acts.push(Act::CloseDialog);
                         }
-                        if ui.button(lang.t("btn.discard")).clicked() {
+                        if ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.discard")))
+                            .clicked()
+                        {
                             self.acts.push(Act::Discard(then.clone()));
                         }
                     });
@@ -1609,14 +495,17 @@ impl EditorApp {
                     }
                     ui.label(small(lang.t("dialog.consent_text"), c.text_muted));
                     ui.horizontal(|ui| {
-                        let cancel = ui.button(lang.t("btn.cancel"));
+                        let cancel = ui.add(kim_ui::Button::secondary(lang.t("btn.cancel")));
                         if focus {
                             cancel.request_focus();
                         }
                         if cancel.clicked() {
                             self.acts.push(Act::CloseDialog);
                         }
-                        if ui.button(lang.t("btn.allow")).clicked() {
+                        if ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.allow")))
+                            .clicked()
+                        {
                             self.acts.push(Act::Allow);
                         }
                     });
@@ -1644,7 +533,10 @@ impl EditorApp {
                         ui.label(egui::RichText::new(d).color(c.success));
                     }
                     ui.horizontal(|ui| {
-                        if ui.button(lang.t("btn.close")).clicked() {
+                        if ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.close")))
+                            .clicked()
+                        {
                             self.acts.push(Act::CloseDialog);
                         }
                         if done.is_none() && primary(ui, lang.t("btn.export")).clicked() {
@@ -1678,7 +570,10 @@ impl EditorApp {
                     }
                     let mut next_plan = plan.clone();
                     let mut next_error = error.clone();
-                    if ui.button(lang.t("dialog.check")).clicked() {
+                    if ui
+                        .add(kim_ui::Button::secondary(lang.t("dialog.check")))
+                        .clicked()
+                    {
                         match self.plan_import(&path) {
                             Ok(p) => {
                                 next_plan = Some(Box::new(p));
@@ -1737,11 +632,16 @@ impl EditorApp {
                         }
                     }
                     ui.horizontal(|ui| {
-                        if ui.button(lang.t("btn.cancel")).clicked() {
+                        if ui
+                            .add(kim_ui::Button::secondary(lang.t("btn.cancel")))
+                            .clicked()
+                        {
                             self.acts.push(Act::CloseDialog);
                         }
                         if plan.as_ref().is_some_and(|p| !p.rules.is_empty())
-                            && ui.button(lang.t("btn.add_disabled")).clicked()
+                            && ui
+                                .add(kim_ui::Button::secondary(lang.t("btn.add_disabled")))
+                                .clicked()
                             && let Some(p) = plan.clone()
                         {
                             self.import(&p);
@@ -1795,7 +695,7 @@ impl EditorApp {
                         ui.label(small(lang.t("help.off"), c.warning));
                     }
                     ui.label(small(lang.t("help.rebind"), c.text_muted));
-                    let close = ui.button(lang.t("btn.close"));
+                    let close = ui.add(kim_ui::Button::secondary(lang.t("btn.close")));
                     if focus {
                         close.request_focus();
                     }
@@ -1848,7 +748,7 @@ impl EditorApp {
 
 /// The small screen map under the Mouse form and in the simulation: every monitor at its place,
 /// the simulated pointer (ring) and the target (disc). Nothing moves.
-fn screen_map(ui: &mut egui::Ui, layout: &Layout, from: Point, to: Option<Point>) {
+pub(super) fn screen_map(ui: &mut egui::Ui, layout: &Layout, from: Point, to: Option<Point>) {
     let c = Colors::get();
     let (w, h) = (220.0f32, 110.0f32);
     let map = mouse::screen_map(layout, from, to.map(|p| (p, false)), w as i32, h as i32);
@@ -1907,7 +807,7 @@ fn running_programs(ctx: &egui::Context) -> Vec<String> {
 
 /// #102: a "Running programs" menu that fills `target` with a program's file name (`lines`:
 /// adds it as a new line of a list instead).
-fn program_picker(ui: &mut egui::Ui, lang: Lang, target: &mut String, lines: bool) {
+pub(super) fn program_picker(ui: &mut egui::Ui, lang: Lang, target: &mut String, lines: bool) {
     ui.menu_button(lang.t("picker.running"), |ui| {
         let list = running_programs(ui.ctx());
         if list.is_empty() {
@@ -1917,7 +817,7 @@ fn program_picker(ui: &mut egui::Ui, lang: Lang, target: &mut String, lines: boo
             .max_height(240.0)
             .show(ui, |ui| {
                 for name in list {
-                    if ui.button(&name).clicked() {
+                    if ui.add(kim_ui::Button::secondary(&name)).clicked() {
                         if lines {
                             if !target.lines().any(|l| l.trim().eq_ignore_ascii_case(&name)) {
                                 if !target.is_empty() && !target.ends_with('\n') {
@@ -1937,7 +837,7 @@ fn program_picker(ui: &mut egui::Ui, lang: Lang, target: &mut String, lines: boo
 }
 
 /// #102: running programs whose name starts with what was typed (at most 5), as buttons.
-fn program_suggestions(ui: &mut egui::Ui, target: &mut String) {
+pub(super) fn program_suggestions(ui: &mut egui::Ui, target: &mut String) {
     let typed = target.trim().to_lowercase();
     if typed.is_empty() {
         return;
@@ -1950,7 +850,7 @@ fn program_suggestions(ui: &mut egui::Ui, target: &mut String) {
     if !hits.is_empty() {
         ui.horizontal_wrapped(|ui| {
             for n in hits {
-                if ui.small_button(&n).clicked() {
+                if ui.add(kim_ui::Button::ghost(&n).compact()).clicked() {
                     *target = n;
                 }
             }
@@ -1967,7 +867,7 @@ enum Discovery {
     Done(Option<Vec<ddalgak::win::desktop::Capability>>),
 }
 
-fn capability_finder(ui: &mut egui::Ui, lang: Lang, target: &mut String) {
+pub(super) fn capability_finder(ui: &mut egui::Ui, lang: Lang, target: &mut String) {
     let id = egui::Id::unique("ddalgak-capabilities");
     let slot: Arc<Mutex<Discovery>> = ui.ctx().data_mut(|d| {
         d.get_temp_mut_or_default::<Arc<Mutex<Discovery>>>(id)
@@ -1977,7 +877,10 @@ fn capability_finder(ui: &mut egui::Ui, lang: Lang, target: &mut String) {
     let c = Colors::get();
     match state {
         Discovery::Idle => {
-            if ui.button(lang.t("field.tool.find")).clicked() {
+            if ui
+                .add(kim_ui::Button::secondary(lang.t("field.tool.find")))
+                .clicked()
+            {
                 if let Ok(mut g) = slot.lock() {
                     *g = Discovery::Searching;
                 }
@@ -2024,74 +927,17 @@ fn capability_finder(ui: &mut egui::Ui, lang: Lang, target: &mut String) {
     }
 }
 
-fn problems_for(
+pub(super) fn problems_for(
     ui: &mut egui::Ui,
     lang: Lang,
     problems: &[ddalgak::text::FieldProblem],
     prefix: &[&str],
 ) {
-    let c = Colors::get();
     for p in problems
         .iter()
         .filter(|p| prefix.iter().any(|x| p.path.starts_with(x)))
     {
-        ui.label(egui::RichText::new(format!("✕ {}", lang.problem(&p.message))).color(c.danger));
-    }
-}
-
-/// A key field: the capture button and the "type instead" text.
-#[allow(clippy::too_many_arguments)]
-fn key_field(
-    ui: &mut egui::Ui,
-    lang: Lang,
-    label: &str,
-    value: &mut String,
-    capture: &mut Capture,
-    target: &mut CaptureTarget,
-    me: CaptureTarget,
-    heading: bool,
-) {
-    let c = Colors::get();
-    if heading {
-        ui.label(egui::RichText::new(label).strong());
-    }
-    ui.horizontal_wrapped(|ui| {
-        let recording = capture.active && *target == me;
-        let shown = if recording || value.trim().is_empty() {
-            lang.t("form.capture").to_string()
-        } else {
-            value.clone()
-        };
-        let btn = ui.add(
-            egui::Button::new(egui::RichText::new(shown).monospace())
-                .min_size(egui::vec2(200.0, 28.0))
-                .stroke(egui::Stroke::new(
-                    if recording { 2.0 } else { 1.0 },
-                    if recording { c.focus } else { c.border_strong },
-                )),
-        );
-        let btn = btn.accessible_name(format!("{}: {label}", lang.t("form.capture_label")));
-        if btn.clicked() {
-            capture.active = true;
-            *target = me;
-            btn.request_focus();
-        }
-        if recording
-            && !btn.has_focus()
-            && !btn.clicked()
-            && btn.ctx.memory(|m| m.focused().is_some())
-        {
-            capture.active = false;
-        }
-        ui.add(
-            egui::TextEdit::singleline(value)
-                .hint_text(lang.t("form.type_instead"))
-                .desired_width(160.0),
-        )
-        .accessible_name(format!("{}: {label}", lang.t("form.type_instead")));
-    });
-    if !value.trim().is_empty() {
-        ui.label(small(capture::announce(value), c.text_muted));
+        kim_ui::field_error(ui, &lang.problem(&p.message));
     }
 }
 
@@ -2136,1026 +982,4 @@ pub(crate) fn trigger_keys() -> Vec<&'static str> {
         }
     }
     v
-}
-
-/// ADR 0096: the trigger step. One choice of *what* starts the rule (keys, a typed text, a
-/// schedule); for keys, *how* they combine (together, one after another, hold + press), the keys
-/// recorded or picked, and the rarely needed options under *Advanced*. Returns the field whose
-/// keys should be picked in the key picker.
-fn keys_stage(
-    ui: &mut egui::Ui,
-    lang: Lang,
-    f: &mut RuleForm,
-    capture: &mut Capture,
-    target: &mut CaptureTarget,
-    problems: &[ddalgak::text::FieldProblem],
-) -> Option<CaptureTarget> {
-    let c = Colors::get();
-    let allows_text = f.fields.effect.is_none_or(Effect::allows_hotstring);
-    let t = &mut f.fields.trigger;
-    let mut pick = None;
-    #[derive(Clone, Copy, PartialEq)]
-    enum Kind {
-        Keys,
-        Text,
-        Schedule,
-    }
-    let mut kind = if t.scheduled {
-        Kind::Schedule
-    } else if t.hotstring && allows_text {
-        Kind::Text
-    } else {
-        Kind::Keys
-    };
-    let mut kinds = vec![(Kind::Keys, lang.t("form.when_press"))];
-    if allows_text {
-        kinds.push((Kind::Text, lang.t("form.when_type")));
-    }
-    kinds.push((Kind::Schedule, lang.t("form.schedule")));
-    kim_ui::segmented(ui, &mut kind, &kinds);
-    t.scheduled = kind == Kind::Schedule;
-    t.hotstring = kind == Kind::Text;
-    ui.add_space(8.0);
-    if t.scheduled {
-        ui.horizontal_wrapped(|ui| {
-            let mut every = t.every.is_some();
-            ui.radio_value(&mut every, true, lang.t("form.schedule_every"));
-            ui.radio_value(&mut every, false, lang.t("form.schedule_at"));
-            if every && t.every.is_none() {
-                t.every = Some(60);
-            } else if !every {
-                t.every = None;
-            }
-        });
-        match &mut t.every {
-            Some(n) => {
-                ui.add(egui::DragValue::new(n).range(1..=1440).suffix(" min"))
-                    .accessible_name(lang.t("form.schedule_every"));
-            }
-            None => {
-                ui.add(
-                    egui::TextEdit::singleline(&mut t.at)
-                        .hint_text("09:00")
-                        .desired_width(60.0),
-                )
-                .accessible_name(lang.t("form.schedule_at"));
-                ui.horizontal_wrapped(|ui| {
-                    for (i, d) in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                        .iter()
-                        .enumerate()
-                    {
-                        ui.checkbox(&mut t.days[i], *d);
-                    }
-                });
-            }
-        }
-        ui.checkbox(&mut t.catch_up, lang.t("form.schedule_catch_up"));
-        ui.label(small(lang.t("form.schedule_note"), c.text_muted));
-        problems_for(ui, lang, problems, &["trigger"]);
-        return None;
-    }
-    if t.hotstring {
-        let lbl = ui.label(egui::RichText::new(lang.t("form.abbreviation")).strong());
-        ui.add(
-            egui::TextEdit::singleline(&mut t.abbreviation)
-                .hint_text("btw")
-                .desired_width(160.0),
-        )
-        .labelled_by(lbl.id);
-        problems_for(ui, lang, problems, &["trigger"]);
-        return None;
-    }
-    // How the keys combine: never one silently treated as another.
-    kim_ui::setting_row(
-        ui,
-        lang.t("form.combo"),
-        Some(lang.t(match t.combo {
-            Combo::Together => "form.combo_together_hint",
-            Combo::Sequence => "form.combo_sequence_hint",
-            Combo::Hold => "form.combo_hold_hint",
-        })),
-        |ui| {
-            kim_ui::segmented(
-                ui,
-                &mut t.combo,
-                &[
-                    (Combo::Together, "Together"),
-                    (Combo::Sequence, "One after another"),
-                    (Combo::Hold, "Hold + press"),
-                ],
-            );
-        },
-    );
-    capture.add_step = t.combo == Combo::Sequence;
-    ui.add_space(6.0);
-    if t.combo == Combo::Hold {
-        ui.horizontal(|ui| {
-            key_field(
-                ui,
-                lang,
-                lang.t("form.hold_key"),
-                &mut t.hold_key,
-                capture,
-                target,
-                CaptureTarget::HoldKey,
-                true,
-            );
-            if ui
-                .add(kim_ui::Button::secondary("Pick…").compact())
-                .clicked()
-            {
-                pick = Some(CaptureTarget::HoldKey);
-            }
-        });
-    }
-    ui.horizontal(|ui| {
-        key_field(
-            ui,
-            lang,
-            lang.t(if t.combo == Combo::Hold {
-                "form.press_key"
-            } else {
-                "form.when_press"
-            }),
-            &mut t.keys,
-            capture,
-            target,
-            CaptureTarget::Trigger,
-            true,
-        );
-        if ui
-            .add(kim_ui::Button::secondary("Pick…").compact())
-            .clicked()
-        {
-            pick = Some(CaptureTarget::Trigger);
-        }
-    });
-    if !t.keys.trim().is_empty() {
-        let shown = if t.combo == Combo::Hold && !t.hold_key.trim().is_empty() {
-            format!("{} + {}", t.hold_key.trim(), t.keys.trim())
-        } else {
-            t.keys.trim().to_string()
-        };
-        kim_ui::keycaps(ui, &shown);
-    }
-    ui.label(small(lang.t("form.capture_hint"), c.text_muted));
-    if capture.composing {
-        ui.label(egui::RichText::new(lang.t("form.ime")).color(c.warning));
-    }
-    egui::CollapsingHeader::new("Advanced")
-        .id_salt("trigger-advanced")
-        .show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.radio_value(&mut t.on, TriggerOn::Press, lang.t("form.on_press"));
-                ui.radio_value(&mut t.on, TriggerOn::Release, lang.t("form.on_release"));
-                ui.radio_value(&mut t.on, TriggerOn::Hold, lang.t("form.on_hold"));
-                if t.on == TriggerOn::Hold {
-                    labeled(
-                        ui,
-                        lang.t("form.hold_ms"),
-                        egui::DragValue::new(&mut t.hold_ms)
-                            .range(200..=5000)
-                            .suffix(" ms"),
-                    );
-                }
-            });
-            ui.checkbox(&mut t.pass_through, lang.t("form.pass_through"));
-        });
-    if t.combo == Combo::Hold && t.hold_key.trim().is_empty() {
-        kim_ui::field_error(ui, lang.t("form.hold_key_missing"));
-    }
-    problems_for(ui, lang, problems, &["trigger"]);
-    pick
-}
-
-fn effect_stage(ui: &mut egui::Ui, lang: Lang, f: &mut RuleForm, profile: Option<&Profile>) {
-    let c = Colors::get();
-    ui.label(egui::RichText::new(lang.t("form.do")).strong());
-    egui::Grid::new("tiles")
-        .num_columns(4)
-        .spacing([8.0, 8.0])
-        .show(ui, |ui| {
-            for (i, e) in Effect::TILES.into_iter().enumerate() {
-                let title = lang.t(&format!("tile.{}", e.key()));
-                let example = lang.t(&format!("tile.{}.example", e.key()));
-                let chosen = f.fields.effect == Some(e);
-                let b = ui
-                    .add(
-                        egui::Button::selectable(
-                            chosen,
-                            egui::RichText::new(format!("{}  {title}\n{example}", e.icon())),
-                        )
-                        .min_size(egui::vec2(120.0, 44.0)),
-                    )
-                    .accessible_name(title);
-                if b.clicked() {
-                    f.fields.effect = Some(e);
-                    f.refresh_title(profile, lang);
-                    f.stage = Stage::Details;
-                }
-                if i % 4 == 3 {
-                    ui.end_row();
-                }
-            }
-        });
-    ui.horizontal_wrapped(|ui| {
-        ui.label(small(lang.t("form.more"), c.text_muted));
-        for e in Effect::MORE {
-            let title = lang.t(&format!("tile.{}", e.key()));
-            if ui
-                .selectable_label(f.fields.effect == Some(e), format!("{}  {title}", e.icon()))
-                .accessible_name(title)
-                .clicked()
-            {
-                f.fields.effect = Some(e);
-                f.refresh_title(profile, lang);
-                f.stage = Stage::Details;
-            }
-        }
-    });
-}
-
-#[allow(clippy::too_many_arguments)]
-fn details_stage(
-    ui: &mut egui::Ui,
-    lang: Lang,
-    f: &mut RuleForm,
-    profile: Option<&Profile>,
-    capture: &mut Capture,
-    target: &mut CaptureTarget,
-    problems: &[ddalgak::text::FieldProblem],
-    layout: &Layout,
-    cursor: Point,
-    new_mode: &mut String,
-    acts: &mut Vec<Act>,
-    focus_title: bool,
-) {
-    let c = Colors::get();
-    let Some(effect) = f.fields.effect else {
-        ui.label(lang.t("form.do"));
-        return;
-    };
-    ui.label(
-        egui::RichText::new(format!(
-            "{}  {}",
-            effect.icon(),
-            lang.t(&format!("tile.{}", effect.key()))
-        ))
-        .strong(),
-    );
-    let name = ui
-        .add(egui::TextEdit::singleline(&mut f.fields.title).desired_width(320.0))
-        .accessible_name(lang.t("form.title"));
-    if focus_title {
-        name.request_focus();
-    }
-    if name.changed() {
-        f.fields.title_auto = false;
-    }
-    problems_for(ui, lang, problems, &["title"]);
-    ui.add_space(4.0);
-    let fl = &mut f.fields;
-    match effect {
-        Effect::Remap => {
-            key_field(
-                ui,
-                lang,
-                lang.t("field.acts_as"),
-                &mut fl.remap.to,
-                capture,
-                target,
-                CaptureTarget::RemapTo,
-                true,
-            );
-            key_field(
-                ui,
-                lang,
-                lang.t("field.tap"),
-                &mut fl.remap.tap,
-                capture,
-                target,
-                CaptureTarget::RemapTap,
-                true,
-            );
-            if !fl.remap.tap.trim().is_empty() {
-                labeled(
-                    ui,
-                    lang.t("field.tap_ms"),
-                    egui::DragValue::new(&mut fl.remap.tap_ms)
-                        .range(100..=1000)
-                        .suffix(" ms"),
-                );
-            }
-            let trig = fl.trigger.keys.clone();
-            if ddalgak::remap::widened(&trig) && !fl.remap.to.trim().is_empty() {
-                ui.label(small(
-                    format!(
-                        "{} Shift+{trig} → Shift+{}",
-                        lang.t("form.held_modifiers"),
-                        fl.remap.to.trim()
-                    ),
-                    c.text_muted,
-                ));
-            }
-            problems_for(
-                ui,
-                lang,
-                problems,
-                &["steps[0].to", "steps[0].tap", "trigger.pass_through"],
-            );
-        }
-        Effect::Block => {
-            ui.label(small(lang.t("tile.block.example"), c.text_muted));
-        }
-        Effect::SendKeys => {
-            key_field(
-                ui,
-                lang,
-                lang.t("field.shortcut"),
-                &mut fl.keys.keys,
-                capture,
-                target,
-                CaptureTarget::SendKeys,
-                true,
-            );
-            ui.checkbox(&mut capture.add_step, lang.t("form.add_step"));
-            labeled(
-                ui,
-                lang.t("field.step_delay"),
-                egui::DragValue::new(&mut fl.keys.step_delay_ms)
-                    .range(0..=1000)
-                    .suffix(" ms"),
-            );
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::TypeText => {
-            let lbl = ui.label(egui::RichText::new(lang.t("field.text")).strong());
-            ui.add(
-                egui::TextEdit::multiline(&mut fl.text.text)
-                    .desired_rows(4)
-                    .desired_width(f32::INFINITY),
-            )
-            .labelled_by(lbl.id);
-            ui.checkbox(&mut fl.text.variables, lang.t("field.variables"));
-            ui.checkbox(&mut fl.text.paste, lang.t("field.paste"));
-            labeled(
-                ui,
-                lang.t("field.key_delay"),
-                egui::DragValue::new(&mut fl.text.key_delay_ms)
-                    .range(0..=200)
-                    .suffix(" ms"),
-            );
-            let preview = f.text_draft().preview(&form::local_now());
-            ui.label(small(lang.t("form.as_typed"), c.text_muted));
-            let mut shown = preview.rendered;
-            ui.add(
-                egui::TextEdit::multiline(&mut shown)
-                    .interactive(false)
-                    .desired_rows(2)
-                    .desired_width(f32::INFINITY),
-            );
-            ui.label(small(lang.t("form.plain_note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::OpenProgram => {
-            let lbl = ui.label(egui::RichText::new(lang.t("field.program")).strong());
-            ui.add(
-                egui::TextEdit::singleline(&mut fl.program.path)
-                    .hint_text(r"C:\Windows\System32\notepad.exe")
-                    .desired_width(f32::INFINITY),
-            )
-            .labelled_by(lbl.id);
-            ui.add(
-                egui::TextEdit::singleline(&mut fl.program.app_id)
-                    .hint_text("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App")
-                    .desired_width(f32::INFINITY),
-            )
-            .accessible_name(lang.t("field.app_id"));
-            ui.label(small(lang.t("field.args"), c.text_muted));
-            ui.add(
-                egui::TextEdit::multiline(&mut fl.program.args)
-                    .desired_rows(2)
-                    .desired_width(f32::INFINITY),
-            )
-            .accessible_name(lang.t("field.args"));
-            ui.add(
-                egui::TextEdit::singleline(&mut fl.program.working_dir)
-                    .hint_text(lang.t("field.start_in"))
-                    .desired_width(f32::INFINITY),
-            )
-            .accessible_name(lang.t("field.start_in"));
-            ui.horizontal(|ui| {
-                ui.label(lang.t("field.window"));
-                for w in ["normal", "maximized", "minimized"] {
-                    ui.radio_value(
-                        &mut fl.program.window,
-                        w.to_string(),
-                        lang.t(&format!("field.window.{w}")),
-                    );
-                }
-            });
-            ui.checkbox(&mut fl.program.activate, lang.t("field.activate"));
-            let d = f.program_draft();
-            let pv = d.preview(&ddalgak::launch::process_var);
-            if !pv.program.is_empty() {
-                let (glyph, color, word) = if pv.found && pv.is_program {
-                    ("✓", c.success, lang.t("form.found"))
-                } else {
-                    ("✕", c.warning, lang.t("form.not_found"))
-                };
-                ui.label(
-                    egui::RichText::new(format!("{glyph} {} — {word}", pv.program)).color(color),
-                );
-            }
-            if let Some(cl) = d.command_line(&ddalgak::launch::process_var) {
-                ui.label(small(
-                    format!("{}: {cl}", lang.t("form.command_line")),
-                    c.text_muted,
-                ));
-            }
-            ui.label(small(lang.t("form.program_note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::OpenUrl => {
-            let lbl = ui.label(egui::RichText::new(lang.t("field.url")).strong());
-            ui.add(
-                egui::TextEdit::singleline(&mut fl.url)
-                    .hint_text("github.com")
-                    .desired_width(f32::INFINITY),
-            )
-            .labelled_by(lbl.id);
-            match f.url_draft().normalized() {
-                Ok(u) if !f.fields.url.trim().is_empty() => {
-                    ui.label(egui::RichText::new(format!("✓ {u}")).color(c.success));
-                }
-                _ => {}
-            }
-            ui.label(small(lang.t("form.program_note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::Mouse => mouse_form(ui, lang, f, problems, layout, cursor),
-        Effect::Mode => {
-            let ops = [
-                (ModeOp::Set, "switch to"),
-                (ModeOp::Toggle, "toggle"),
-                (ModeOp::Cycle, "cycle"),
-                (ModeOp::Hold, "hold"),
-                (ModeOp::Previous, "back"),
-                (ModeOp::Default, "default"),
-            ];
-            ui.horizontal_wrapped(|ui| {
-                ui.label(lang.t("field.switch"));
-                for (op, word) in ops {
-                    ui.radio_value(&mut fl.mode.op, op, word);
-                }
-            });
-            let modes: Vec<(String, String)> = profile
-                .map(|p| {
-                    p.modes
-                        .iter()
-                        .map(|m| (m.id.clone(), m.title.clone()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            match fl.mode.op {
-                ModeOp::Set | ModeOp::Toggle | ModeOp::Hold => {
-                    let cur = modes
-                        .iter()
-                        .find(|m| m.0 == fl.mode.mode)
-                        .map_or("—".to_string(), |m| m.1.clone());
-                    egui::ComboBox::from_id_salt("mode-target")
-                        .selected_text(format!("{}: {cur}", lang.t("field.mode")))
-                        .show_ui(ui, |ui| {
-                            for (id, t) in &modes {
-                                ui.selectable_value(&mut fl.mode.mode, id.clone(), t);
-                            }
-                        })
-                        .response
-                        .accessible_name(lang.t("field.mode"));
-                }
-                ModeOp::Cycle => {
-                    ui.label(small(lang.t("field.cycle_modes"), c.text_muted));
-                    for (id, t) in &modes {
-                        let mut on = fl.mode.modes.contains(id);
-                        if ui.checkbox(&mut on, t).changed() {
-                            if on {
-                                fl.mode.modes.push(id.clone());
-                            } else {
-                                fl.mode.modes.retain(|m| m != id);
-                            }
-                        }
-                    }
-                }
-                ModeOp::Previous | ModeOp::Default => {}
-            }
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::TextEdit::singleline(new_mode)
-                        .hint_text(lang.t("field.new_mode"))
-                        .desired_width(160.0),
-                )
-                .accessible_name(lang.t("field.new_mode"));
-                if ui
-                    .add_enabled(
-                        !new_mode.trim().is_empty(),
-                        egui::Button::new(lang.t("modes.add")),
-                    )
-                    .clicked()
-                {
-                    acts.push(Act::NewMode(new_mode.clone()));
-                }
-            });
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::Engine => {
-            for (op, word) in [
-                (EngineOp::Pause, "pause"),
-                (EngineOp::Resume, "resume"),
-                (EngineOp::TogglePause, "pause or resume"),
-                (EngineOp::Disable, "turn off"),
-            ] {
-                ui.radio_value(&mut fl.engine, op, word);
-            }
-            ui.label(small(lang.t("field.engine_note"), c.text_muted));
-        }
-        // Step 79.
-        Effect::Window => {
-            use ddalgak::model::WindowOp as W;
-            ui.horizontal_wrapped(|ui| {
-                for (op, key) in [
-                    (W::Activate, "field.win.activate"),
-                    (W::Minimize, "field.win.minimize"),
-                    (W::Maximize, "field.win.maximize"),
-                    (W::Restore, "field.win.restore"),
-                    (W::Move, "field.win.move"),
-                    (W::Topmost, "field.win.topmost"),
-                ] {
-                    ui.radio_value(&mut fl.window.op, op, lang.t(key));
-                }
-            });
-            labeled(
-                ui,
-                lang.t("field.win.app"),
-                egui::TextEdit::singleline(&mut fl.window.app)
-                    .hint_text("Code.exe")
-                    .desired_width(240.0),
-            );
-            program_picker(ui, lang, &mut fl.window.app, false);
-            program_suggestions(ui, &mut fl.window.app);
-            if fl.window.op == W::Move {
-                ui.horizontal_wrapped(|ui| {
-                    for (v, key) in [
-                        (&mut fl.window.x, "field.win.x"),
-                        (&mut fl.window.y, "field.win.y"),
-                        (&mut fl.window.width, "field.win.width"),
-                        (&mut fl.window.height, "field.win.height"),
-                    ] {
-                        labeled(
-                            ui,
-                            lang.t(key),
-                            egui::TextEdit::singleline(v).desired_width(60.0),
-                        );
-                    }
-                });
-            }
-            if fl.window.op == W::Topmost {
-                ui.checkbox(&mut fl.window.on, lang.t("field.win.on"));
-            }
-            ui.label(small(lang.t("field.win.note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::Clipboard => {
-            use ddalgak::model::{ClipTransform as T, ClipboardOp as C};
-            ui.horizontal_wrapped(|ui| {
-                for (op, key) in [
-                    (C::Set, "field.clip.set"),
-                    (C::Clear, "field.clip.clear"),
-                    (C::Transform, "field.clip.transform"),
-                ] {
-                    ui.radio_value(&mut fl.clip.op, op, lang.t(key));
-                }
-            });
-            match fl.clip.op {
-                C::Set => {
-                    labeled(
-                        ui,
-                        lang.t("field.clip.text"),
-                        egui::TextEdit::multiline(&mut fl.clip.text)
-                            .desired_rows(2)
-                            .desired_width(f32::INFINITY),
-                    );
-                }
-                C::Transform => {
-                    ui.horizontal_wrapped(|ui| {
-                        for (t, key) in [
-                            (T::Plain, "field.clip.plain"),
-                            (T::Trim, "field.clip.trim"),
-                            (T::Upper, "field.clip.upper"),
-                            (T::Lower, "field.clip.lower"),
-                        ] {
-                            ui.radio_value(&mut fl.clip.to, t, lang.t(key));
-                        }
-                    });
-                }
-                C::Clear => {}
-            }
-            ui.label(small(lang.t("field.clip.note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        // #102.
-        Effect::Command => {
-            labeled(
-                ui,
-                lang.t("field.cmd.program"),
-                egui::TextEdit::singleline(&mut fl.command.program)
-                    .hint_text("C:\\Tools\\backup.exe")
-                    .desired_width(360.0),
-            );
-            labeled(
-                ui,
-                lang.t("field.cmd.args"),
-                egui::TextEdit::multiline(&mut fl.command.args)
-                    .desired_rows(2)
-                    .desired_width(f32::INFINITY),
-            );
-            labeled(
-                ui,
-                lang.t("field.cmd.folder"),
-                egui::TextEdit::singleline(&mut fl.command.working_dir).desired_width(360.0),
-            );
-            ui.horizontal(|ui| {
-                ui.label(lang.t("field.cmd.timeout"));
-                ui.add(
-                    egui::DragValue::new(&mut fl.command.timeout_ms)
-                        .range(100..=600_000)
-                        .suffix(" ms"),
-                )
-                .accessible_name(lang.t("field.cmd.timeout"));
-            });
-            ui.label(small(lang.t("field.cmd.note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::Timer => {
-            ui.horizontal_wrapped(|ui| {
-                ui.label(small(lang.t("field.timer.rule"), c.text_secondary));
-                let current = fl.timer.rule.clone();
-                egui::ComboBox::from_id_salt("timer-rule")
-                    .selected_text(if current.is_empty() {
-                        "—".to_string()
-                    } else {
-                        current
-                    })
-                    .show_ui(ui, |ui| {
-                        for r in profile.map(|p| p.rules.as_slice()).unwrap_or_default() {
-                            if let Some(id) = r.id() {
-                                ui.selectable_value(
-                                    &mut fl.timer.rule,
-                                    id.to_string(),
-                                    r.title().unwrap_or(id),
-                                );
-                            }
-                        }
-                    });
-            });
-            ui.horizontal(|ui| {
-                ui.label(lang.t("field.timer.after"));
-                ui.add(
-                    egui::DragValue::new(&mut fl.timer.after_s)
-                        .range(1..=86_400)
-                        .suffix(" s"),
-                )
-                .accessible_name(lang.t("field.timer.after"));
-            });
-            ui.label(small(lang.t("field.timer.note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::Tool => {
-            labeled(
-                ui,
-                lang.t("field.tool.capability"),
-                egui::TextEdit::singleline(&mut fl.tool.capability)
-                    .hint_text("pin.list")
-                    .desired_width(240.0),
-            );
-            capability_finder(ui, lang, &mut fl.tool.capability);
-            labeled(
-                ui,
-                lang.t("field.tool.args"),
-                egui::TextEdit::multiline(&mut fl.tool.args)
-                    .desired_rows(2)
-                    .desired_width(f32::INFINITY),
-            );
-            ui.label(small(lang.t("field.tool.note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-        Effect::Notify => {
-            labeled(
-                ui,
-                lang.t("field.notify.title"),
-                egui::TextEdit::singleline(&mut fl.notify.title).desired_width(240.0),
-            );
-            labeled(
-                ui,
-                lang.t("field.notify.body"),
-                egui::TextEdit::multiline(&mut fl.notify.body)
-                    .desired_rows(2)
-                    .desired_width(f32::INFINITY),
-            );
-            ui.label(small(lang.t("field.notify.note"), c.text_muted));
-            problems_for(ui, lang, problems, &["steps[0]"]);
-        }
-    }
-    ui.add_space(4.0);
-    ui.label(
-        egui::RichText::new(format!(
-            "{}: {}",
-            lang.t("form.summary"),
-            f.summary(profile)
-        ))
-        .color(c.text_secondary),
-    );
-    egui::CollapsingHeader::new(lang.t("form.advanced"))
-        .id_salt("advanced")
-        .show(ui, |ui| {
-            let fl = &mut f.fields;
-            ui.add(
-                egui::TextEdit::singleline(&mut fl.description)
-                    .hint_text(lang.t("form.description"))
-                    .desired_width(f32::INFINITY),
-            )
-            .accessible_name(lang.t("form.description"));
-            if let Some(p) = profile
-                && p.modes.len() > 1
-            {
-                ui.label(small(lang.t("form.only_modes"), c.text_muted));
-                ui.horizontal_wrapped(|ui| {
-                    for m in &p.modes {
-                        let mut on = fl.modes.contains(&m.id);
-                        if ui.checkbox(&mut on, &m.title).changed() {
-                            if on {
-                                fl.modes.push(m.id.clone());
-                            } else {
-                                fl.modes.retain(|x| x != &m.id);
-                            }
-                        }
-                    }
-                });
-            }
-            ui.label(small(lang.t("form.only_apps"), c.text_muted));
-            ui.add(
-                egui::TextEdit::multiline(&mut fl.apps)
-                    .desired_rows(2)
-                    .hint_text("Code.exe")
-                    .desired_width(f32::INFINITY),
-            )
-            .accessible_name(lang.t("form.only_apps"));
-            program_picker(ui, lang, &mut fl.apps, true);
-            ui.label(small(lang.t("form.except_apps"), c.text_muted));
-            ui.add(
-                egui::TextEdit::multiline(&mut fl.except_apps)
-                    .desired_rows(1)
-                    .hint_text("KeePassXC.exe")
-                    .desired_width(f32::INFINITY),
-            )
-            .accessible_name(lang.t("form.except_apps"));
-            program_picker(ui, lang, &mut fl.except_apps, true);
-            labeled(
-                ui,
-                lang.t("form.title_cond"),
-                egui::TextEdit::singleline(&mut fl.window_title).desired_width(220.0),
-            );
-            ui.checkbox(&mut fl.title_exact, lang.t("form.title_exact"));
-            // #100: the window class and a time window.
-            labeled(
-                ui,
-                lang.t("form.class_cond"),
-                egui::TextEdit::singleline(&mut fl.window_class)
-                    .hint_text("Chrome_WidgetWin_1")
-                    .desired_width(220.0),
-            );
-            ui.checkbox(&mut fl.class_exact, lang.t("form.title_exact"));
-            ui.checkbox(&mut fl.time_on, lang.t("form.time_cond"));
-            if fl.time_on {
-                ui.horizontal_wrapped(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut fl.time_from).desired_width(50.0))
-                        .accessible_name(lang.t("form.time_from"));
-                    ui.label("–");
-                    ui.add(egui::TextEdit::singleline(&mut fl.time_to).desired_width(50.0))
-                        .accessible_name(lang.t("form.time_to"));
-                    for (i, d) in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                        .iter()
-                        .enumerate()
-                    {
-                        ui.checkbox(&mut fl.time_days[i], *d);
-                    }
-                });
-            }
-            if !fl.apps.trim().is_empty()
-                || !fl.except_apps.trim().is_empty()
-                || !fl.window_title.trim().is_empty()
-                || !fl.window_class.trim().is_empty()
-                || fl.time_on
-            {
-                ui.label(small(lang.t("form.apps_note"), c.text_muted));
-            }
-            labeled(
-                ui,
-                lang.t("form.priority"),
-                egui::DragValue::new(&mut fl.priority).range(-1000..=1000),
-            );
-            problems_for(
-                ui,
-                lang,
-                problems,
-                &["modes", "when", "priority", "description"],
-            );
-        });
-}
-
-fn mouse_form(
-    ui: &mut egui::Ui,
-    lang: Lang,
-    f: &mut RuleForm,
-    problems: &[ddalgak::text::FieldProblem],
-    layout: &Layout,
-    cursor: Point,
-) {
-    let c = Colors::get();
-    let kind = form::mouse_kind(&f.fields.mouse);
-    ui.horizontal(|ui| {
-        for (i, key) in [
-            "field.mouse.move_by",
-            "field.mouse.move_to",
-            "field.mouse.scroll",
-            "field.mouse.click",
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            if ui.selectable_label(kind == i, lang.t(key)).clicked() && kind != i {
-                f.fields.mouse = form::mouse_default(i);
-            }
-        }
-    });
-    let anchors = [
-        (Anchor::VirtualScreen, "the desktop"),
-        (Anchor::PrimaryMonitor, "the primary monitor"),
-        (Anchor::ActiveWindow, "the active window"),
-    ];
-    match &mut f.fields.mouse {
-        MouseAction::MoveBy { dx, dy, grid, hold } => {
-            ui.horizontal(|ui| {
-                ui.label(lang.t("field.right"));
-                labeled(
-                    ui,
-                    lang.t("field.right"),
-                    egui::DragValue::new(dx).range(-10_000..=10_000),
-                );
-                ui.label(lang.t("field.down"));
-                labeled(
-                    ui,
-                    lang.t("field.down"),
-                    egui::DragValue::new(dy).range(-10_000..=10_000),
-                );
-            });
-            let mut cells = grid.is_some();
-            if ui.checkbox(&mut cells, lang.t("field.unit_grid")).changed() {
-                *grid = cells.then_some(Grid {
-                    columns: 8,
-                    rows: 8,
-                });
-                if cells && matches!(hold, HoldChoice::Continuous { .. }) {
-                    *hold = HoldChoice::Once;
-                }
-            }
-            if let Some(g) = grid {
-                ui.horizontal(|ui| {
-                    ui.label(lang.t("field.columns"));
-                    ui.add(egui::DragValue::new(&mut g.columns).range(2..=64));
-                    ui.label(lang.t("field.rows"));
-                    ui.add(egui::DragValue::new(&mut g.rows).range(2..=64));
-                });
-            }
-            ui.label(small(lang.t("field.while_held"), c.text_muted));
-            ui.horizontal_wrapped(|ui| {
-                let once = matches!(hold, HoldChoice::Once);
-                if ui.radio(once, lang.t("field.hold.once")).clicked() {
-                    *hold = HoldChoice::Once;
-                }
-                if grid.is_none() {
-                    let glide = matches!(hold, HoldChoice::Continuous { .. });
-                    if ui.radio(glide, lang.t("field.hold.glide")).clicked() && !glide {
-                        *hold = HoldChoice::Continuous {
-                            speed: 600,
-                            acceleration: 0,
-                        };
-                    }
-                }
-                let rep = matches!(hold, HoldChoice::Repeat { .. });
-                if ui.radio(rep, lang.t("field.hold.repeat")).clicked() && !rep {
-                    *hold = HoldChoice::Repeat {
-                        repeat_ms: 100,
-                        delay_ms: mouse::DEFAULT_DELAY_MS,
-                    };
-                }
-            });
-            match hold {
-                HoldChoice::Continuous { speed, .. } => {
-                    labeled(
-                        ui,
-                        lang.t("field.speed"),
-                        egui::DragValue::new(speed).range(50..=5000).suffix(" px/s"),
-                    );
-                }
-                HoldChoice::Repeat { repeat_ms, .. } => {
-                    labeled(
-                        ui,
-                        lang.t("field.repeat_ms"),
-                        egui::DragValue::new(repeat_ms)
-                            .range(20..=2000)
-                            .suffix(" ms"),
-                    );
-                }
-                HoldChoice::Once => {}
-            }
-        }
-        MouseAction::MoveTo(p) => {
-            ui.horizontal(|ui| {
-                ui.label(lang.t("field.x"));
-                ui.add(egui::DragValue::new(&mut p.x).range(-32768..=32767));
-                ui.label(lang.t("field.y"));
-                ui.add(egui::DragValue::new(&mut p.y).range(-32768..=32767));
-            });
-            egui::ComboBox::from_id_salt("move-to-anchor")
-                .selected_text(anchors.iter().find(|a| a.0 == p.anchor).map_or("", |a| a.1))
-                .show_ui(ui, |ui| {
-                    for (a, w) in anchors {
-                        ui.selectable_value(&mut p.anchor, a, w);
-                    }
-                })
-                .response
-                .accessible_name(lang.t("field.relative_to"));
-        }
-        MouseAction::Scroll { dir, notches } => {
-            ui.horizontal(|ui| {
-                for d in [
-                    ScrollDir::Up,
-                    ScrollDir::Down,
-                    ScrollDir::Left,
-                    ScrollDir::Right,
-                ] {
-                    ui.radio_value(dir, d, d.as_str());
-                }
-                labeled(
-                    ui,
-                    lang.t("field.notches"),
-                    egui::DragValue::new(notches).range(1..=50),
-                );
-            });
-        }
-        MouseAction::Click { button, op, at } => {
-            ui.horizontal(|ui| {
-                for b in ["left", "right", "middle", "x1", "x2"] {
-                    if let Some(bt) = mouse::button(b) {
-                        ui.radio_value(button, bt, b);
-                    }
-                }
-            });
-            ui.horizontal(|ui| {
-                for o in ["click", "double_click", "hold"] {
-                    if ui.radio(*op == o, o.replace('_', " ")).clicked() {
-                        *op = o;
-                    }
-                }
-            });
-            let mut has_at = at.is_some();
-            if ui.checkbox(&mut has_at, lang.t("field.at_point")).changed() {
-                *at = has_at.then_some(mouse::PointSpec {
-                    x: 0,
-                    y: 0,
-                    anchor: Anchor::PrimaryMonitor,
-                });
-            }
-            if let Some(p) = at {
-                ui.horizontal(|ui| {
-                    ui.label(lang.t("field.x"));
-                    ui.add(egui::DragValue::new(&mut p.x).range(-32768..=32767));
-                    ui.label(lang.t("field.y"));
-                    ui.add(egui::DragValue::new(&mut p.y).range(-32768..=32767));
-                });
-            }
-        }
-    }
-    let map = f.mouse_draft().screen_map(layout, cursor, None, 220, 110);
-    let to = map.to.map(|_| {
-        // The draft's target in physical pixels, for the shared painter.
-        let sim = f.simulate(None, layout, cursor);
-        sim.pointer.map_or(cursor, |(_, t)| t)
-    });
-    ui.label(small(lang.t("form.screen_map"), c.text_muted));
-    screen_map(ui, layout, cursor, to);
-    if map.clamped {
-        ui.label(small(lang.t("form.clamped"), c.warning));
-    }
-    problems_for(ui, lang, problems, &["steps[0]"]);
 }
