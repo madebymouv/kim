@@ -3901,7 +3901,7 @@ fn the_tab_bar_keeps_its_size_on_a_large_screen() {
     new_terminal(&ep, "big");
     let bar_and_font = |zoom: &str| {
         let appdata = sandbox(&format!("bigscreen-{zoom}"));
-        let mut gui = Gui::start_env(
+        let gui = Gui::start_env(
             &ep,
             Some("big"),
             &appdata,
