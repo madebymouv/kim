@@ -49,6 +49,15 @@ The maintainer's real settings (read only): Subak `appearance.font_size = 13`, K
 `scale = 150`. With 0.0.1 that produced the reported "Subak's tabs alone are huge": a 56 px bar,
 21 px labels, over 13 px text.
 
+Real screenshots (window only, sandboxed copies; top: caption and tab bar):
+
+| Build | Tab bar |
+|---|---|
+| 0.0.1 (installed), default text 23 px | ![0.0.1](ui-audit/subak-bar-before-0.0.1.png) |
+| 0.0.3 (`main` ab491c6), default text 23 px | ![0.0.3](ui-audit/subak-bar-before-0.0.3.png) |
+| 0.0.4 (this change), Auto 150 %, default text 20 px | ![0.0.4 at 150 %](ui-audit/subak-bar-after-0.0.4-zoom150.png) |
+| 0.0.4, the maintainer's 13 px text | ![0.0.4 with 13 px text](ui-audit/subak-bar-after-0.0.4-text13.png) |
+
 ## 3. Defect table
 
 | Application | Screen / component | Observed defect | Code path | Root cause | Expected | Fix | Verification |
@@ -86,6 +95,21 @@ All 88 runs of the full matrix (§6) pass the layout rules (0 failures, 0 warnin
 `target/ui-audit/report.txt`. Real-desktop screenshots of the rebuilt window (sandboxed, on
 screen): the bar reads as part of the window at 150 % with 20 px text, and as a slim 36 px bar
 over 13 px text.
+
+Real desktop with real mouse and keyboard input (ADR 0088; sandboxed copies, private endpoints;
+the maintainer's own programs untouched):
+
+- Subak debug `2671FA16…` (same source as the release): pointer hover fills tab 2 (`hover` in its
+  report), a click selects it (`active`), its × hides the third tab while its Terminal keeps
+  running (`subak ls`), `+` adds a Terminal, the gear opens the native settings menu (closed with
+  Esc), a 700 px window gives 186 px tabs and a 2400 px window 330 px tabs (220 × 1.5), Ctrl+Tab
+  switches tabs. The first run's tab click was refused by the driver's foreground guard (not
+  the app); the repeated run passed.
+- Subak release 0.0.4 `64C68E03…` photographed at Auto 150 % and with 13 px text (above).
+- Kim Manager release (root `kim-manager.exe`, `0A0AD6DB…`): the gear opens Settings and the
+  window grows to 870 × 690 (580 × 460 at 150 %); Size → 125 % zooms at once and writes
+  `{"schema":"mouv.ui","zoom":125}` to the sandbox's `%APPDATA%\mouv\ui.json`; Auto returns to
+  150 %; Esc returns to the 552 × 336 launcher.
 
 ## 5. What the tests did not see before, and do now
 
