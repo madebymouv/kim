@@ -34,6 +34,12 @@ redundant_clone = "warn"
 [profile.dev]
 # Faster local builds; full debug info is rarely needed for this codebase.
 debug = "line-tables-only"
+# Keep `target/` small (maintainer, 2026-11-15, ADR 0097): the incremental cache grew to ~50 GB.
+incremental = false
+
+[profile.dev.package."*"]
+# Dependencies need no debug info: panics in our code still show file and line.
+debug = false
 
 [profile.release]
 # Small, fast binaries (KIM-NFR-003). Keep unwinding: the Subak Host must be able to contain a

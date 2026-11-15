@@ -20,6 +20,8 @@ checkpoint."*
 
 ## Verification log (latest first)
 
+- 2026-11-15: ADR 0097 — `cargo xtask bump --changed` / `version-check` (in ci); kim, subak, noeul, ddalgak raised to 0.0.2 (Cargo.toml, path requirements, capabilities/hotkey manifests, contract examples, Kim golden files re-blessed: version lines only); dev profile without incremental cache and dependency debug info: `target/` 111 GB → 5.9 GB after a full `cargo xtask ci` (EXIT 0).
+
 - 2026-11-15: ADR 0095 (Subak: uniform tabs from tokens, gear, Default shell; real Git Bash Linux commands) and ADR 0096 (Ddalgak editor: rail with the real engine switch, Settings behind the gear, one-line rule list, rule page Trigger → Action → Details → Test, Together / One after another / Hold + press saved as a hold layer, key picker). Editor unit 43, flows 25, playground 3; e2e scenario adr0096 compiled and its commands checked by hand; real desktop (sandbox ddalgak-ds): Hold CapsLock + J → Down built with the picker and real keys, consent dialog, saved; Settings, light theme saved in editor.json.
 
 - 2026-11-15: user request "Unified Design System and Complete UX Refinement" (ADR 0092–0094, in progress): `kim-design` + `kim-ui` crates; Kim Manager on them (settings rail, switch rows, language en/ko, dialogs; real desktop dark/light/Korean, menu fits); `noeul-settings.exe` (sections, IPC `hotkeys.pause`, real clicks wrote config.toml); new pins drag at once (real: first move 62–76 ms after a press 0–200 ms after the pin appeared), double-click closes only that pin, zoom read-out (real: 125 % shown, gone after 1.6 s), triple/quadruple click makes one pin. Next: Subak tabs/shells/Linux commands, Ddalgak redesign, review. `cargo xtask ci` per increment.

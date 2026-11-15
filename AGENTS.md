@@ -85,7 +85,16 @@ These rules come directly from the maintainer and are mandatory.
    most one notification per day. It must not run as part of
    the normal test command, on push, in pre-commit hooks, or in ad-hoc verification; a local
    run (`cargo xtask e2e --force`) needs a recorded justification in the ledger.
-5. **Keep the ledger.** [e2e/LEDGER.md](e2e/LEDGER.md) records every processed Step issue and
+5. **One patch version per change** (maintainer decision 2026-11-15,
+   [ADR 0097](docs/adr/0097-patch-version-per-change-and-small-target.md)). Before committing a
+   development change run `cargo xtask bump --changed`: each changed tool (and each tool built on
+   a changed shared library) goes up by `0.0.1`. `cargo xtask ci` checks the versions agree.
+6. **Keep the disk small** (ADR 0097). After each delivery check the size of `target/` and run
+   `cargo clean` when it passes 15 GB; never build into other folders, never keep extra copies.
+7. **Keep the root kim.exe current** (ADR 0089, ADR 0097). After each delivery copy the release
+   `kim.exe` and `kim-manager.exe` to the repository root and run
+   `cargo xtask local-mirror --key <catalog key>`.
+8. **Keep the ledger.** [e2e/LEDGER.md](e2e/LEDGER.md) records every processed Step issue and
    every e2e run. When a Step completes, append it. The developer checks each daily run, records
    its result in the ledger, and fixes failures (or files them as issues) before the next Step
    starts.

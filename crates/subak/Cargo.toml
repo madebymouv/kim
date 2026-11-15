@@ -1,6 +1,6 @@
 [package]
 name = "subak"
-version = "0.0.1"
+version = "0.0.2"
 description = "Subak: persistent Windows-first terminal with a separate Host and Clients"
 edition.workspace = true
 rust-version.workspace = true

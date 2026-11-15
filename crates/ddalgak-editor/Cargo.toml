@@ -1,6 +1,6 @@
 [package]
 name = "ddalgak-editor"
-version = "0.0.1"
+version = "0.0.2"
 description = "Ddalgak rule editor: the on-demand visual editor window (egui + glow), a separate process from the engine"
 edition.workspace = true
 rust-version.workspace = true
@@ -22,7 +22,7 @@ workspace = true
 [dependencies]
 # The rules document, the rule store (lock, re-read, revision check, atomic write), validation,
 # the editor data models of Steps 68-73 and the identity-checked pipe client.
-ddalgak = { version = "0.0.1", path = "../ddalgak" }
+ddalgak = { version = "0.0.2", path = "../ddalgak" }
 # Key names of the hotkey contract (capture) and the editor's in-window shortcuts from hotkeys.json.
 kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
 kim-ui = { version = "0.0.1", path = "../kim-ui" }

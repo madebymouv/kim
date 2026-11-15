@@ -19,6 +19,7 @@ mod local_mirror;
 mod package;
 mod schema;
 mod tmux;
+mod version;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -42,7 +43,12 @@ COMMANDS:
     catalog-sign --key <file> [<catalog.json>]
                       Sign a catalog (default: catalog/catalog.json) -> <catalog>.sig
     ci                Run the CI gate locally: fmt --check, clippy -D warnings, tests,
-                      docs-check, schema-check, design-check, deps-check
+                      docs-check, schema-check, design-check, version-check, deps-check
+    bump --changed | <group>... [--dry-run]
+                      Raise the changed tools (and tools built on a changed library) by one
+                      patch version: Cargo.toml, path requirements, capabilities and hotkey
+                      manifests, Cargo.lock (ADR 0097)
+    version-check     Check that each tool's crates and files carry one version
     e2e --scheduled   Build release binaries and run the e2e suite: the Daily GitHub
                       Actions workflow, once a day (AGENTS.md §4). Refused outside GitHub
                       Actions.
@@ -91,6 +97,8 @@ fn main() -> ExitCode {
         Some("bench-ddalgak") => bench_ddalgak::run(&root, &args[1..]),
         Some("package") => package::run(&root, &args[1..]),
         Some("local-mirror") => local_mirror::run(&root, &args[1..]),
+        Some("bump") => version::run_bump(&root, &args[1..]),
+        Some("version-check") => version::check(&root),
         Some("e2e") => run_e2e(
             &root,
             args.iter().any(|a| a == "--force"),
@@ -280,6 +288,7 @@ fn run_ci(root: &Path) -> Result<(), String> {
     run_docs_check(root)?;
     run_schema_check(root, false)?;
     run_design_check(root, false)?;
+    version::check(root)?;
     run_deps_check(root)
 }
 
