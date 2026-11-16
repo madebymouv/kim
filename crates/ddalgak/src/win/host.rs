@@ -98,6 +98,8 @@ const WTS_SESSION_UNLOCK: usize = 0x8;
 pub struct Options {
     pub paths: Paths,
     pub endpoint: String,
+    /// A debug build on its own `--endpoint`: the editor it starts gets the same endpoint.
+    pub custom_endpoint: bool,
     /// Single-instance mutex name.
     pub instance: String,
     /// Show the tray icon (always, except the debug test host).
@@ -191,6 +193,9 @@ struct Host {
     mode: Option<(ModeStatus, String)>,
     /// Step 73: what the stale-key release after an unclean exit did (`None`: clean start).
     recovered: Option<Released>,
+    /// ADR 0101: the last time `capslock: always_off` turned CapsLock off (why, when, whether it
+    /// took), for `status`.
+    capslock_fix: Option<Value>,
 }
 
 thread_local! {
@@ -355,6 +360,13 @@ impl Host {
             // "Disable" while already off is a choice too: it is remembered the same way.
             let _ = self.markers.engine_off_by_user();
         }
+        if change.changed() && change.to == State::Running {
+            self.keep_capslock_off(if change.from == State::Off {
+                "engine_start"
+            } else {
+                "resume"
+            });
+        }
         self.refresh_indicator();
         if req == Request::Emergency {
             self.notify(
@@ -367,6 +379,26 @@ impl Host {
             "change": { "request": req.as_str(), "from": change.from.as_str(), "to": change.to.as_str(), "changed": change.changed() },
             "engine": self.engine_json(),
         }))
+    }
+
+    /// ADR 0101: with `capslock: always_off`, turns CapsLock off when it is on and the hook runs
+    /// (engine start or resume, an unlock, a reload that chose the policy). Never on the secure
+    /// desktop or while the session is locked; the debug test host never sends anything.
+    fn keep_capslock_off(&mut self, why: &str) {
+        if !self.loaded.capslock_always_off
+            || !self.state().has_hook()
+            || self.locked
+            || self.opts.observe_only
+        {
+            return;
+        }
+        if let Some(ok) = super::inject::turn_capslock_off() {
+            self.capslock_fix = Some(json!({
+                "why": why,
+                "at": crate::time::now_rfc3339(),
+                "turned_off": ok,
+            }));
+        }
     }
 
     /// What validation knows beyond the file: Ddalgak's own bound shortcuts (§7.5).
@@ -489,8 +521,12 @@ impl Host {
     /// in its default mode, all between two hook callbacks (DDALGAK_RULE_MODEL §10).
     fn apply_rules(&mut self, next: rules::Loaded) {
         let switch = next.profile != self.loaded.profile;
+        let caps_policy_new = next.capslock_always_off && !self.loaded.capslock_always_off;
         self.loaded = next;
         self.loaded_at = crate::time::now_rfc3339();
+        if caps_policy_new {
+            self.keep_capslock_off("reload");
+        }
         if switch && let Some(h) = &self.hook {
             self.generation = self.generation.wrapping_add(1);
             // Runs of the old profile end and every output the worker holds is released first.
@@ -834,8 +870,15 @@ impl Host {
             .lifecycle
             .last()
             .map(|(r, o)| json!({ "request": r.as_str(), "origin": o }));
+        let layer = self.loaded.bindings.iter().any(|b| b.trigger.uses_caps());
         json!({
             "state": self.state().as_str(),
+            "capslock": {
+                "policy": if self.loaded.capslock_always_off { "always_off" } else { "default" },
+                "layer": layer,
+                "on": super::inject::capslock_on(),
+                "last_fix": self.capslock_fix,
+            },
             "off_reason": self.lifecycle.off_reason().map(OffReason::as_str),
             "last_change": last,
             "hook": {
@@ -1003,12 +1046,22 @@ impl Host {
                 return;
             }
             Control::Emergency => (Request::Emergency, Origin::Emergency),
+            // ADR 0101: a rule opens the Settings window; the engine stays as it is.
+            Control::Engine {
+                op: EngineOp::OpenSettings,
+                ..
+            } => {
+                if let Err((_, msg)) = self.open_editor_with(&["--settings"]) {
+                    self.notify("Ddalgak", &msg);
+                }
+                return;
+            }
             Control::Engine { op, rule } => (
                 match op {
                     EngineOp::Pause => Request::Pause,
                     EngineOp::Resume => Request::Resume,
                     EngineOp::TogglePause => Request::TogglePause,
-                    EngineOp::Disable => Request::Stop,
+                    EngineOp::Disable | EngineOp::OpenSettings => Request::Stop,
                 },
                 Origin::Rule(rule),
             ),
@@ -1019,6 +1072,12 @@ impl Host {
     /// Step 74 (ADR 0049): starts the rule editor, its own process beside this one; a running
     /// editor brings its window forward instead. The debug test host never opens a window.
     fn open_editor(&mut self) -> Result<Value, (String, String)> {
+        self.open_editor_with(&[])
+    }
+
+    /// Starts the editor with `args` (ADR 0101: `--settings` opens its Settings window; a running
+    /// editor is asked to do the same). A debug host on its own endpoint passes it on.
+    fn open_editor_with(&mut self, args: &[&str]) -> Result<Value, (String, String)> {
         if !self.opts.tray {
             return Err((
                 "editor_unavailable".into(),
@@ -1038,8 +1097,15 @@ impl Host {
             ));
         }
         // A GUI-subsystem program: no console; nothing is inherited but null standard handles.
-        std::process::Command::new(&exe)
-            .stdin(std::process::Stdio::null())
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args(args);
+        if self.opts.custom_endpoint {
+            cmd.args(["--endpoint", self.opts.endpoint.as_str()]);
+        }
+        if self.opts.no_hotkeys {
+            cmd.arg("--no-hotkeys");
+        }
+        cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -1155,6 +1221,8 @@ impl Host {
                 self.locked = false;
                 self.shared.set_secure_desktop(false);
                 self.shared.request_key_reset();
+                // The lock screen is Windows' own desktop: CapsLock pressed there toggled.
+                self.keep_capslock_off("unlock");
             }
             _ => {}
         }
@@ -1589,6 +1657,7 @@ pub fn run(opts: Options) -> Result<(), RunError> {
             taskbar_created,
             mode: None,
             recovered,
+            capslock_fix: None,
         });
     });
     with_host(Host::refresh_indicator);

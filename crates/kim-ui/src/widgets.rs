@@ -1124,7 +1124,7 @@ pub fn keycaps(ui: &mut Ui, keys: &str) -> Response {
             total += then_w;
             n += 1;
         }
-        for k in split_chord(step.trim()) {
+        for k in crate::keys::display_parts(step.trim()) {
             total += cap_w(ui, &k);
             n += 1;
         }
@@ -1143,7 +1143,7 @@ pub fn keycaps(ui: &mut Ui, keys: &str) -> Response {
                             .color(c.text_muted),
                     );
                 }
-                for k in split_chord(step.trim()) {
+                for k in crate::keys::display_parts(step.trim()) {
                     keycap(ui, &k);
                 }
             }

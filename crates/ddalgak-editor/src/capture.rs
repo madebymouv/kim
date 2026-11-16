@@ -9,8 +9,12 @@
 //!
 //! The window only sees what Windows passes on: keys Windows or another program takes first
 //! (Win chords, a global shortcut), lock keys and bare modifiers (CapsLock, Right Alt) are
-//! entered with **Type instead** or the special-key chips; left and right modifier sides are not
-//! told apart by the window, so captured chords store the generic `Ctrl`, as the journeys ask.
+//! entered with **Type instead** or the special-key chips. ADR 0101: the window does not say
+//! which Shift, Ctrl or Alt is held, so the box asks Windows (`GetKeyState`) for the side when
+//! a key arrives: a right-side modifier held alone is recorded as `RShift`, `RCtrl` or `RAlt`,
+//! the left side as the generic `Shift`/`Ctrl`/`Alt` (what people usually mean); a held CapsLock
+//! makes the chord `CapsLock+…`. When Ddalgak itself owns CapsLock (a CapsLock rule is active),
+//! Windows never sees it held, so such chords are picked by clicking.
 
 use eframe::egui;
 
@@ -54,6 +58,14 @@ pub fn key_name(k: egui::Key) -> Option<&'static str> {
         K::Plus | K::Equals => "Plus",
         K::Comma => "Comma",
         K::Period => "Period",
+        // ADR 0101: punctuation without a logical name is the key at that position.
+        K::Slash => "code:Slash",
+        K::Semicolon => "code:Semicolon",
+        K::Quote => "code:Quote",
+        K::OpenBracket => "code:BracketLeft",
+        K::CloseBracket => "code:BracketRight",
+        K::Backslash => "code:Backslash",
+        K::Backtick => "code:Backquote",
         _ => {
             let n = k.name();
             return kim_hotkeys::keys::NAMED_KEYS
@@ -111,6 +123,61 @@ pub fn announce(text: &str) -> String {
         .join(", then ")
 }
 
+/// ADR 0101: what Windows says is held when a key arrives (the window only reports generic
+/// modifiers).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Held {
+    pub caps: bool,
+    pub lshift: bool,
+    pub rshift: bool,
+    pub lctrl: bool,
+    pub rctrl: bool,
+    pub lalt: bool,
+    pub ralt: bool,
+}
+
+impl Held {
+    /// The state as this thread's input sees it now (Windows; nothing elsewhere).
+    pub fn now() -> Held {
+        #[cfg(windows)]
+        {
+            let d = ddalgak::win::inject::key_down;
+            Held {
+                caps: d(0x14),
+                lshift: d(0xA0),
+                rshift: d(0xA1),
+                lctrl: d(0xA2),
+                rctrl: d(0xA3),
+                lalt: d(0xA4),
+                ralt: d(0xA5),
+            }
+        }
+        #[cfg(not(windows))]
+        Held::default()
+    }
+
+    /// `Ctrl+Shift+K` with the sides and CapsLock applied: a right-side modifier held without
+    /// its left twin is written with its side.
+    pub fn refine(self, chord: &str) -> String {
+        let mut parts: Vec<String> = chord.split('+').map(str::to_string).collect();
+        for p in &mut parts {
+            let side = match p.as_str() {
+                "Shift" if self.rshift && !self.lshift => "RShift",
+                "Ctrl" if self.rctrl && !self.lctrl && !self.ralt => "RCtrl",
+                "Alt" if self.ralt && !self.lalt => "RAlt",
+                _ => continue,
+            };
+            *p = side.to_string();
+        }
+        let out = parts.join("+");
+        if self.caps {
+            format!("CapsLock+{out}")
+        } else {
+            out
+        }
+    }
+}
+
 /// What one key press in the capture box did.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Captured {
@@ -137,6 +204,17 @@ pub struct Capture {
 impl Capture {
     /// Feeds one key-down; `current` is the field's value before it.
     pub fn press(&mut self, current: &str, key: egui::Key, m: egui::Modifiers) -> Captured {
+        self.press_held(current, key, m, Held::default())
+    }
+
+    /// ADR 0101: [`Capture::press`] with what Windows says is held (sides, CapsLock).
+    pub fn press_held(
+        &mut self,
+        current: &str,
+        key: egui::Key,
+        m: egui::Modifiers,
+        held: Held,
+    ) -> Captured {
         if self.composing {
             return Captured::Ignored;
         }
@@ -148,7 +226,7 @@ impl Capture {
             self.active = false;
             return Captured::Leave;
         }
-        let Some(c) = chord(key, m) else {
+        let Some(c) = chord(key, m).map(|c| held.refine(&c)) else {
             return Captured::Ignored;
         };
         let steps: Vec<&str> = current.split_whitespace().collect();
@@ -183,7 +261,7 @@ impl Capture {
                         Some(Captured::Keys(k)) => k.clone(),
                         _ => current.to_string(),
                     };
-                    out.push(self.press(&cur, *key, *modifiers));
+                    out.push(self.press_held(&cur, *key, *modifiers, Held::now()));
                 }
                 _ => {}
             }
@@ -196,6 +274,58 @@ impl Capture {
 mod tests {
     use super::*;
     use egui::{Key, Modifiers};
+
+    /// ADR 0101: Right Shift + Enter, CapsLock + W and CapsLock + / are recorded as such; the
+    /// left Shift stays the generic `Shift`.
+    #[test]
+    fn sides_and_capslock_come_from_what_windows_says_is_held() {
+        let mut c = Capture {
+            active: true,
+            ..Capture::default()
+        };
+        let right = Held {
+            rshift: true,
+            ..Held::default()
+        };
+        assert_eq!(
+            c.press_held("", Key::Enter, Modifiers::SHIFT, right),
+            Captured::Keys("RShift+Enter".into())
+        );
+        let left = Held {
+            lshift: true,
+            ..Held::default()
+        };
+        assert_eq!(
+            c.press_held("", Key::Enter, Modifiers::SHIFT, left),
+            Captured::Keys("Shift+Enter".into())
+        );
+        let caps = Held {
+            caps: true,
+            ..Held::default()
+        };
+        assert_eq!(
+            c.press_held("", Key::W, Modifiers::NONE, caps),
+            Captured::Keys("CapsLock+W".into())
+        );
+        assert_eq!(
+            c.press_held("", Key::Slash, Modifiers::NONE, caps),
+            Captured::Keys("CapsLock+code:Slash".into())
+        );
+        assert_eq!(
+            c.press_held(
+                "",
+                Key::Comma,
+                Modifiers::SHIFT,
+                Held {
+                    caps: true,
+                    lshift: true,
+                    ..Held::default()
+                }
+            ),
+            Captured::Keys("CapsLock+Shift+Comma".into())
+        );
+        assert!(ddalgak::trigger::Trigger::parse("CapsLock+code:Slash").is_ok());
+    }
 
     #[test]
     fn chords_use_the_contract_names_and_validate_as_triggers() {

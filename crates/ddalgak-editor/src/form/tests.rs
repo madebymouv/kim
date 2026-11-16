@@ -799,9 +799,10 @@ b"
 #[test]
 fn the_automatic_rule_name_follows_the_language() {
     let f = RuleForm::starter("default", Effect::TypeText, Lang::Ko);
-    assert_eq!(f.fields.title, "문구 입력");
+    // ADR 0101: a typed-text rule's name says its keys (never its text).
+    assert_eq!(f.fields.title, "문구 입력: Ctrl + Shift + F2");
     let f = RuleForm::starter("default", Effect::TypeText, Lang::En);
-    assert_eq!(f.fields.title, "Type a phrase");
+    assert_eq!(f.fields.title, "Type a phrase: Ctrl + Shift + F2");
     let f = RuleForm::starter("default", Effect::OpenProgram, Lang::Ko);
     assert_eq!(f.fields.title, "notepad.exe 열기");
 }

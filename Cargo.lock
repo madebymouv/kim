@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "ddalgak"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "kim-hotkeys",
  "kim-winres",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "ddalgak-editor"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "ddalgak",
  "eframe",
@@ -1651,7 +1651,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kim"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "clap",
  "ctrlc",
@@ -1709,7 +1709,7 @@ dependencies = [
 
 [[package]]
 name = "kim-manager"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "eframe",
  "egui_kittest",
@@ -1727,7 +1727,7 @@ dependencies = [
 
 [[package]]
 name = "kim-setup"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "kim",
  "kim-winres",
@@ -1739,7 +1739,7 @@ dependencies = [
 
 [[package]]
 name = "kim-ui"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "egui",
  "egui_kittest",
@@ -1957,7 +1957,7 @@ dependencies = [
 
 [[package]]
 name = "noeul"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "clap",
  "image",
@@ -1976,7 +1976,7 @@ dependencies = [
 
 [[package]]
 name = "noeul-settings"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "eframe",
  "egui_kittest",

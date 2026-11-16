@@ -191,6 +191,52 @@ pub fn send_as_other_program(keys: &[OutKey]) -> usize {
     send(&events, 0)
 }
 
+/// ADR 0101: whether CapsLock is toggled on (the system's toggle state as `GetKeyState` reports
+/// it; checked on this PC from a process without input focus).
+pub fn capslock_on() -> bool {
+    // SAFETY: no preconditions.
+    let s = unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyState(0x14) };
+    s & 1 != 0
+}
+
+/// ADR 0101 (`capslock: always_off`): turns CapsLock off with one marked tap (the hook passes
+/// Ddalgak's own input, so no rule sees it) when it is on. Returns `Some(true)` when it was on and
+/// is off now, `Some(false)` when the tap did not take (a higher-integrity window has focus,
+/// UIPI), `None` when it was already off.
+pub fn turn_capslock_off() -> Option<bool> {
+    if !capslock_on() {
+        return None;
+    }
+    let inputs = [
+        key_input(0x14, 0x3A, 0, OWN_MARKER),
+        key_input(0x14, 0x3A, KEYEVENTF_KEYUP, OWN_MARKER),
+    ];
+    // SAFETY: two initialized INPUT structures of the size passed.
+    unsafe {
+        SendInput(
+            2,
+            inputs.as_ptr(),
+            i32::try_from(size_of::<INPUT>()).expect("small"),
+        )
+    };
+    for _ in 0..10 {
+        if !capslock_on() {
+            return Some(true);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    Some(false)
+}
+
+/// ADR 0101: whether a key is down as the calling thread's input sees it (`GetKeyState`): the
+/// editor's capture box reads the side of a held modifier and a held CapsLock while it handles a
+/// key the window received (the window only reports "Shift", never which one).
+pub fn key_down(vk: u16) -> bool {
+    // SAFETY: no preconditions.
+    let s = unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyState(i32::from(vk)) };
+    s < 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

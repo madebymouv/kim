@@ -184,6 +184,10 @@ pub enum EngineView {
         active: Option<u64>,
         profile: Option<String>,
         mode: Option<String>,
+        /// ADR 0101: why the engine is off (`hook_lost`, `emergency`, …), when it is.
+        off_reason: Option<String>,
+        /// ADR 0101: CapsLock's toggle as the app read it (`None`: not reported).
+        capslock_on: Option<bool>,
     },
     /// The app answered with an error (`app_unresponsive`, `app_identity_mismatch`, …).
     Error {
@@ -235,7 +239,10 @@ impl EngineView {
                     } => (profile.clone(), mode.clone(), *active),
                     _ => (None, None, None),
                 };
+                let engine = &v["engine"];
                 EngineView::Running {
+                    off_reason: engine["off_reason"].as_str().map(str::to_string),
+                    capslock_on: engine["capslock"]["on"].as_bool(),
                     state: state.unwrap_or("off").to_string(),
                     active: if matches!(job, Job::Engine(_)) {
                         p_active

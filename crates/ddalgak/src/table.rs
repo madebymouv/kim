@@ -42,6 +42,8 @@ pub enum EngineOp {
     Resume,
     TogglePause,
     Disable,
+    /// ADR 0101: opens the rule editor's Settings window (the tray app starts the editor).
+    OpenSettings,
 }
 
 impl EngineOp {
@@ -51,6 +53,7 @@ impl EngineOp {
             "resume" => EngineOp::Resume,
             "toggle_pause" => EngineOp::TogglePause,
             "disable" => EngineOp::Disable,
+            "open_settings" => EngineOp::OpenSettings,
             _ => return None,
         })
     }
@@ -61,6 +64,7 @@ impl EngineOp {
             EngineOp::Resume => "resume",
             EngineOp::TogglePause => "toggle_pause",
             EngineOp::Disable => "disable",
+            EngineOp::OpenSettings => "open_settings",
         }
     }
 }
@@ -256,6 +260,25 @@ pub enum KeyMatch {
 pub struct CChord {
     pub key: KeyMatch,
     pub mods: Mods,
+    /// ADR 0101: CapsLock is held as a modifier of this chord.
+    pub caps: bool,
+}
+
+/// ADR 0101: how the engine treats CapsLock (DDALGAK_RULE_MODEL §3.6).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct CapsUse {
+    /// An active rule holds CapsLock as a modifier (`CapsLock+W`): the engine owns CapsLock's
+    /// down and up and tracks whether it is held.
+    pub layer: bool,
+    /// `settings.capslock: always_off`: CapsLock never reaches Windows while the hook runs.
+    pub always_off: bool,
+}
+
+impl CapsUse {
+    /// The engine takes CapsLock's events at all.
+    pub fn owned(self) -> bool {
+        self.layer || self.always_off
+    }
 }
 
 /// One compiled binding.
@@ -306,6 +329,8 @@ pub struct Table {
     pub(crate) order: Vec<Vec<u16>>,
     /// Per mode: the hotstrings that work in it, in the same precedence.
     pub(crate) mode_hotstrings: Vec<Vec<(u16, Arc<hotstring::Spec>)>>,
+    /// ADR 0101: CapsLock as a modifier and the always-off policy.
+    pub caps: CapsUse,
 }
 
 fn compile_chord(c: &crate::trigger::TChord) -> CChord {
@@ -317,7 +342,11 @@ fn compile_chord(c: &crate::trigger::TChord) -> CChord {
         TKey::Modifier(m) => KeyMatch::Modifier(m),
         TKey::Mouse(b) => KeyMatch::Vk(b.vk(), None),
     };
-    CChord { key, mods: c.mods }
+    CChord {
+        key,
+        mods: c.mods,
+        caps: c.caps,
+    }
 }
 
 impl Table {
@@ -378,6 +407,7 @@ impl Table {
                 let mut steps = [CChord {
                     key: KeyMatch::Vk(0, None),
                     mods: Mods::default(),
+                    caps: false,
                 }; 4];
                 for (i, s) in b.trigger.steps().iter().take(4).enumerate() {
                     steps[i] = compile_chord(s);
@@ -413,6 +443,7 @@ impl Table {
             .map(|(_, h)| h.abbreviation.len())
             .max()
             .unwrap_or(0);
+        let layer = bindings.iter().any(|b| b.trigger.uses_caps());
         let all: Vec<u16> = (0..bindings.len())
             .filter_map(|i| u16::try_from(i).ok())
             .collect();
@@ -426,6 +457,10 @@ impl Table {
             max_runs_per_second: max_runs_per_second.clamp(1, 100),
             modes: ModeSet::single(),
             order: vec![all],
+            caps: CapsUse {
+                layer,
+                always_off: false,
+            },
         }
     }
 

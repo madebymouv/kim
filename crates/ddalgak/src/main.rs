@@ -153,7 +153,7 @@ RULES (rules.json; these commands work without the app):
                   free chord, disable, --allow, keep); offers are never applied by themselves.
     rule add      A new rule with a new ID (r-<uuid>, or --id), triggered by --trigger <keys>
                   or --hotstring <abbreviation>. Actions: --action engine --op
-                  pause|resume|toggle_pause|disable; remap --to <key> [--tap <key>]; block;
+                  pause|resume|toggle_pause|disable|open_settings; remap --to <key> [--tap <key>]; block;
                   send_keys --keys <seq> [--step-delay-ms <n>]; type_text --text <t>
                   [--escapes] [--variables] [--method paste] [--key-delay-ms <n>];
                   open_program --path <exe> | --app-id <id> [--arg <a>]... [--working-dir <d>]

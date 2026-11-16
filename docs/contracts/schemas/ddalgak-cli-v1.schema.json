@@ -397,6 +397,24 @@
       "additionalProperties": false,
       "properties": {
         "state": { "$ref": "#/$defs/state" },
+        "capslock": {
+          "description": "ADR 0101: CapsLock as Ddalgak treats it. `policy` is settings.capslock; `layer`: an active rule holds CapsLock as a modifier (the hook owns CapsLock while it runs); `on`: CapsLock's toggle as Windows reports it now; `last_fix`: the last time `always_off` turned it off.",
+          "type": "object",
+          "required": ["policy", "layer", "on"],
+          "additionalProperties": false,
+          "properties": {
+            "policy": { "enum": ["default", "always_off"] },
+            "layer": { "type": "boolean" },
+            "on": { "type": "boolean" },
+            "last_fix": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "object", "required": ["why", "at", "turned_off"], "additionalProperties": false,
+                  "properties": { "why": { "enum": ["engine_start", "resume", "unlock", "reload"] }, "at": { "type": "string" }, "turned_off": { "type": "boolean" } } }
+              ]
+            }
+          }
+        },
         "off_reason": {
           "description": "Why the engine is off (null while it is on).",
           "enum": [null, "default", "unclean_exit", "emergency", "no_hotkeys", "elevated", "stopped", "disabled", "hook_lost", "app_not_running"]

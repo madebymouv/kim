@@ -88,6 +88,7 @@ hotkey-contract actions stored in `hotkeys.json`
 | `settings.engine_on_start` | `off` (default) or `on`. `on` is ignored after an unclean exit or an emergency off (`DDALGAK-FR-003`). |
 | `settings.activity` | `persist: false` (default) keeps the activity list in memory only; `true` keeps it in a capped local file (§12). |
 | `settings.max_runs_per_second` | Per-rule rate limit, default 20, at most 100 (§7.4). |
+| `settings.capslock` | ADR 0101: `default` (absent) or `always_off` (§3.6). |
 | `settings.floating_indicator` | Step 73: the optional floating status badge (never takes focus; drawn by the editor app, Step 74): `off` (default), `paused` (only while the engine is paused), `always`. The tray icon and `ddalgak status` always show the state. |
 | `profiles[]` | 1–64 profiles, each with a `default_mode`, 1–32 `modes` and up to 1000 `rules`. Since Step 73 a profile may have `enabled: false`: while it is the active profile none of its rules run (`profile_disabled`), each rule keeping its own `enabled`; only the user changes it (`ddalgak enable\|disable --profile`), never a restart, crash, import or reload. |
 
@@ -130,6 +131,7 @@ release and hold), with these differences:
 | Difference | Why |
 | --- | --- |
 | **Lock keys** `CapsLock` and `NumLock` are keys, alone or with modifiers (`Shift+CapsLock`). | The contract leaves them to Ddalgak (§5.2 there); CapsLock is the most remapped key there is. |
+| **CapsLock as a modifier** (ADR 0101): `CapsLock+` before one chord (`CapsLock+W`, `CapsLock+Shift+Comma`, `CapsLock+code:Slash`), a whole trigger whose key is a named or `code:` key. The chord after CapsLock is checked like any chord (`CapsLock+Alt+F4` stays reserved). | Holding CapsLock as a layer key is the most asked-for keyboard setup; a chord keeps it working while paused, which a mode layer could not (§3.6). |
 | **Bare side-specific modifiers** `LCtrl`, `RCtrl`, `LAlt`, `RAlt`, `LShift`, `RShift` are single-step triggers. | Right Alt as 한/영, a tap of Right Ctrl. Only with `remap` or `on: release` (§3.3). |
 | **Mouse buttons** `MouseMiddle`, `MouseX1`, `MouseX2` (Step 68), optionally with modifiers (`Ctrl+MouseX1`), as a whole trigger (never a sequence step). `MouseLeft` and `MouseRight` are never triggers. The CLI also accepts `MButton`, `XButton1`, `XButton2`. | Side buttons as Back, Copy or a modifier are popular remaps. A rule must never take away clicking. Mouse triggers need the low-level mouse hook, which exists only while such a rule is active ([ADR 0031](adr/0031-ddalgak-remap-execution-and-mouse-hook.md), permission `mouse-hook`, §6.1). Wheel triggers are not in this version (planned without an owner Step, [ADR 0040](adr/0040-ddalgak-mouse-actions.md) §13). |
 | **No `char:` keys.** | Translating keys to characters inside the hook can change dead-key state in the focused application. Hotstrings (Step 69) are their own trigger kind (§3.4), whose translation leaves the keyboard state untouched ([ADR 0034](adr/0034-ddalgak-typing-runs-hotstrings-and-clipboard.md)). |
@@ -173,6 +175,24 @@ for `Ctrl+Alt` with a letter, digit or punctuation key; `ime_toggle` for `Ctrl+S
 - **Consumed down, consumed up.** When a rule consumes a key-down, its key-up is consumed too;
   when a key-down passed through, its key-up passes. Applications never see an unmatched key-up
   or key-down (`DDALGAK-SEC-005`).
+
+### 3.6 CapsLock as a modifier and `settings.capslock` (ADR 0101)
+
+While an active rule has a CapsLock chord, the engine owns CapsLock: its down, repeats and up
+are consumed (Windows never toggles it) and the core tracks whether it is held, in the running
+**and the paused** state, before rules are chosen. A chord with CapsLock matches only while
+CapsLock is held and one without it only while it is up; other modifiers keep §3.2 (a remap on
+`CapsLock+W` widens, so Shift + CapsLock + W gives Shift + Up). Keys without a CapsLock rule pass
+unchanged while CapsLock is held. A key reset forgets the held state (its up stays consumed);
+the emergency chord is checked first.
+
+`settings.capslock`: `default` (absent) — CapsLock toggles as Windows does, and while a CapsLock
+chord is active a tap of CapsLock alone is sent on as a tap; `always_off` — while the engine is on
+CapsLock never reaches Windows (without a layer a CapsLock no rule took is consumed with its up),
+and the tray app turns it off with one marked tap when the engine starts or resumes, after an
+unlock and when a reload chooses the policy (`status` → `engine.capslock`). Nothing is promised
+while the engine is off, after the emergency chord, while Ddalgak is not running, on the secure
+desktop or over an elevated window that refuses the tap.
 
 ### 3.3 Fields
 
@@ -560,8 +580,9 @@ pressed (no click-lock toggle; Windows' own ClickLock is the accessible alternat
 | --- | --- |
 | `pause` | All rules stop except engine-control rules; held keys are released; the hook stays. |
 | `resume` | Rules run again. |
-| `toggle_pause` | Pause if running, resume if paused. |
+| `toggle_pause` | Pause if running, resume if paused. The editor's *Automation on/off* (ADR 0101). |
 | `disable` | The engine turns off: the hook is removed, held keys are released, runs are cancelled. |
+| `open_settings` | ADR 0101: opens the rule editor's Settings window (the tray app starts `ddalgak-editor --settings`; a running editor opens it). The engine stays as it is. |
 
 **Engine-control rules**, whose steps are all `engine` steps, keep working while paused (like
 AutoHotkey's `#SuspendExempt`), so a paused engine can still be resumed or turned off by key. **No rule turns the engine on**: without the hook no rule can
@@ -1096,7 +1117,7 @@ as `hotkey_invalid`, `hotkey_reserved`, `usage`, `confirmation_required`, `busy`
 
 | Artifact | Pins down |
 | --- | --- |
-| [ddalgak-rules-v1](contracts/schemas/ddalgak-rules-v1.schema.json) + `contracts/examples/ddalgak-rules-v1/` | Seventeen valid documents (since Step 75 a real `ddalgak profile export` of two profiles with a token path and withheld environment values in `17-profile-export.json`; since Step 73 a disabled mode, a disabled rule, a disabled profile and the floating indicator setting in `16-enable-disable-scopes.json`; since Step 72 a layered profile with a navigation layer, a symbols layer over it, an exclusive mode, a one-shot and a timed mode in `15-mode-layers.json`; remaps and swaps, text, programs, websites, mouse, modes, engine control, profiles and conditions, an export, a future step type, since Step 68 mouse-button remaps, pass-through and a physical-position trigger in `11-remap-mouse-and-pass-through.json`, and since Step 69 hotstrings, variables and the insertion point in `12-hotstrings-and-snippets.json`, and since Step 70 environment overrides, activation and websites in order in `13-launch-options.json`, and since Step 71 a keyboard-mouse profile with gliding, grid and stepped moves, every button, holds, the wheel in four directions and points on the desktop, the primary monitor and the active window in `14-mouse-navigation.json`). Fifty-nine invalid ones (Step 72 added a mode timeout below a second and a mode badge with a space; Step 71 added a continuous grid move, a grid unit without a grid, a move while held without a direction, both a speed and a repeat, a held button with repeat; Step 70 added `javascript:`, `ms-settings:` and custom-protocol URLs, `env` with an app ID and a bad variable name; Step 69 added a hotstring with keys, with a space, `immediate` with end characters, a hotstring remap, an unknown and a second-cursor template), including recursive remaps (`recursive-remap-accepts-injected`, `recursive-send-keys-accepts-injected`), a dual role that also passes the key through (`remap-tap-with-pass-through`), the primary button and a mouse button in a sequence as triggers, the emergency chord as trigger and output, reserved OS chords (`Win+L`, `Alt+Tab`, `Ctrl+Shift+Escape`, the Secure Attention Sequence), missing consent for programs, websites, injection and clipboard, shell hosts, `file:` URLs and newer versions. |
+| [ddalgak-rules-v1](contracts/schemas/ddalgak-rules-v1.schema.json) + `contracts/examples/ddalgak-rules-v1/` | Eighteen valid documents (since ADR 0101 the 18 keyboard mappings the editor saved from an empty profile — CapsLock chords, Right Shift media and volume keys, typed arrows, the automation toggle, Settings and `capslock: always_off` — in `18-keyboard-navigation-media.json`; since Step 75 a real `ddalgak profile export` of two profiles with a token path and withheld environment values in `17-profile-export.json`; since Step 73 a disabled mode, a disabled rule, a disabled profile and the floating indicator setting in `16-enable-disable-scopes.json`; since Step 72 a layered profile with a navigation layer, a symbols layer over it, an exclusive mode, a one-shot and a timed mode in `15-mode-layers.json`; remaps and swaps, text, programs, websites, mouse, modes, engine control, profiles and conditions, an export, a future step type, since Step 68 mouse-button remaps, pass-through and a physical-position trigger in `11-remap-mouse-and-pass-through.json`, and since Step 69 hotstrings, variables and the insertion point in `12-hotstrings-and-snippets.json`, and since Step 70 environment overrides, activation and websites in order in `13-launch-options.json`, and since Step 71 a keyboard-mouse profile with gliding, grid and stepped moves, every button, holds, the wheel in four directions and points on the desktop, the primary monitor and the active window in `14-mouse-navigation.json`). Fifty-nine invalid ones (Step 72 added a mode timeout below a second and a mode badge with a space; Step 71 added a continuous grid move, a grid unit without a grid, a move while held without a direction, both a speed and a repeat, a held button with repeat; Step 70 added `javascript:`, `ms-settings:` and custom-protocol URLs, `env` with an app ID and a bad variable name; Step 69 added a hotstring with keys, with a space, `immediate` with end characters, a hotstring remap, an unknown and a second-cursor template), including recursive remaps (`recursive-remap-accepts-injected`, `recursive-send-keys-accepts-injected`), a dual role that also passes the key through (`remap-tap-with-pass-through`), the primary button and a mouse button in a sequence as triggers, the emergency chord as trigger and output, reserved OS chords (`Win+L`, `Alt+Tab`, `Ctrl+Shift+Escape`, the Secure Attention Sequence), missing consent for programs, websites, injection and clipboard, shell hosts, `file:` URLs and newer versions. |
 | `contracts/examples/ddalgak-rules-v1/semantic-invalid/` | Fifteen schema-valid documents (Step 72 added `mode_cycle--layers-over-each-other` and `unknown_mode--layer-parent-missing`) named `<code>--<what>.json`, each producing exactly that semantic error: `output_is_trigger` (the recursive remap `F13` → `F13`, and `send_keys` to its own trigger), duplicate IDs and triggers (since Step 69 also two hotstrings `btw`/`BTW`), unknown modes and profiles, a stale launch consent, a run over 60 s (delays, and since Step 69 slow typing). |
 | [ddalgak-simulation-v1](contracts/schemas/ddalgak-simulation-v1.schema.json) + examples | Twenty-four playground results (Step 71 added a stepped grid move, checked against the code's own preview) named `<rules example>--<what>.json` and fourteen invalid ones (effects performed or input injected in `simulate`, live launches without confirmation, live input outside the playground, previews that echo text, paths, arguments or URL paths). |
 | [kim-hotkey-manifest-v1/ddalgak.json](contracts/examples/kim-hotkey-manifest-v1/ddalgak.json) | Ddalgak's final GUI actions: four global ones (matching the Kim catalog) and the `rules` and `playground` contexts. |

@@ -273,6 +273,8 @@ enum Act {
     /// ADR 0100: the Settings window (opened or focused on a section) and its actions.
     OpenSettings(SettingsSection),
     SetStartup(bool),
+    /// ADR 0101: `settings.capslock` (`true`: `always_off`).
+    SetCapsPolicy(bool),
     Release,
     ModeSet(String),
     Shortcut(kim_hotkeys::edit::Edit),
@@ -662,6 +664,13 @@ impl EditorApp {
         // ADR 0100: the picker only confirms what the engine can use (its own key parser and
         // reserved keys), so a picked rule never fails later.
         let check = |chord: &str| -> Option<String> {
+            let trigger = target == CaptureTarget::Trigger || target == CaptureTarget::HoldKey;
+            if !trigger && chord.starts_with(ddalgak::trigger::CAPS_PREFIX) {
+                return Some(match lang {
+                    kim_ui::Lang::Ko => "CapsLock은 트리거에서만 보조 키로 쓸 수 있습니다".into(),
+                    kim_ui::Lang::En => "CapsLock is a modifier only in a trigger".into(),
+                });
+            }
             match ddalgak::trigger::Trigger::parse(chord) {
                 Err(e) => Some(e.to_string()),
                 Ok(t) if target == CaptureTarget::Trigger || target == CaptureTarget::HoldKey => {
@@ -1164,6 +1173,7 @@ impl EditorApp {
             Act::Engine(r) => self.request_engine(r),
             Act::OpenSettings(s) => self.open_settings(s),
             Act::SetStartup(on) => self.set_startup(on),
+            Act::SetCapsPolicy(on) => self.set_caps_policy(on),
             Act::Release => self.link.send(Job::Release),
             Act::ModeSet(m) => self.link.send(Job::Mode(ddalgak::ipc::ModeCmd::Set(m))),
             Act::Shortcut(e) => self.edit_global_shortcut(&e),
@@ -1337,10 +1347,17 @@ impl EditorApp {
             return;
         };
         // ADR 0096: "hold + press" is this rule limited to the held key's layer.
+        // ADR 0101: CapsLock held is a modifier of the chord itself (`CapsLock+W`), no layer.
         let layer = (f.fields.trigger.combo == form::Combo::Hold
             && !f.fields.trigger.hotstring
             && !f.fields.trigger.scheduled
-            && !f.fields.trigger.hold_key.trim().is_empty())
+            && !f.fields.trigger.hold_key.trim().is_empty()
+            && !f
+                .fields
+                .trigger
+                .hold_key
+                .trim()
+                .eq_ignore_ascii_case("CapsLock"))
         .then(|| {
             let key = f.fields.trigger.hold_key.trim().to_string();
             (form::hold_mode_id(&key), key)
@@ -1666,6 +1683,10 @@ impl EditorApp {
 impl eframe::App for EditorApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let screen = self.audit_screen_name();
+        // ADR 0101: a second start with `--settings` asked for the Settings window.
+        if crate::OPEN_SETTINGS.swap(false, Ordering::SeqCst) {
+            self.open_settings(SettingsSection::General);
+        }
         EditorApp::ui(self, ui);
         // ADR 0099: the geometry report while a developer asks for it (nothing otherwise); a
         // Settings audit is written by the Settings window (ADR 0100).

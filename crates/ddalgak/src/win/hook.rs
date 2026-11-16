@@ -430,20 +430,45 @@ fn handle(raw: &RawKey) -> bool {
     consume
 }
 
+/// ADR 0101, debug builds only: the `dwExtraInfo` a real-desktop test driver puts on its
+/// `SendInput` keys ("DDTS").
+pub const TEST_INPUT_MARKER: usize = 0x4444_5453;
+
+#[cfg(debug_assertions)]
+static TEST_INPUT: AtomicBool = AtomicBool::new(false);
+
+/// ADR 0101, debug builds only (`ddalgak-gui --test-physical-input`): keys tagged with
+/// [`TEST_INPUT_MARKER`] count as physical keys. Release builds have no such switch.
+#[cfg(debug_assertions)]
+pub fn accept_test_input() {
+    TEST_INPUT.store(true, Ordering::SeqCst);
+}
+
+#[cfg(debug_assertions)]
+fn test_input(kb: &KBDLLHOOKSTRUCT) -> bool {
+    kb.dwExtraInfo == TEST_INPUT_MARKER && TEST_INPUT.load(Ordering::Relaxed)
+}
+
+#[cfg(not(debug_assertions))]
+fn test_input(_: &KBDLLHOOKSTRUCT) -> bool {
+    false
+}
+
 /// The hook procedure.
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 && lparam != 0 {
         // SAFETY: for HC_ACTION, `lparam` points to a KBDLLHOOKSTRUCT that is valid for the
         // duration of this call (documented for LowLevelKeyboardProc).
         let kb = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
+        let physical = test_input(kb);
         let raw = RawKey {
             vk: u16::try_from(kb.vkCode).unwrap_or(0),
             scan: u16::try_from(kb.scanCode).unwrap_or(0),
             extended: kb.flags & LLKHF_EXTENDED != 0,
             up: kb.flags & LLKHF_UP != 0,
-            injected: kb.flags & LLKHF_INJECTED != 0,
-            lower_il_injected: kb.flags & LLKHF_LOWER_IL_INJECTED != 0,
-            extra_info: kb.dwExtraInfo,
+            injected: kb.flags & LLKHF_INJECTED != 0 && !physical,
+            lower_il_injected: kb.flags & LLKHF_LOWER_IL_INJECTED != 0 && !physical,
+            extra_info: if physical { 0 } else { kb.dwExtraInfo },
             time_ms: kb.time,
         };
         if handle(&raw) {

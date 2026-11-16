@@ -363,13 +363,14 @@ fn effect(
                     }
                 }
                 EngineOp::Disable => "off",
+                EngineOp::OpenSettings => from,
             };
-            (
-                "engine".into(),
-                format!("The engine goes from {from} to {to}."),
-                json!({"from": from, "to": to}),
-                0,
-            )
+            let text = if e.op == EngineOp::OpenSettings {
+                "Opens Ddalgak's Settings window; the engine stays as it is.".to_string()
+            } else {
+                format!("The engine goes from {from} to {to}.")
+            };
+            ("engine".into(), text, json!({"from": from, "to": to}), 0)
         }
         Action::Delay(d) => (
             "delay".into(),

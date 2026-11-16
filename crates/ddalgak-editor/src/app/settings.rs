@@ -285,11 +285,22 @@ impl EditorApp {
         kim_ui::setting_group(ui, "Ddalgak", |ui| {
             // On/off: the engine's real state.
             let mut on = matches!(state.as_deref(), Some(s) if s != "off");
+            let off_reason = match &self.engine {
+                EngineView::Running { off_reason, .. } => off_reason.clone(),
+                _ => None,
+            };
             let desc = match (pending, state.as_deref()) {
                 (Some(Request::Start), _) => lang.t("engine.turning_on"),
                 (Some(Request::Stop), _) => lang.t("engine.turning_off"),
                 (_, Some("running")) => lang.t("engine.desc_running"),
                 (_, Some("paused")) => lang.t("engine.desc_paused"),
+                // ADR 0101: why it is off, when that is not the user's own choice.
+                (_, Some(_)) if off_reason.as_deref() == Some("hook_lost") => {
+                    lang.t("engine.desc_hook_lost")
+                }
+                (_, Some(_)) if off_reason.as_deref() == Some("emergency") => {
+                    lang.t("engine.desc_emergency")
+                }
                 (_, Some(_)) => lang.t("engine.desc_off"),
                 (_, None) => lang.t(match &self.engine {
                     EngineView::Unknown => "engine.unknown",
@@ -340,6 +351,7 @@ impl EditorApp {
         if let Some(r) = act {
             self.acts.push(Act::Engine(r));
         }
+        self.settings_capslock(ui);
         kim_ui::setting_group(ui, "Emergency off", |ui| {
             kim_ui::setting_row(
                 ui,
@@ -381,6 +393,137 @@ impl EditorApp {
         if let Some(on) = startup_act {
             self.acts.push(Act::SetStartup(on));
         }
+    }
+
+    /// ADR 0101: CapsLock (as a modifier, kept off) and the shortcuts that still work while the
+    /// automation is off.
+    fn settings_capslock(&mut self, ui: &mut egui::Ui) {
+        let lang = self.lang;
+        let Some(doc) = self.doc() else {
+            return;
+        };
+        let always_off = doc.settings.as_ref().and_then(|s| s.capslock)
+            == Some(ddalgak::model::CapsLockPolicy::AlwaysOff);
+        let active = doc.profile(&doc.active_profile);
+        let rules: Vec<&ddalgak::model::Rule> = active
+            .map(|p| {
+                p.rules
+                    .iter()
+                    .filter_map(|e| e.rule())
+                    .filter(|r| r.enabled)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let caps_rules = rules
+            .iter()
+            .filter(|r| {
+                r.trigger
+                    .keys_text()
+                    .starts_with(ddalgak::trigger::CAPS_PREFIX)
+            })
+            .count();
+        let control: Vec<(String, String)> = rules
+            .iter()
+            .filter(|r| {
+                !r.steps.is_empty()
+                    && r.steps
+                        .iter()
+                        .all(|s| matches!(s, ddalgak::model::Action::Engine(_)))
+            })
+            .filter_map(|r| {
+                let f = RuleForm::edit(&doc.active_profile, r);
+                let keys = r.trigger.keys_text().to_string();
+                (!keys.is_empty()).then(|| {
+                    let what = f.sentence(active, lang);
+                    (
+                        keys,
+                        if what.is_empty() {
+                            r.title.clone()
+                        } else {
+                            what
+                        },
+                    )
+                })
+            })
+            .collect();
+        let capslock_on = match &self.engine {
+            EngineView::Running { capslock_on, .. } => *capslock_on,
+            _ => None,
+        };
+        let mut set = None;
+        kim_ui::setting_group(ui, "CapsLock", |ui| {
+            let mut on = always_off;
+            if ui
+                .add(
+                    kim_ui::SwitchRow::new(&mut on, lang.t("settings.caps_off"))
+                        .description(lang.t("settings.caps_off_desc")),
+                )
+                .changed()
+            {
+                set = Some(on);
+            }
+            kim_ui::row_divider(ui);
+            let layer = if caps_rules == 0 {
+                lang.t("settings.caps_layer_none").to_string()
+            } else {
+                format!(
+                    "{} {caps_rules}. {}",
+                    lang.t("settings.caps_layer_rules"),
+                    lang.t(if always_off {
+                        "settings.caps_layer_tap_off"
+                    } else {
+                        "settings.caps_layer_tap"
+                    })
+                )
+            };
+            kim_ui::setting_row(ui, lang.t("settings.caps_layer"), Some(&layer), |ui| {
+                let now = match capslock_on {
+                    Some(true) => lang.t("settings.caps_now_on"),
+                    Some(false) => lang.t("settings.caps_now_off"),
+                    None => "—",
+                };
+                ui.label(kim_ui::caption(ui, now.to_string()));
+            });
+        });
+        if let Some(on) = set {
+            self.acts.push(Act::SetCapsPolicy(on));
+        }
+        kim_ui::setting_group(ui, lang.t("settings.control_title"), |ui| {
+            if control.is_empty() {
+                ui.label(kim_ui::caption(
+                    ui,
+                    lang.t("settings.control_none").to_string(),
+                ));
+            }
+            for (i, (keys, what)) in control.iter().enumerate() {
+                if i > 0 {
+                    kim_ui::row_divider(ui);
+                }
+                let named = kim_ui::keys::readable_chord(keys, self.kim_lang());
+                kim_ui::setting_row(ui, &named, Some(what), |ui| {
+                    // The keys for screen readers too (the row's text is painted).
+                    kim_ui::keycaps(ui, keys)
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &named));
+                });
+            }
+        });
+    }
+
+    /// ADR 0101: saves `settings.capslock` (the running app applies it with the next reload).
+    pub(super) fn set_caps_policy(&mut self, always_off: bool) {
+        let label = if always_off {
+            "CapsLock stays off"
+        } else {
+            "CapsLock works as in Windows"
+        };
+        self.commit(label.into(), "settings.capslock", move |d| {
+            let s = d.settings.get_or_insert_with(Default::default);
+            s.capslock = always_off.then_some(ddalgak::model::CapsLockPolicy::AlwaysOff);
+            Ok(Change {
+                changed: true,
+                ..Default::default()
+            })
+        });
     }
 
     fn settings_appearance(&mut self, ui: &mut egui::Ui) {

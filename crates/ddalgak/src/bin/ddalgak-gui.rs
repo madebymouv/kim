@@ -63,6 +63,11 @@ fn main() -> ExitCode {
             }
             #[cfg(debug_assertions)]
             "--test-host" => test_host = true,
+            // ADR 0101, debug builds only: key events a test driver tags with
+            // `hook::TEST_INPUT_MARKER` count as physical keys, so real-desktop tests reach the
+            // rules the way a keyboard does (everything else stays the real path).
+            #[cfg(debug_assertions)]
+            "--test-physical-input" => ddalgak::win::hook::accept_test_input(),
             #[cfg(debug_assertions)]
             "--test-max-seconds" => {
                 i += 1;
@@ -117,6 +122,7 @@ fn main() -> ExitCode {
     let opts = host::Options {
         paths,
         endpoint,
+        custom_endpoint: custom,
         instance,
         tray: !test_host,
         observe_only: test_host,

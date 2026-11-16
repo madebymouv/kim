@@ -79,8 +79,69 @@ pub fn modifier_family(k: &str) -> Option<&'static str> {
         .find(|f| *f == base)
 }
 
+/// ADR 0101: the punctuation keys a picker offers, as the symbol on the key and the key name
+/// (with Shift for the upper symbol). The names follow US-style layouts, which Korean keyboards
+/// share; the engine matches the key, so another layout types its own symbol on that key.
+pub const SYMBOLS: [(&str, &str, bool); 14] = [
+    (",", "Comma", false),
+    (".", "Period", false),
+    ("/", "code:Slash", false),
+    ("<", "Comma", true),
+    (">", "Period", true),
+    ("?", "code:Slash", true),
+    (";", "code:Semicolon", false),
+    ("'", "code:Quote", false),
+    ("[", "code:BracketLeft", false),
+    ("]", "code:BracketRight", false),
+    ("\\", "code:Backslash", false),
+    ("`", "code:Backquote", false),
+    ("-", "Minus", false),
+    ("=", "Plus", false),
+];
+
+/// ADR 0101: the key and Shift of a symbol (`<` → `Comma` with Shift).
+pub fn symbol_key(sym: &str) -> Option<(&'static str, bool)> {
+    SYMBOLS
+        .iter()
+        .find(|(s, _, _)| *s == sym)
+        .map(|(_, k, shift)| (*k, *shift))
+}
+
+/// ADR 0101: the symbol a key types (`code:Slash` → `/`; with `shift`, `Comma` → `<`).
+pub fn key_symbol(key: &str, shift: bool) -> Option<&'static str> {
+    SYMBOLS
+        .iter()
+        .find(|(_, k, sh)| *k == key && *sh == shift)
+        .map(|(s, _, _)| *s)
+}
+
+/// ADR 0101: a chord as the keys people see: `Shift+Comma` is `<`, `code:Slash` is `/`,
+/// `CapsLock+Shift+Comma` is `CapsLock`, `<`. A side-specific Shift (`RShift+Comma`) stays
+/// written out, because only one Shift fires it.
+pub fn display_parts(chord: &str) -> Vec<String> {
+    let parts = crate::split_chord(chord);
+    let Some((key, mods)) = parts.split_last() else {
+        return parts;
+    };
+    if mods.iter().any(|m| m == "Shift")
+        && let Some(sym) = key_symbol(key, true)
+    {
+        let mut out: Vec<String> = mods.iter().filter(|m| *m != "Shift").cloned().collect();
+        out.push(sym.to_string());
+        return out;
+    }
+    let mut out = mods.to_vec();
+    out.push(key_symbol(key, false).map_or_else(|| key.clone(), str::to_string));
+    out
+}
+
 /// A key name for people: `LCtrl` → `Left Ctrl`, `Up` → `Up arrow` (`ko`: `왼쪽 Ctrl`).
 pub fn readable_key(k: &str, lang: kim_design::Lang) -> String {
+    if let Some(sym) =
+        key_symbol(k, false).or_else(|| SYMBOLS.iter().find(|x| x.0 == k).map(|x| x.0))
+    {
+        return sym.to_string();
+    }
     if let Some(f) = modifier_family(k)
         && k.len() > f.len()
     {
@@ -104,9 +165,10 @@ pub fn readable_key(k: &str, lang: kim_design::Lang) -> String {
     }
 }
 
-/// A chord for people: `LCtrl+Space` → `Left Ctrl + Space`.
+/// A chord for people: `LCtrl+Space` → `Left Ctrl + Space`, `CapsLock+Shift+Comma` →
+/// `CapsLock + <`.
 pub fn readable_chord(chord: &str, lang: kim_design::Lang) -> String {
-    crate::split_chord(chord)
+    display_parts(chord)
         .iter()
         .map(|k| readable_key(k, lang))
         .collect::<Vec<_>>()
@@ -154,6 +216,12 @@ pub const GRID_HEIGHT: f32 = 4.0 * size::KEY + 3.0 * space::XS;
 pub struct KeyPicker {
     pub mods: Vec<&'static str>,
     pub key: Option<String>,
+    /// ADR 0101: CapsLock is chosen. With another key it is held as a modifier
+    /// (`CapsLock+W`); alone it is the key (`RCtrl+CapsLock`).
+    pub caps: bool,
+    /// ADR 0101: the generic Shift was added by a shifted symbol (`<`), so another symbol
+    /// takes it away again.
+    pub sym_shift: bool,
     pub search: String,
     /// ADR 0100: the open category (an index of [`KeyPicker::categories`]).
     pub tab: usize,
@@ -176,10 +244,37 @@ impl KeyPicker {
     /// `None` when nothing is chosen.
     pub fn chord(&self) -> Option<String> {
         let mut parts: Vec<&str> = self.mods.clone();
-        if let Some(k) = &self.key {
-            parts.push(k);
+        match (&self.key, self.caps) {
+            (Some(k), true) => {
+                parts.insert(0, "CapsLock");
+                parts.push(k);
+            }
+            (Some(k), false) => parts.push(k),
+            (None, true) => parts.push("CapsLock"),
+            (None, false) => {}
         }
         (!parts.is_empty()).then(|| parts.join("+"))
+    }
+
+    /// ADR 0101: a picker that shows `chord` (`CapsLock+Shift+Comma`, `RCtrl+Space`); parts the
+    /// picker does not offer are left out.
+    pub fn from_chord(chord: &str, keys: &[&'static str]) -> KeyPicker {
+        let mut p = KeyPicker::default();
+        for part in crate::split_chord(chord.trim()) {
+            if part == "CapsLock" {
+                p.caps = true;
+            } else if let Some(m) = modifiers(true).into_iter().find(|m| *m == part) {
+                p.toggle(m);
+            } else if let Some(k) = keys
+                .iter()
+                .copied()
+                .chain(SYMBOLS.iter().map(|s| s.1))
+                .find(|k| *k == part)
+            {
+                p.key = Some(k.to_string());
+            }
+        }
+        p
     }
 
     /// The categories of `keys`, in tab order: the common keys with the (left/right, when
@@ -225,13 +320,21 @@ impl KeyPicker {
         let more: Vec<&'static str> = keys
             .iter()
             .copied()
-            .filter(|k| !placed.contains(k) && modifier_family(k).is_none())
+            .filter(|k| {
+                !placed.contains(k)
+                    && modifier_family(k).is_none()
+                    && key_symbol(k, false).is_none()
+            })
             .collect();
         let mut out = vec![
             (lang.pick("Common", "자주 쓰는 키").to_string(), common),
             (lang.pick("Modifiers", "보조 키").to_string(), mods),
             ("F1–F24".to_string(), fkeys),
             (lang.pick("A–Z, 0–9", "문자·숫자").to_string(), letters),
+            (
+                lang.pick("Symbols", "기호").to_string(),
+                SYMBOLS.iter().map(|s| s.0).collect(),
+            ),
             (lang.pick("Navigation", "이동").to_string(), nav),
             (lang.pick("Mouse", "마우스").to_string(), mouse),
             (lang.pick("More", "기타").to_string(), more),
@@ -245,7 +348,37 @@ impl KeyPicker {
     /// program's check says whether it can use that). Any other key becomes the chord's key; a
     /// second click removes it.
     pub fn toggle(&mut self, k: &'static str) {
+        if k == "CapsLock" {
+            self.caps = !self.caps;
+            return;
+        }
+        if let Some((key, shift)) = symbol_key(k) {
+            let same = self.key.as_deref() == Some(key)
+                && (shift == self.mods.contains(&"Shift") || !shift && self.sym_shift);
+            if self.sym_shift {
+                self.mods.retain(|m| *m != "Shift");
+                self.sym_shift = false;
+            }
+            if same {
+                self.key = None;
+                return;
+            }
+            self.key = Some(key.to_string());
+            if shift
+                && !self
+                    .mods
+                    .iter()
+                    .any(|m| modifier_family(m) == Some("Shift"))
+            {
+                self.toggle("Shift");
+                self.sym_shift = true;
+            }
+            return;
+        }
         if let Some(fam) = modifier_family(k) {
+            if fam == "Shift" {
+                self.sym_shift = false;
+            }
             if self.mods.contains(&k) {
                 self.mods.retain(|x| *x != k);
                 return;
@@ -272,10 +405,31 @@ impl KeyPicker {
 
     /// Removes one part of the chord (a modifier or the key).
     pub fn remove(&mut self, part: &str) {
+        if part == "CapsLock" {
+            self.caps = false;
+        }
         self.mods.retain(|m| *m != part);
+        if part == "Shift" {
+            self.sym_shift = false;
+        }
         if self.key.as_deref() == Some(part) {
             self.key = None;
+            if self.sym_shift {
+                self.mods.retain(|m| *m != "Shift");
+                self.sym_shift = false;
+            }
         }
+    }
+
+    /// Whether key button `k` shows as chosen.
+    fn is_on(&self, k: &str) -> bool {
+        if k == "CapsLock" {
+            return self.caps;
+        }
+        if let Some((key, shift)) = symbol_key(k) {
+            return self.key.as_deref() == Some(key) && shift == self.mods.contains(&"Shift");
+        }
+        self.mods.contains(&k) || self.key.as_deref() == Some(k)
     }
 
     /// Draws the picker without a check (every chord can be confirmed).
@@ -314,7 +468,11 @@ impl KeyPicker {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.set_min_height(size::CONTROL + 2.0 * space::M);
-                let mut parts: Vec<String> = self.mods.iter().map(|m| (*m).to_string()).collect();
+                let mut parts: Vec<String> = Vec::new();
+                if self.caps {
+                    parts.push("CapsLock".into());
+                }
+                parts.extend(self.mods.iter().map(|m| (*m).to_string()));
                 parts.extend(self.key.clone());
                 if parts.is_empty() {
                     ui.add_space(space::S);
@@ -334,9 +492,10 @@ impl KeyPicker {
                         if i > 0 {
                             ui.label(RichText::new("+").color(c.text_muted));
                         }
+                        let shown = key_symbol(p, false).unwrap_or(p);
                         if ui
                             .add(
-                                Button::secondary(format!("{p}  ×"))
+                                Button::secondary(format!("{shown}  ×"))
                                     .compact()
                                     .min_width(0.0),
                             )
@@ -434,6 +593,7 @@ impl KeyPicker {
                     .copied()
                     .filter(|k| modifier_family(k).is_none()),
             );
+            all.extend(SYMBOLS.iter().map(|s| s.0));
             all.into_iter()
                 .filter(|k| {
                     k.to_lowercase().contains(&q)
@@ -451,7 +611,7 @@ impl KeyPicker {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(space::XS, space::XS);
                     for k in &shown {
-                        let on = self.mods.contains(k) || self.key.as_deref() == Some(*k);
+                        let on = self.is_on(k);
                         if ui
                             .add(
                                 Button::secondary(*k)
@@ -494,6 +654,8 @@ impl KeyPicker {
                 {
                     self.mods.clear();
                     self.key = None;
+                    self.caps = false;
+                    self.sym_shift = false;
                 }
             });
         });
@@ -563,6 +725,59 @@ mod tests {
         );
     }
 
+    /// ADR 0101: CapsLock with another key is a modifier (`CapsLock+W`), alone it is the key;
+    /// `<` is Shift and Comma, shown as `<`; another symbol takes the added Shift away again.
+    #[test]
+    fn capslock_combines_and_symbols_carry_their_shift() {
+        let mut p = KeyPicker::default();
+        p.toggle("CapsLock");
+        assert_eq!(p.chord().as_deref(), Some("CapsLock"));
+        p.toggle("W");
+        assert_eq!(p.chord().as_deref(), Some("CapsLock+W"));
+        p.toggle("<");
+        assert_eq!(p.chord().as_deref(), Some("CapsLock+Shift+Comma"));
+        assert!(p.is_on("<") && !p.is_on(","));
+        assert_eq!(
+            readable_chord("CapsLock+Shift+Comma", Lang::En),
+            "CapsLock + <"
+        );
+        p.toggle("/");
+        assert_eq!(
+            p.chord().as_deref(),
+            Some("CapsLock+code:Slash"),
+            "the added Shift goes"
+        );
+        assert_eq!(
+            readable_chord("CapsLock+code:Slash", Lang::Ko),
+            "CapsLock + /"
+        );
+        p.toggle(">");
+        assert_eq!(p.chord().as_deref(), Some("CapsLock+Shift+Period"));
+        p.remove("Period");
+        assert_eq!(
+            p.chord().as_deref(),
+            Some("CapsLock"),
+            "its Shift went with it"
+        );
+        p.toggle("Backspace");
+        assert_eq!(p.chord().as_deref(), Some("CapsLock+Backspace"));
+        p.remove("CapsLock");
+        assert_eq!(p.chord().as_deref(), Some("Backspace"));
+        let mut r = KeyPicker::default();
+        r.toggle("RShift");
+        r.toggle("Enter");
+        assert_eq!(r.chord().as_deref(), Some("RShift+Enter"));
+        assert_eq!(
+            readable_chord("RShift+Enter", Lang::En),
+            "Right Shift + Enter"
+        );
+        assert_eq!(display_parts("RShift+Comma"), ["RShift", ","]);
+        let keys = ["W", "Enter", "Backspace"];
+        let back = KeyPicker::from_chord("CapsLock+Shift+Comma", &keys);
+        assert_eq!(back.chord().as_deref(), Some("CapsLock+Shift+Comma"));
+        assert!(back.is_on("<"));
+    }
+
     #[test]
     fn categories_put_capslock_and_the_side_modifiers_first() {
         let keys = [
@@ -587,12 +802,13 @@ mod tests {
                 "Modifiers",
                 "F1–F24",
                 "A–Z, 0–9",
+                "Symbols",
                 "Navigation",
                 "Mouse",
                 "More"
             ]
         );
-        assert_eq!(cats[6].1, ["VolumeUp"]);
+        assert_eq!(cats[7].1, ["VolumeUp"]);
         assert_eq!(readable_chord("LCtrl+Space", Lang::En), "Left Ctrl + Space");
         assert_eq!(readable_chord("RAlt+Tab", Lang::Ko), "오른쪽 Alt + Tab");
     }

@@ -6,6 +6,12 @@
 //! (ADR 0022). The primary and secondary buttons are never triggers, so no rule can take away the
 //! user's ability to click. Reserved chords are refused with the contract's reasons
 //! (`DDALGAK-SEC-009`).
+//!
+//! ADR 0101: **CapsLock as a modifier**. `CapsLock+W` (and `CapsLock+Shift+Comma`, `CapsLock+code:Slash`)
+//! is one chord held together: CapsLock down, then the key. CapsLock comes first, then the
+//! contract's chord; it is a whole trigger (never a sequence step) and its key is a named or
+//! `code:` key (no lock key, bare modifier or mouse button). While a profile has such a rule the
+//! engine owns CapsLock: it never reaches Windows, so it never toggles (DDALGAK_RULE_MODEL §3.6).
 
 use crate::inject::Button;
 use crate::vk::ModKey;
@@ -33,7 +39,12 @@ pub enum TKey {
 pub struct TChord {
     pub mods: Mods,
     pub key: TKey,
+    /// ADR 0101: CapsLock is held as a modifier of this chord (`CapsLock+W`).
+    pub caps: bool,
 }
+
+/// The prefix of a chord with CapsLock as its modifier (ADR 0101).
+pub const CAPS_PREFIX: &str = "CapsLock+";
 
 impl TChord {
     /// The chord as `kim-hotkeys` sees it, when it has an equivalent (lock keys and bare
@@ -55,6 +66,9 @@ impl TChord {
 
 impl fmt::Display for TChord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.caps {
+            f.write_str(CAPS_PREFIX)?;
+        }
         match self.key {
             TKey::Modifier(m) => f.write_str(m.name()),
             TKey::Lock(_) | TKey::Mouse(_) => {
@@ -118,6 +132,22 @@ const LOCK_KEYS: [&str; 2] = ["CapsLock", "NumLock"];
 pub const MOUSE_TRIGGERS: [Button; 3] = [Button::Middle, Button::X1, Button::X2];
 
 fn parse_chord(step: &str, single: bool) -> Result<TChord, TriggerError> {
+    if let Some(rest) = step.strip_prefix(CAPS_PREFIX) {
+        let invalid = |why: &str| Err(TriggerError::Invalid(format!("`{step}`: {why}")));
+        if !single {
+            return invalid("a CapsLock chord is a whole trigger, never a sequence step");
+        }
+        let inner = parse_chord(rest, true)?;
+        if !matches!(inner.key, TKey::Named(_) | TKey::Code(_)) || inner.caps {
+            return invalid(
+                "CapsLock combines with a letter, digit, punctuation, navigation or function key (CapsLock+W)",
+            );
+        }
+        return Ok(TChord {
+            caps: true,
+            ..inner
+        });
+    }
     let invalid = |why: &str| Err(TriggerError::Invalid(format!("`{step}`: {why}")));
     if let Some(m) = ModKey::from_name(step) {
         if matches!(m, ModKey::LWin | ModKey::RWin) {
@@ -129,6 +159,7 @@ fn parse_chord(step: &str, single: bool) -> Result<TChord, TriggerError> {
         return Ok(TChord {
             mods: Mods::default(),
             key: TKey::Modifier(m),
+            caps: false,
         });
     }
     let lock = LOCK_KEYS
@@ -143,6 +174,7 @@ fn parse_chord(step: &str, single: bool) -> Result<TChord, TriggerError> {
         return finish(TChord {
             mods: chord.mods,
             key: TKey::Lock(lock),
+            caps: false,
         });
     }
     let button = Button::ALL
@@ -163,6 +195,7 @@ fn parse_chord(step: &str, single: bool) -> Result<TChord, TriggerError> {
         return finish(TChord {
             mods: chord.mods,
             key: TKey::Mouse(b),
+            caps: false,
         });
     }
     if step.starts_with("char:") {
@@ -181,6 +214,7 @@ fn parse_chord(step: &str, single: bool) -> Result<TChord, TriggerError> {
     finish(TChord {
         mods: chord.mods,
         key,
+        caps: false,
     })
 }
 
@@ -253,6 +287,16 @@ impl Trigger {
         }
     }
 
+    /// ADR 0101: the trigger holds CapsLock as a modifier (`CapsLock+W`).
+    pub fn uses_caps(&self) -> bool {
+        self.steps.iter().any(|c| c.caps)
+    }
+
+    /// A trigger on CapsLock itself (`CapsLock`, `Shift+CapsLock`).
+    pub fn is_capslock_key(&self) -> bool {
+        self.steps.iter().any(|c| c.key == TKey::Lock("CapsLock"))
+    }
+
     /// The mouse button of a mouse-button trigger (it needs the low-level mouse hook).
     pub fn mouse(&self) -> Option<Button> {
         match self.single()?.key {
@@ -304,9 +348,19 @@ mod tests {
             "MouseX1",
             "Ctrl+MouseMiddle",
             "LCtrl+Alt+Shift+MouseX2",
+            "CapsLock+W",
+            "CapsLock+Backspace",
+            "CapsLock+Shift+Comma",
+            "CapsLock+code:Slash",
+            "CapsLock+RShift+Up",
         ] {
             assert_eq!(ok(t).to_string(), t);
         }
+        let caps = ok("CapsLock+Shift+Comma");
+        let c = caps.single().unwrap();
+        assert!(c.caps && c.mods.shift.on() && c.key == TKey::Named("Comma"));
+        assert!(caps.uses_caps() && !caps.is_capslock_key());
+        assert!(!ok("Shift+CapsLock").uses_caps() && ok("Shift+CapsLock").is_capslock_key());
         assert_eq!(ok("Ctrl+MouseX1").mouse(), Some(Button::X1));
         assert_eq!(ok("F13").mouse(), None);
         assert_eq!(
@@ -339,6 +393,9 @@ mod tests {
             ("code:Lang1", "Input method key"),
             ("F13 Alt+Tab", "Task switching"),
             ("Win+MouseX1", "Windows key shortcut"),
+            ("CapsLock+Alt+F4", "Closes the window"),
+            ("CapsLock+Ctrl+Alt+Shift+Escape", "Emergency chord"),
+            ("CapsLock+F12", "Reserved for debuggers"),
         ] {
             assert_eq!(
                 Trigger::parse(t),
@@ -366,6 +423,13 @@ mod tests {
             "MouseX1 F13",
             "F13 MouseX2",
             "Shift+Ctrl+MouseX1",
+            "CapsLock+CapsLock",
+            "CapsLock+RShift",
+            "CapsLock+MouseX1",
+            "CapsLock+W F13",
+            "F13 CapsLock+W",
+            "W+CapsLock",
+            "Shift+CapsLock+W",
         ] {
             let e = Trigger::parse(t).unwrap_err();
             assert_eq!(e.code(), "trigger_invalid", "{t}: {e}");

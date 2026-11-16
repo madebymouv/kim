@@ -1,6 +1,6 @@
 [package]
 name = "noeul-settings"
-version = "0.0.4"
+version = "0.0.5"
 description = "Noeul's settings window (ADR 0093): the Kim design system in egui; every change is the documented `noeul` command"
 edition.workspace = true
 rust-version.workspace = true
@@ -17,8 +17,8 @@ name = "noeul-settings"
 path = "src/main.rs"
 
 [dependencies]
-noeul = { version = "0.0.4", path = "../noeul" }
-kim-ui = { version = "0.0.3", path = "../kim-ui" }
+noeul = { version = "0.0.5", path = "../noeul" }
+kim-ui = { version = "0.0.4", path = "../kim-ui" }
 kim-design = { version = "0.0.3", path = "../kim-design" }
 kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }

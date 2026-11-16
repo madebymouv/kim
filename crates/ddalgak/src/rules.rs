@@ -69,6 +69,8 @@ pub struct Loaded {
     pub profile_enabled: bool,
     pub engine_on_start: bool,
     pub max_runs_per_second: u32,
+    /// ADR 0101: `settings.capslock: always_off`.
+    pub capslock_always_off: bool,
     /// Active bindings (every mode) in priority and file order; the table ranks them per mode.
     pub bindings: Vec<Binding>,
     pub inactive: Vec<Inactive>,
@@ -101,6 +103,7 @@ impl Loaded {
             profile_enabled: true,
             engine_on_start: false,
             max_runs_per_second: 20,
+            capslock_always_off: false,
             bindings: Vec::new(),
             inactive: Vec::new(),
             disabled: 0,
@@ -834,6 +837,8 @@ pub fn from_store(l: &store::Loaded) -> Loaded {
         max_runs_per_second: settings
             .and_then(|s| s.max_runs_per_second)
             .map_or(20, |n| n.clamp(1, 100)),
+        capslock_always_off: settings.and_then(|s| s.capslock)
+            == Some(crate::model::CapsLockPolicy::AlwaysOff),
         total: profile.rules.len(),
         errors: l.report.count(crate::validate::Severity::Error),
         warnings: l.report.count(crate::validate::Severity::Warning),
@@ -944,11 +949,13 @@ pub fn from_store(l: &store::Loaded) -> Loaded {
 impl Loaded {
     /// The compiled table of these rules for the hook.
     pub fn table(&self) -> crate::table::Table {
-        crate::table::Table::compile_modes(
+        let mut t = crate::table::Table::compile_modes(
             self.bindings.clone(),
             self.modes.clone(),
             self.max_runs_per_second,
-        )
+        );
+        t.caps.always_off = self.capslock_always_off;
+        t
     }
 }
 
@@ -1442,6 +1449,63 @@ mod tests {
     fn engine_rule(id: &str, keys: &str, op: &str) -> Value {
         json!({ "id": id, "title": id, "enabled": true, "trigger": { "keys": keys },
                 "steps": [ { "type": "engine", "op": op } ] })
+    }
+
+    /// ADR 0101: the 18 mappings of the maintainer's keyboard task, as the editor stores them,
+    /// load as 18 active rules: CapsLock chords (remaps, typed arrows, the engine toggle and
+    /// Settings), Right Shift media and volume keys, and `capslock: always_off`.
+    #[test]
+    fn the_keyboard_navigation_and_media_rules_all_load() {
+        let consent =
+            json!({ "input-injection": { "granted_at": "2026-11-16T09:00:00Z", "via": "gui" } });
+        let remap = |id: &str, keys: &str, to: &str| {
+            json!({ "id": id, "title": id, "enabled": true, "trigger": { "keys": keys },
+                    "steps": [ { "type": "remap", "to": to } ], "consent": consent })
+        };
+        let send = |id: &str, keys: &str, out: &str, repeat: bool| {
+            json!({ "id": id, "title": id, "enabled": true,
+                    "trigger": { "keys": keys, "repeat": repeat },
+                    "steps": [ { "type": "send_keys", "keys": out } ], "consent": consent })
+        };
+        let text = |id: &str, keys: &str, t: &str| {
+            json!({ "id": id, "title": id, "enabled": true, "trigger": { "keys": keys },
+                    "steps": [ { "type": "type_text", "text": t } ], "consent": consent })
+        };
+        let rules = json!([
+            remap("caps-w", "CapsLock+W", "Up"),
+            remap("caps-a", "CapsLock+A", "Left"),
+            remap("caps-s", "CapsLock+S", "Down"),
+            remap("caps-d", "CapsLock+D", "Right"),
+            send("play", "RShift+Enter", "MediaPlayPause", false),
+            send("prev", "RShift+Left", "MediaPrevious", false),
+            send("next", "RShift+Right", "MediaNext", false),
+            send("vol-up", "RShift+Up", "VolumeUp", true),
+            send("vol-down", "RShift+Down", "VolumeDown", true),
+            remap("caps-q", "CapsLock+Q", "Home"),
+            remap("caps-e", "CapsLock+E", "End"),
+            remap("caps-z", "CapsLock+Z", "PageDown"),
+            remap("caps-x", "CapsLock+X", "PageUp"),
+            engine_rule("toggle", "CapsLock+Backspace", "toggle_pause"),
+            engine_rule("settings", "CapsLock+code:Slash", "open_settings"),
+            text("left-arrow", "CapsLock+Shift+Comma", "\u{2190}"),
+            text("right-arrow", "CapsLock+Shift+Period", "\u{2192}"),
+            text("both-arrows", "CapsLock+M", "\u{2194}"),
+        ]);
+        let mut d: Value = serde_json::from_slice(&doc(rules)).unwrap();
+        d["settings"]["capslock"] = json!("always_off");
+        let bytes = d.to_string().into_bytes();
+        let l = parse(&bytes);
+        assert!(l.inactive.is_empty(), "{:?}", l.inactive);
+        assert_eq!(l.bindings.len(), 18, "{:?}", l.state);
+        assert!(l.capslock_always_off);
+        let t = l.table();
+        assert!(t.caps.layer && t.caps.always_off);
+        let b = |id: &str| l.bindings.iter().find(|b| b.rule == id).unwrap();
+        assert!(b("toggle").is_engine_control() && b("settings").is_engine_control());
+        assert!(matches!(b("caps-w").action, Action::Remap(_)) && b("caps-w").widen);
+        assert!(b("vol-up").repeat && !b("play").repeat);
+        let report = store::interpret(&bytes, &Context::default(), MIGRATIONS);
+        assert_eq!(report.report.count(crate::validate::Severity::Error), 0);
     }
 
     #[test]

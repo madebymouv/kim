@@ -7,7 +7,8 @@
 //! load what it saved.
 //!
 //! Options: `--lang en|ko`, `--no-hotkeys` (or `KIM_NO_HOTKEYS`: the rule list's shortcuts are
-//! off), `--help`, `--version`. Debug builds only: `--endpoint <name>` (talk to a test host).
+//! off), `--settings` (ADR 0101: open the Settings window too; a running editor is asked to),
+//! `--help`, `--version`. Debug builds only: `--endpoint <name>` (talk to a test host).
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
@@ -17,7 +18,7 @@ const HELP: &str = "\
 ddalgak-editor — Ddalgak rule editor
 
 USAGE:
-    ddalgak-editor [--lang en|ko] [--no-hotkeys]
+    ddalgak-editor [--lang en|ko] [--no-hotkeys] [--settings]
     ddalgak-editor --help | --version
 
 Opens the rule editor window. It edits rules.json (the same store as `ddalgak rule …`) and asks
@@ -48,6 +49,8 @@ mod single {
     pub struct Owner {
         _mutex: HANDLE,
         pub event: HANDLE,
+        /// ADR 0101: a second start with `--settings` also sets this one.
+        pub settings: HANDLE,
     }
 
     // SAFETY: kernel handles are process-wide and usable from any thread.
@@ -59,7 +62,7 @@ mod single {
         Shown,
     }
 
-    pub fn claim(tag: Option<&str>) -> io::Result<Claim> {
+    pub fn claim(tag: Option<&str>, settings: bool) -> io::Result<Claim> {
         let base = format!(
             "Local\\mouv-ddalgak-editor-{}-s{}{}",
             ddalgak::win::user_sid()?,
@@ -68,23 +71,29 @@ mod single {
         );
         let m = wide(&base);
         let e = wide(&format!("{base}-show"));
-        // SAFETY: NUL-terminated names; default security; auto-reset event, not signaled.
-        let (mutex, existed, event) = unsafe {
+        let st = wide(&format!("{base}-settings"));
+        // SAFETY: NUL-terminated names; default security; auto-reset events, not signaled.
+        let (mutex, existed, event, settings_event) = unsafe {
             let mutex = CreateMutexW(std::ptr::null(), 0, m.as_ptr());
             let existed = GetLastError() == ERROR_ALREADY_EXISTS;
             let event = CreateEventW(std::ptr::null(), 0, 0, e.as_ptr());
-            (mutex, existed, event)
+            let settings_event = CreateEventW(std::ptr::null(), 0, 0, st.as_ptr());
+            (mutex, existed, event, settings_event)
         };
-        if mutex.is_null() || event.is_null() {
+        if mutex.is_null() || event.is_null() || settings_event.is_null() {
             return Err(io::Error::last_os_error());
         }
         if existed {
             // SAFETY: valid handles from above; the first editor may take the foreground this
-            // process got from its starter; both handles are closed here.
+            // process got from its starter; the handles are closed here.
             unsafe {
                 AllowSetForegroundWindow(ASFW_ANY);
+                if settings {
+                    SetEvent(settings_event);
+                }
                 SetEvent(event);
                 CloseHandle(event);
+                CloseHandle(settings_event);
                 CloseHandle(mutex);
             }
             return Ok(Claim::Shown);
@@ -92,6 +101,7 @@ mod single {
         Ok(Claim::Owner(Owner {
             _mutex: mutex,
             event,
+            settings: settings_event,
         }))
     }
 
@@ -112,11 +122,19 @@ mod single {
             .then(|| ((r.right - r.left) as f32, (r.bottom - r.top) as f32))
     }
 
+    /// Calls `f` every time a second start with `--settings` asks.
+    pub fn on_settings(owner: &Owner, f: impl Fn() + Send + 'static) {
+        wait_loop(owner.settings as usize, "ddalgak-editor-settings", f);
+    }
+
     /// Calls `show` every time a second start asks (a thread sleeping in the wait; no polling).
     pub fn on_show(owner: &Owner, show: impl Fn() + Send + 'static) {
-        let event = owner.event as usize;
+        wait_loop(owner.event as usize, "ddalgak-editor-show", show);
+    }
+
+    fn wait_loop(event: usize, name: &str, show: impl Fn() + Send + 'static) {
         let _ = std::thread::Builder::new()
-            .name("ddalgak-editor-show".into())
+            .name(name.into())
             .spawn(move || {
                 loop {
                     // SAFETY: the event handle lives as long as the process (the owner is kept).
@@ -134,6 +152,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut lang = None;
     let mut no_hotkeys = kim_hotkeys::no_hotkeys_env();
+    let mut settings = false;
     // `--endpoint` exists in debug builds only.
     #[cfg_attr(not(debug_assertions), allow(unused_mut))]
     let mut endpoint: Option<String> = None;
@@ -149,6 +168,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             "--no-hotkeys" => no_hotkeys = true,
+            "--settings" => settings = true,
             "--lang" => {
                 i += 1;
                 match args
@@ -174,7 +194,7 @@ fn main() -> ExitCode {
         }
         i += 1;
     }
-    run(lang, no_hotkeys, endpoint)
+    run(lang, no_hotkeys, endpoint, settings)
 }
 
 #[cfg(windows)]
@@ -182,13 +202,14 @@ fn run(
     lang: Option<ddalgak_editor::i18n::Lang>,
     no_hotkeys: bool,
     endpoint: Option<String>,
+    settings: bool,
 ) -> ExitCode {
     use ddalgak_editor::sync::PipeEngine;
     use ddalgak_editor::{EditorApp, Options};
     use eframe::egui;
     use std::sync::Arc;
 
-    let owner = match single::claim(endpoint.as_deref()) {
+    let owner = match single::claim(endpoint.as_deref(), settings) {
         Ok(single::Claim::Owner(o)) => o,
         Ok(single::Claim::Shown) => return ExitCode::SUCCESS,
         Err(e) => {
@@ -252,6 +273,14 @@ fn run(
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 ctx.request_repaint();
             });
+            let ctx2 = cc.egui_ctx.clone();
+            single::on_settings(&owner, move || {
+                ddalgak_editor::OPEN_SETTINGS.store(true, std::sync::atomic::Ordering::SeqCst);
+                ctx2.request_repaint();
+            });
+            if settings {
+                ddalgak_editor::OPEN_SETTINGS.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
             // The owner's handles stay open until the process ends (no Drop: closed by Windows).
             let mut app = EditorApp::new(Options {
                 paths,
@@ -297,7 +326,7 @@ fn system_lang() -> ddalgak_editor::i18n::Lang {
 }
 
 #[cfg(not(windows))]
-fn run(_: Option<ddalgak_editor::i18n::Lang>, _: bool, _: Option<String>) -> ExitCode {
+fn run(_: Option<ddalgak_editor::i18n::Lang>, _: bool, _: Option<String>, _: bool) -> ExitCode {
     // ADR 0011: no Linux Ddalgak before milestone D7 (DDALGAK-NFR-009).
     eprintln!(
         "ddalgak-editor: error: the Ddalgak editor needs Windows for now (unsupported_platform)"

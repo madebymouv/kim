@@ -1,0 +1,377 @@
+{
+  "schema": "ddalgak.rules",
+  "schema_version": 1,
+  "hotkey_contract": 1,
+  "revision": 19,
+  "active_profile": "keyboard-test",
+  "settings": {
+    "engine_on_start": "off",
+    "capslock": "always_off"
+  },
+  "profiles": [
+    {
+      "id": "keyboard-test",
+      "title": "Keyboard test",
+      "description": "ADR 0101: the maintainer's 18 keyboard mappings as the editor saved them from an empty profile (CapsLock as a modifier, Right Shift media and volume keys, typed arrows, the automation toggle and Settings).",
+      "default_mode": "base",
+      "modes": [
+        {
+          "id": "base",
+          "title": "Base"
+        }
+      ],
+      "rules": [
+        {
+          "id": "caps-w",
+          "title": "CapsLock+W acts as Up",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+W"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "Up"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "caps-a",
+          "title": "CapsLock+A acts as Left",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+A"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "Left"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "caps-s",
+          "title": "CapsLock+S acts as Down",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+S"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "Down"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "caps-d",
+          "title": "CapsLock+D acts as Right",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+D"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "Right"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "play-pause",
+          "title": "Media: Play / Pause",
+          "enabled": true,
+          "trigger": {
+            "keys": "RShift+Enter"
+          },
+          "steps": [
+            {
+              "type": "send_keys",
+              "keys": "MediaPlayPause"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "previous-track",
+          "title": "Media: Previous track",
+          "enabled": true,
+          "trigger": {
+            "keys": "RShift+Left"
+          },
+          "steps": [
+            {
+              "type": "send_keys",
+              "keys": "MediaPrevious"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "next-track",
+          "title": "Media: Next track",
+          "enabled": true,
+          "trigger": {
+            "keys": "RShift+Right"
+          },
+          "steps": [
+            {
+              "type": "send_keys",
+              "keys": "MediaNext"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "volume-up",
+          "title": "Volume: Volume up",
+          "enabled": true,
+          "trigger": {
+            "keys": "RShift+Up",
+            "repeat": true
+          },
+          "steps": [
+            {
+              "type": "send_keys",
+              "keys": "VolumeUp"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "volume-down",
+          "title": "Volume: Volume down",
+          "enabled": true,
+          "trigger": {
+            "keys": "RShift+Down",
+            "repeat": true
+          },
+          "steps": [
+            {
+              "type": "send_keys",
+              "keys": "VolumeDown"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "caps-q",
+          "title": "CapsLock+Q acts as Home",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+Q"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "Home"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "caps-e",
+          "title": "CapsLock+E acts as End",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+E"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "End"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "caps-z",
+          "title": "CapsLock+Z acts as PageDown",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+Z"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "PageDown"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "caps-x",
+          "title": "CapsLock+X acts as PageUp",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+X"
+          },
+          "steps": [
+            {
+              "type": "remap",
+              "to": "PageUp"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "automation-toggle",
+          "title": "Turns automation off, or on again",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+Backspace"
+          },
+          "steps": [
+            {
+              "type": "engine",
+              "op": "toggle_pause"
+            }
+          ]
+        },
+        {
+          "id": "open-settings",
+          "title": "Opens Ddalgak Settings",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+code:Slash"
+          },
+          "steps": [
+            {
+              "type": "engine",
+              "op": "open_settings"
+            }
+          ]
+        },
+        {
+          "id": "left-arrow",
+          "title": "Type a phrase: CapsLock + <",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+Shift+Comma"
+          },
+          "steps": [
+            {
+              "type": "type_text",
+              "text": "←"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "right-arrow",
+          "title": "Type a phrase: CapsLock + >",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+Shift+Period"
+          },
+          "steps": [
+            {
+              "type": "type_text",
+              "text": "→"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        },
+        {
+          "id": "both-arrows",
+          "title": "Type a phrase: CapsLock + M",
+          "enabled": true,
+          "trigger": {
+            "keys": "CapsLock+M"
+          },
+          "steps": [
+            {
+              "type": "type_text",
+              "text": "↔"
+            }
+          ],
+          "consent": {
+            "input-injection": {
+              "granted_at": "2026-11-16T12:00:00Z",
+              "via": "gui"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

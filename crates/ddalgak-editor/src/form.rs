@@ -38,6 +38,12 @@ pub enum Effect {
     Remap,
     SendKeys,
     TypeText,
+    /// ADR 0101: a media key (Play/Pause, Next, Previous, Stop), saved as `send_keys`.
+    Media,
+    /// ADR 0101: a volume key (up and down repeat while held, Mute), saved as `send_keys`.
+    Volume,
+    /// ADR 0101: opens Ddalgak's Settings window (`engine` `open_settings`).
+    Settings,
     OpenProgram,
     OpenUrl,
     Mouse,
@@ -66,16 +72,20 @@ impl Effect {
         Effect::Block,
     ];
 
-    /// The eight tiles in display order; `Block` is under "More".
-    pub const TILES: [Effect; 8] = [
+    /// The tiles in display order; `Block` is under "More". ADR 0101: the everyday keyboard
+    /// actions first (another key, text, media, volume), Ddalgak's own controls together.
+    pub const TILES: [Effect; 11] = [
         Effect::Remap,
-        Effect::SendKeys,
         Effect::TypeText,
+        Effect::Media,
+        Effect::Volume,
+        Effect::SendKeys,
         Effect::OpenProgram,
         Effect::OpenUrl,
+        Effect::Engine,
+        Effect::Settings,
         Effect::Mouse,
         Effect::Mode,
-        Effect::Engine,
     ];
 
     /// The label key part (`tile.<key>`).
@@ -84,6 +94,9 @@ impl Effect {
             Effect::Remap => "remap",
             Effect::SendKeys => "send_keys",
             Effect::TypeText => "type_text",
+            Effect::Media => "media",
+            Effect::Volume => "volume",
+            Effect::Settings => "settings",
             Effect::OpenProgram => "open_program",
             Effect::OpenUrl => "open_url",
             Effect::Mouse => "mouse",
@@ -105,6 +118,9 @@ impl Effect {
             Effect::Remap => "⌨",
             Effect::SendKeys => "⌘",
             Effect::TypeText => "Aa",
+            Effect::Media => "⏯",
+            Effect::Volume => "🔊",
+            Effect::Settings => "⚙",
             Effect::OpenProgram => "▢",
             Effect::OpenUrl => "◎",
             Effect::Mouse => "➚",
@@ -125,12 +141,15 @@ impl Effect {
         Some(match step {
             Action::Remap(_) => Effect::Remap,
             Action::Block(_) => Effect::Block,
+            Action::SendKeys(k) if media_label(&k.keys).is_some() => Effect::Media,
+            Action::SendKeys(k) if volume_label(&k.keys).is_some() => Effect::Volume,
             Action::SendKeys(_) => Effect::SendKeys,
             Action::TypeText(_) => Effect::TypeText,
             Action::OpenProgram(_) => Effect::OpenProgram,
             Action::OpenUrl(_) => Effect::OpenUrl,
             Action::MouseMove(_) | Action::MouseScroll(_) | Action::MouseClick(_) => Effect::Mouse,
             Action::Mode(_) => Effect::Mode,
+            Action::Engine(e) if e.op == EngineOp::OpenSettings => Effect::Settings,
             Action::Engine(_) => Effect::Engine,
             Action::Window(_) => Effect::Window,
             Action::Clipboard(_) => Effect::Clipboard,
@@ -152,6 +171,37 @@ impl Effect {
     pub fn allows_hotstring(self) -> bool {
         matches!(self, Effect::TypeText | Effect::SendKeys)
     }
+}
+
+/// ADR 0101: the media keys the *Media control* action offers: key, English, Korean.
+pub const MEDIA_KEYS: [(&str, &str, &str); 4] = [
+    ("MediaPlayPause", "Play / Pause", "재생 / 일시정지"),
+    ("MediaNext", "Next track", "다음 곡"),
+    ("MediaPrevious", "Previous track", "이전 곡"),
+    ("MediaStop", "Stop", "정지"),
+];
+
+/// ADR 0101: the volume keys the *Volume* action offers.
+pub const VOLUME_KEYS: [(&str, &str, &str); 3] = [
+    ("VolumeUp", "Volume up", "음량 크게"),
+    ("VolumeDown", "Volume down", "음량 작게"),
+    ("VolumeMute", "Mute / unmute", "음소거 / 해제"),
+];
+
+/// The media action of a `send_keys` text, if it is one media key.
+pub fn media_label(keys: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    MEDIA_KEYS
+        .iter()
+        .copied()
+        .find(|(k, _, _)| *k == keys.trim())
+}
+
+/// The volume action of a `send_keys` text, if it is one volume key.
+pub fn volume_label(keys: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    VOLUME_KEYS
+        .iter()
+        .copied()
+        .find(|(k, _, _)| *k == keys.trim())
 }
 
 /// Where the four-step panel is (GUI_JOURNEYS J2).
@@ -441,6 +491,10 @@ pub struct Fields {
     pub mouse: MouseAction,
     pub mode: ModeFields,
     pub engine: EngineOp,
+    /// ADR 0101: the media key of *Media control*.
+    pub media: String,
+    /// ADR 0101: the volume key of *Volume*.
+    pub volume: String,
     /// Step 79.
     pub window: WindowFields,
     pub clip: ClipFields,
@@ -497,7 +551,9 @@ impl Default for Fields {
                 hold: HoldChoice::Once,
             },
             mode: ModeFields::default(),
-            engine: EngineOp::Pause,
+            engine: EngineOp::TogglePause,
+            media: "MediaPlayPause".into(),
+            volume: "VolumeUp".into(),
             window: WindowFields::default(),
             clip: ClipFields::default(),
             notify: NotifyFields::default(),
@@ -619,6 +675,7 @@ fn engine_op_str(op: EngineOp) -> &'static str {
         EngineOp::Resume => "resume",
         EngineOp::TogglePause => "toggle_pause",
         EngineOp::Disable => "disable",
+        EngineOp::OpenSettings => "open_settings",
     }
 }
 
@@ -627,8 +684,11 @@ pub fn engine_summary(op: EngineOp) -> &'static str {
     match op {
         EngineOp::Pause => "Pauses all rules",
         EngineOp::Resume => "Resumes all rules",
-        EngineOp::TogglePause => "Pauses all rules, or resumes them when paused",
+        EngineOp::TogglePause => {
+            "Turns automation off, or on again (the shortcut itself keeps working)"
+        }
         EngineOp::Disable => "Turns Ddalgak off (only you can turn it on again)",
+        EngineOp::OpenSettings => "Opens Ddalgak Settings",
     }
 }
 
@@ -896,6 +956,12 @@ impl RuleForm {
                             keys: k.keys.clone(),
                             step_delay_ms: k.step_delay_ms.unwrap_or(0),
                         };
+                        if media_label(&k.keys).is_some() {
+                            f.media = k.keys.trim().to_string();
+                        }
+                        if volume_label(&k.keys).is_some() {
+                            f.volume = k.keys.trim().to_string();
+                        }
                     }
                     Action::TypeText(t) => {
                         f.text = TextFields {
@@ -1028,7 +1094,152 @@ impl RuleForm {
         if t.hotstring {
             format!("Typing {}", t.abbreviation.trim())
         } else {
-            canonical_trigger(&t.keys).unwrap_or_else(|_| t.keys.trim().to_string())
+            let keys = self.trigger_keys();
+            canonical_trigger(&keys).unwrap_or_else(|_| keys.trim().to_string())
+        }
+    }
+
+    /// ADR 0101: the trigger keys as saved. *Hold + press* with CapsLock held is one chord with
+    /// CapsLock as its modifier (`CapsLock+W`): no mode, and it keeps working while paused.
+    pub fn trigger_keys(&self) -> String {
+        let t = &self.fields.trigger;
+        if t.combo == Combo::Hold && t.hold_key.trim().eq_ignore_ascii_case("CapsLock") {
+            let k = t.keys.trim();
+            if k.is_empty() || k.starts_with(ddalgak::trigger::CAPS_PREFIX) {
+                return k.to_string();
+            }
+            return format!("{}{k}", ddalgak::trigger::CAPS_PREFIX);
+        }
+        t.keys.clone()
+    }
+
+    /// ADR 0101: the rule as one sentence in `lang`: "When CapsLock is held and W is pressed,
+    /// send Up." / "CapsLock을 누른 채 W 키를 누르면 Up 키를 보냅니다." Empty while the trigger or
+    /// the action is missing.
+    pub fn sentence(&self, profile: Option<&Profile>, lang: Lang) -> String {
+        self.sentence_with(profile, lang, true)
+    }
+
+    /// [`RuleForm::sentence`]; without `reveal_text` a typed text is counted, never shown (the
+    /// rule list, DDALGAK-SEC-011).
+    pub fn sentence_with(
+        &self,
+        profile: Option<&Profile>,
+        lang: Lang,
+        reveal_text: bool,
+    ) -> String {
+        let t = &self.fields.trigger;
+        if t.hotstring || t.scheduled {
+            return String::new();
+        }
+        let keys = canonical_trigger(&self.trigger_keys()).unwrap_or_default();
+        if keys.is_empty() || self.fields.effect.is_none() || self.is_macro() {
+            return String::new();
+        }
+        let ui_lang = match lang {
+            Lang::Ko => kim_design::Lang::Ko,
+            Lang::En => kim_design::Lang::En,
+        };
+        let human = |k: &str| kim_ui::keys::readable_chord(k, ui_lang);
+        let when = match keys.strip_prefix(ddalgak::trigger::CAPS_PREFIX) {
+            Some(rest) if lang == Lang::Ko => {
+                format!("CapsLock을 누른 채 {} 키를 누르면", human(rest))
+            }
+            Some(rest) => format!("When CapsLock is held and {} is pressed", human(rest)),
+            None if lang == Lang::Ko => format!("{} 키를 누르면", human(&keys)),
+            None => format!("When {} is pressed", human(&keys)),
+        };
+        let f = &self.fields;
+        let ko = lang == Lang::Ko;
+        let what = match f.effect {
+            Some(Effect::Remap) => {
+                let to = canonical_output(&f.remap.to, 1).unwrap_or_default();
+                if to.is_empty() {
+                    return String::new();
+                }
+                if ko {
+                    format!("{} 키를 보냅니다", human(&to))
+                } else {
+                    format!("send {}", human(&to))
+                }
+            }
+            Some(Effect::TypeText) => {
+                let text: String = f.text.text.chars().take(24).collect();
+                if text.trim().is_empty() {
+                    return String::new();
+                }
+                let n = f.text.text.chars().count();
+                if !reveal_text {
+                    return format!(
+                        "{when}{}",
+                        if ko {
+                            format!(" 글자 {n}개를 입력합니다.")
+                        } else {
+                            format!(", type {n} character{}.", if n == 1 { "" } else { "s" })
+                        }
+                    );
+                }
+                if ko {
+                    format!("\u{201c}{text}\u{201d}를 입력합니다")
+                } else {
+                    format!("type \u{201c}{text}\u{201d}")
+                }
+            }
+            Some(Effect::Media) => match (f.media.as_str(), ko) {
+                ("MediaPlayPause", false) => "toggle media playback".into(),
+                ("MediaPlayPause", true) => "미디어를 재생하거나 일시정지합니다".into(),
+                ("MediaNext", false) => "skip to the next track".into(),
+                ("MediaNext", true) => "다음 곡으로 넘깁니다".into(),
+                ("MediaPrevious", false) => "go back to the previous track".into(),
+                ("MediaPrevious", true) => "이전 곡으로 돌아갑니다".into(),
+                (_, false) => "stop playback".into(),
+                (_, true) => "재생을 멈춥니다".into(),
+            },
+            Some(Effect::Volume) => match (f.volume.as_str(), ko) {
+                ("VolumeUp", false) => "turn the volume up".into(),
+                ("VolumeUp", true) => "음량을 높입니다".into(),
+                ("VolumeDown", false) => "turn the volume down".into(),
+                ("VolumeDown", true) => "음량을 낮춥니다".into(),
+                (_, false) => "mute or unmute the sound".into(),
+                (_, true) => "소리를 끄거나 다시 켭니다".into(),
+            },
+            Some(Effect::Settings) if ko => "Ddalgak 설정 창을 엽니다".into(),
+            Some(Effect::Settings) => "open Ddalgak Settings".into(),
+            Some(Effect::Engine) => match (f.engine, ko) {
+                (EngineOp::TogglePause, false) => "turn automation off, or back on".into(),
+                (EngineOp::TogglePause, true) => "자동화를 끄거나 다시 켭니다".into(),
+                (EngineOp::Pause, false) => "pause automation".into(),
+                (EngineOp::Pause, true) => "자동화를 일시 정지합니다".into(),
+                (EngineOp::Resume, false) => "resume automation".into(),
+                (EngineOp::Resume, true) => "자동화를 다시 시작합니다".into(),
+                (EngineOp::Disable, false) => "turn Ddalgak off".into(),
+                (EngineOp::Disable, true) => "Ddalgak을 끕니다".into(),
+                (EngineOp::OpenSettings, false) => "open Ddalgak Settings".into(),
+                (EngineOp::OpenSettings, true) => "Ddalgak 설정 창을 엽니다".into(),
+            },
+            Some(Effect::SendKeys) => {
+                let k = canonical_output(&f.keys.keys, 8).unwrap_or_default();
+                if k.is_empty() {
+                    return String::new();
+                }
+                if ko {
+                    format!("{}를 누릅니다", human(&k))
+                } else {
+                    format!("press {}", human(&k))
+                }
+            }
+            _ => {
+                let s = self.summary(profile);
+                if ko {
+                    return format!("{when}: {s}");
+                }
+                format!("{}{}", s[..1].to_lowercase(), &s[1..])
+            }
+        };
+        if ko {
+            format!("{when} {what}.")
+        } else {
+            format!("{when}, {what}.")
         }
     }
 
@@ -1202,6 +1413,19 @@ impl RuleForm {
                 s
             }
             Effect::Engine => json!({ "type": "engine", "op": engine_op_str(f.engine) }),
+            Effect::Settings => json!({ "type": "engine", "op": "open_settings" }),
+            Effect::Media => {
+                if media_label(&f.media).is_none() {
+                    out.push(problem("steps[0].keys", "choose a media key"));
+                }
+                json!({ "type": "send_keys", "keys": f.media.trim() })
+            }
+            Effect::Volume => {
+                if volume_label(&f.volume).is_none() {
+                    out.push(problem("steps[0].keys", "choose a volume key"));
+                }
+                json!({ "type": "send_keys", "keys": f.volume.trim() })
+            }
             Effect::Window => {
                 use ddalgak::model::WindowOp as W;
                 let w = &f.window;
@@ -1355,6 +1579,40 @@ impl RuleForm {
     }
 
     /// Every field problem, in display order (nothing is written while there is one).
+    /// ADR 0101: another enabled rule of the profile already has these keys (in the same
+    /// modes): the later one would never fire. A rule that turns automation off and on is named
+    /// as such, so its shortcut is never taken away by accident.
+    fn taken_by(&self, profile: Option<&Profile>) -> Option<FieldProblem> {
+        let keys = canonical_trigger(&self.trigger_keys()).ok()?;
+        let mine = &self.fields.modes;
+        let other = profile?.rules.iter().filter_map(|e| e.rule()).find(|r| {
+            r.enabled
+                && Some(&r.id) != self.id.as_ref()
+                && r.trigger.hotstring.is_none()
+                && r.trigger.schedule.is_none()
+                && r.trigger.keys_text() == keys
+                && r.trigger.on() == self.fields.trigger.on
+                && r.modes.clone().unwrap_or_default() == *mine
+                && r.when.is_none()
+        })?;
+        let control =
+            !other.steps.is_empty() && other.steps.iter().all(|s| matches!(s, Action::Engine(_)));
+        Some(problem(
+            "trigger.keys",
+            if control {
+                format!(
+                    "these keys turn automation off and on (rule \u{201c}{}\u{201d}); choose other keys",
+                    other.title
+                )
+            } else {
+                format!(
+                    "these keys are already used by the rule \u{201c}{}\u{201d}; choose other keys",
+                    other.title
+                )
+            },
+        ))
+    }
+
     pub fn problems(&self, profile: Option<&Profile>) -> Vec<FieldProblem> {
         let f = &self.fields;
         let mut out = Vec::new();
@@ -1400,8 +1658,10 @@ impl RuleForm {
         } else {
             if t.keys.trim().is_empty() {
                 out.push(problem("trigger.keys", "press the keys, or type them"));
-            } else if let Err(e) = canonical_trigger(&t.keys) {
+            } else if let Err(e) = canonical_trigger(&self.trigger_keys()) {
                 out.push(problem("trigger.keys", e.to_string()));
+            } else if let Some(p) = self.taken_by(profile) {
+                out.push(p);
             }
             if t.on == TriggerOn::Hold && !(200..=5000).contains(&t.hold_ms) {
                 out.push(problem("trigger.hold_ms", "200–5000 ms"));
@@ -1528,7 +1788,7 @@ impl RuleForm {
             }
             t
         } else {
-            let keys = canonical_trigger(&f.trigger.keys)
+            let keys = canonical_trigger(&self.trigger_keys())
                 .map_err(|e| vec![problem("trigger.keys", e.to_string())])?;
             let mut t = Trigger::keys(keys);
             t.on = (f.trigger.on != TriggerOn::Press).then_some(f.trigger.on);
@@ -1540,6 +1800,12 @@ impl RuleForm {
                 t.injected = b.injected;
                 t.repeat = b.repeat.filter(|_| f.trigger.on == TriggerOn::Press);
                 t.extra = b.extra.clone();
+            }
+            // ADR 0101: holding a volume key keeps changing the volume, like the key itself;
+            // media keys, Mute and everything else fire once per press.
+            if f.effect == Some(Effect::Volume) {
+                t.repeat =
+                    (f.volume != "VolumeMute" && f.trigger.on == TriggerOn::Press).then_some(true);
             }
             t
         };
@@ -1590,7 +1856,30 @@ impl RuleForm {
         if !self.fields.title_auto {
             return;
         }
+        let keys = {
+            let t = &self.fields.trigger;
+            if t.hotstring || t.scheduled {
+                String::new()
+            } else {
+                canonical_trigger(&self.trigger_keys())
+                    .map(|k| {
+                        kim_ui::keys::readable_chord(
+                            &k,
+                            match lang {
+                                Lang::Ko => kim_design::Lang::Ko,
+                                Lang::En => kim_design::Lang::En,
+                            },
+                        )
+                    })
+                    .unwrap_or_default()
+            }
+        };
         let s = match self.fields.effect {
+            // ADR 0101: three "Type a phrase" rules could not be told apart in the list; the
+            // keys tell them apart (the text itself never goes into a title, DDALGAK-SEC-011).
+            Some(Effect::TypeText) if !keys.is_empty() => {
+                format!("{}: {keys}", lang.t("list.starter_text"))
+            }
             Some(Effect::TypeText) => lang.t("list.starter_text").to_string(),
             Some(Effect::OpenProgram) => {
                 let d = self.program_draft();
@@ -1654,6 +1943,15 @@ impl RuleForm {
                 )
             }
             Some(Effect::Engine) => engine_summary(f.engine).into(),
+            Some(Effect::Settings) => engine_summary(EngineOp::OpenSettings).into(),
+            Some(Effect::Media) => media_label(&f.media).map_or_else(
+                || "Presses a media key".into(),
+                |(_, en, _)| format!("Media: {en}"),
+            ),
+            Some(Effect::Volume) => volume_label(&f.volume).map_or_else(
+                || "Presses a volume key".into(),
+                |(_, en, _)| format!("Volume: {en}"),
+            ),
             Some(Effect::Window) => {
                 let target = if f.window.app.trim().is_empty() {
                     "the active window".to_string()
@@ -2001,9 +2299,13 @@ impl RuleForm {
                     }
                 }
             }
-            Some(Effect::Engine) => sim
+            Some(Effect::Engine | Effect::Settings) => sim
                 .lines
                 .push("Simulation: the engine's state is unchanged".into()),
+            Some(Effect::Media | Effect::Volume) => sim.lines.push(format!(
+                "Would press {}; nothing was sent",
+                step["keys"].as_str().unwrap_or_default()
+            )),
             Some(
                 Effect::Window
                 | Effect::Clipboard

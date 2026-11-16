@@ -17,7 +17,7 @@
       "build": "debug",
       "cli_contract": 1,
       "executable": "C:\\Users\\me\\bin\\kim.exe",
-      "version": "0.0.4"
+      "version": "0.0.5"
     },
     "paths": {
       "kim_data": "C:\\Users\\me\\AppData\\Local\\mouv\\kim",

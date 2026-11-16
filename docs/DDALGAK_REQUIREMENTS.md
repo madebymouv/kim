@@ -146,6 +146,8 @@ Until D6 ships, the Kim catalog lists Ddalgak as *planned* (`KIM-FR-051`).
 | DDALGAK-FR-074 | Macro recorder: explicit start and stop with a visible banner, password fields and secure contexts excluded, every recorded event reviewable and removable before saving. Step 78: implemented in the editor, recording only keys typed into its own window (ADR 0079); mouse recording: #101. | P2 | D5 | T, M |
 | DDALGAK-FR-075 | Richer macro control: bounded repeat, conditions and variables, with timeouts and cancellation. | P2 | D5 | T |
 | DDALGAK-FR-076 | Scheduled and time-based triggers in a running app, with an idle budget and no hidden timers. Step 79: implemented (`trigger.schedule`; one deadline per scheduled rule, none without; missed times skipped). | P2 | D5 | T, M |
+| DDALGAK-FR-077 | **CapsLock as a modifier and kept off.** A trigger may hold CapsLock with another key (`CapsLock+W`); CapsLock never toggles while such a rule is active, the chord keeps working while paused (engine-control rules), and the opt-in `settings.capslock: always_off` keeps CapsLock off while the engine is on (turned off at start, resume and unlock). ADR 0101: implemented. | P1 | D5 | T, M |
+| DDALGAK-FR-078 | **Keyboard actions in the editor without key codes.** Media control, volume, open Settings and automation on/off are actions of their own; the key picker offers CapsLock with another key, Right/Left modifiers and punctuation (`/`, `<`, `>`); the capture box records Right Shift and a held CapsLock; the rule reads as a sentence in the window's language. ADR 0101: implemented. | P1 | D5 | T, M |
 
 ## 3. Non-functional requirements
 

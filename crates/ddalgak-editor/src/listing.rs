@@ -67,6 +67,8 @@ pub struct Row {
     pub trigger: String,
     pub effect: Option<Effect>,
     pub summary: String,
+    /// ADR 0101: the rule in a Korean sentence (empty where the form has none).
+    pub summary_ko: String,
     pub modes: Vec<String>,
     pub mode_titles: Vec<String>,
     pub apps: Vec<String>,
@@ -145,9 +147,11 @@ pub fn rows(l: &store::Loaded) -> Vec<Row> {
             let rule = e.rule();
             let needs_review =
                 rule.is_some_and(|r| !r.enabled && !validate::missing_consent(r).is_empty());
+            let mut summary_ko = String::new();
             let (summary, effect, editable, snippet) = match rule {
                 Some(r) => {
                     let form = RuleForm::edit(&p.id, r);
+                    summary_ko = form.sentence_with(Some(p), crate::i18n::Lang::Ko, false);
                     (
                         form.summary(Some(p)),
                         form.fields.effect,
@@ -206,6 +210,7 @@ pub fn rows(l: &store::Loaded) -> Vec<Row> {
                 trigger,
                 effect,
                 summary,
+                summary_ko,
                 modes,
                 mode_titles,
                 apps,

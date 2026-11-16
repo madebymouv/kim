@@ -132,7 +132,7 @@ title and a one-line example:
 │  ▣ ⌨  Act as another key    ⌘  Press a shortcut     Aa  Type text      ▢  Open a program    │
 │     CapsLock → Ctrl            F13 → Ctrl+C            "감사합니다."        Notepad            │
 │                                                                                            │
-│    🌐 Open a website         🖱  Mouse               ◧  Switch mode     ⏻  Pause Ddalgak     │
+│    🌐 Open a website         🖱  Mouse               ◧  Switch mode     ⏻  Automation on/off │
 │      github.com               move · scroll · click   Navigation          pause · resume · off│
 │                                                                                            │
 │  More: Block this key · Several steps…                                [◂ Back]  [Next ▸]   │
@@ -211,7 +211,17 @@ Each form shows its inputs (RULE_MODEL §5), a live summary sentence, and the pe
 | Open a website | URL field with live validation (`https://` added when missing, other schemes refused) | "Opens github.com in your browser" | open programs |
 | Mouse | Segmented: *Move* (by / to; once, glide while held with speed, or repeat while held; pixels or grid cells), *Scroll* (direction, notches), *Click* (button, click, double, hold) with a small screen map showing the target point across monitors | "Moves the pointer right at 600 px/s while Right is held" | type for me |
 | Switch mode | Operation (switch to, toggle, cycle, hold, back, default) and the mode list with **+ New mode** | "Navigation while CapsLock is held" | — |
-| Pause Ddalgak | Pause, resume, toggle pause, turn off; a note that no rule can turn Ddalgak on | "Pauses all rules" | — |
+| Automation on/off (ADR 0101; was "Pause Ddalgak") | Turn on/off (toggle pause, the default), pause, resume, turn Ddalgak off; a note that no rule can turn Ddalgak on | "Turns automation off, or on again" | — |
+| Media control (ADR 0101) | Play / Pause, Next track, Previous track, Stop (a `send_keys` of one media key) | "Media: Play / Pause" | — |
+| Volume (ADR 0101) | Volume up, Volume down (repeat while held), Mute | "Volume: Volume up" | — |
+| Open Settings (ADR 0101) | — (an `engine` step `open_settings`, works while paused) | "Opens Ddalgak Settings" | — |
+
+ADR 0101 also: *Acts as* has one-click quick keys (arrows, Home, End, Page Up/Down, Escape,
+Enter); a chosen action scrolls its settings into view; the rule is said as a sentence in the
+window's language above the form ("When CapsLock is held and W is pressed, send Up arrow.") and,
+in Korean, in the rule list (typed text counted, never shown); the key picker holds CapsLock with
+another key (`CapsLock+W`) and has a *Symbols* tab (`/`, `<` = Shift+Comma, `>`); Settings →
+General has *Keep CapsLock off*, *CapsLock as a modifier* and *Works while automation is off*.
 
 ```text
 ┌ Open a program ──────────────────────────────────────────────┐
@@ -484,7 +494,7 @@ languages; the Korean words below remain the glossary for the explanations aroun
 | Open a website | Open a website | 웹사이트 열기 |
 | Mouse | Mouse | 마우스 |
 | Switch mode | Switch mode | 모드 전환 |
-| Pause Ddalgak | Pause Ddalgak | 딸깍 일시 정지 |
+| Automation on/off | Automation on/off | 자동화 켜기/끄기 |
 | Playground | Playground | 연습장 |
 | Simulate / Live | Simulate / Live | 시뮬레이션 / 실제 입력 |
 | Profile | Profile | 프로필 |
@@ -613,7 +623,7 @@ result (pass, fail, remark) in the Step 74 issue.
    (shown as `https://github.com/`). Press both chords: Notepad and the browser open only now.
 5. **J4 mouse, mode and pause.** Make a **Mouse** rule (*Move by* right 40, *Keep moving
    smoothly*): the screen map shows your monitors and the target; **Test** moves only the simulated
-   pointer. Make a **Switch mode** rule with **+ New mode** `Navigation`. Make a **Pause Ddalgak**
+   pointer. Make a **Switch mode** rule with **+ New mode** `Navigation`. Make an **Automation on/off**
    rule on `Ctrl+Alt+Shift+F16`. Check each summary sentence reads naturally.
 6. **J7 list.** Type into the search box (`Ctrl+F`); switch *Show* to *Disabled*, *Group* to *By
    mode*; select two rules with `Ctrl`+click and **Disable** them (one change, one revision). Drag a

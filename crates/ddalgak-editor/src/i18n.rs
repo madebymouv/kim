@@ -83,8 +83,73 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ),
     (
         "engine.desc_paused",
-        "On, but paused: rules wait until you resume (engine controls keep working).",
-        "켜져 있지만 일시 정지됨: 다시 시작할 때까지 규칙이 멈춥니다 (엔진 제어 규칙은 작동).",
+        "Automation off (paused): rules wait. Still active: the on/off shortcuts listed below, CapsLock as set below, and the emergency chord.",
+        "자동화 꺼짐(일시 정지): 규칙이 멈춥니다. 계속 작동: 아래의 켜기/끄기 단축키, 아래 설정대로의 CapsLock, 긴급 끄기.",
+    ),
+    (
+        "engine.desc_hook_lost",
+        "Error: Windows removed the keyboard hook (it answered too slowly), so Ddalgak turned itself off. Turn it on again when you are ready.",
+        "오류: 키보드 후크가 너무 늦게 응답해 Windows가 후크를 제거했고, 그래서 Ddalgak이 스스로 꺼졌습니다. 준비되면 다시 켜세요.",
+    ),
+    (
+        "engine.desc_emergency",
+        "Off after the emergency chord. No shortcut turns it back on; only you can, here or from the tray.",
+        "긴급 끄기로 꺼졌습니다. 어떤 단축키도 다시 켜지 못하며, 여기나 트레이에서 직접 켜야 합니다.",
+    ),
+    (
+        "settings.caps_off",
+        "Keep CapsLock off",
+        "CapsLock 항상 끄기",
+    ),
+    (
+        "settings.caps_off_desc",
+        "While Ddalgak is on (running or paused), CapsLock never turns on capital letters; Ddalgak turns it off when it starts or resumes and after you unlock. When Ddalgak is off or closed, CapsLock works as Windows' own key.",
+        "Ddalgak이 켜져 있는 동안(작동 중이든 일시 정지든) CapsLock이 대문자를 켜지 않습니다. 시작·다시 시작·잠금 해제 때 켜져 있으면 끕니다. Ddalgak이 꺼져 있거나 종료되면 CapsLock은 Windows 기본 동작입니다.",
+    ),
+    (
+        "settings.caps_layer",
+        "CapsLock as a modifier",
+        "CapsLock 보조 키",
+    ),
+    (
+        "settings.caps_layer_none",
+        "No rule holds CapsLock with another key yet (CapsLock + W in a rule's keys).",
+        "아직 CapsLock을 다른 키와 함께 쓰는 규칙이 없습니다 (규칙 키에 CapsLock + W).",
+    ),
+    (
+        "settings.caps_layer_rules",
+        "Rules that hold CapsLock with another key:",
+        "CapsLock을 다른 키와 함께 쓰는 규칙:",
+    ),
+    (
+        "settings.caps_layer_tap",
+        "A tap of CapsLock alone still switches capital letters.",
+        "CapsLock만 짧게 누르면 여전히 대문자가 전환됩니다.",
+    ),
+    (
+        "settings.caps_layer_tap_off",
+        "A tap of CapsLock alone does nothing.",
+        "CapsLock만 누르면 아무 일도 일어나지 않습니다.",
+    ),
+    (
+        "settings.caps_now_on",
+        "CapsLock is on now",
+        "지금 CapsLock 켜짐",
+    ),
+    (
+        "settings.caps_now_off",
+        "CapsLock is off now",
+        "지금 CapsLock 꺼짐",
+    ),
+    (
+        "settings.control_title",
+        "Works while automation is off",
+        "자동화가 꺼져도 작동",
+    ),
+    (
+        "settings.control_none",
+        "No shortcut turns automation back on yet. Add a rule with “Automation on/off”, for example on CapsLock + Backspace.",
+        "자동화를 다시 켜는 단축키가 아직 없습니다. “자동화 켜기/끄기” 동작으로 규칙을 만드세요 (예: CapsLock + Backspace).",
     ),
     (
         "engine.desc_off",
@@ -1153,12 +1218,52 @@ pub const LABELS: &[(&str, &str, &str)] = &[
     ),
     ("tile.mode", "Switch mode", "모드 전환"),
     ("tile.mode.example", "Navigation", "탐색 모드"),
-    ("tile.engine", "Pause Ddalgak", "딸깍 일시 정지"),
+    ("tile.engine", "Automation on/off", "자동화 켜기/끄기"),
     (
         "tile.engine.example",
-        "pause · resume · off",
-        "일시 정지 · 다시 시작 · 끄기",
+        "toggle · pause · resume · off",
+        "전환 · 일시 정지 · 다시 시작 · 끄기",
     ),
+    ("tile.media", "Media control", "미디어 제어"),
+    (
+        "tile.media.example",
+        "play/pause · next · previous",
+        "재생/일시정지 · 다음 곡 · 이전 곡",
+    ),
+    ("tile.volume", "Volume", "음량"),
+    (
+        "tile.volume.example",
+        "up · down · mute",
+        "크게 · 작게 · 음소거",
+    ),
+    ("tile.settings", "Open Settings", "설정 열기"),
+    (
+        "tile.settings.example",
+        "Ddalgak's Settings window",
+        "Ddalgak 설정 창",
+    ),
+    (
+        "tile.settings.note",
+        "Opens Ddalgak's Settings window. It also works while automation is off, like the on/off shortcut.",
+        "Ddalgak 설정 창을 엽니다. 켜기/끄기 단축키처럼 자동화가 꺼져 있어도 동작합니다.",
+    ),
+    ("field.media", "Media key", "미디어 키"),
+    ("field.quick_keys", "Quick:", "바로 고르기:"),
+    ("field.volume", "Volume key", "음량 키"),
+    (
+        "field.media_note",
+        "Ddalgak presses the key once; the program that plays decides what happens.",
+        "Ddalgak은 키를 한 번 누릅니다. 무엇이 될지는 재생 중인 프로그램이 정합니다.",
+    ),
+    (
+        "field.volume_repeat",
+        "Holding the keys keeps changing the volume, like a volume key.",
+        "키를 누르고 있으면 음량 키처럼 계속 바뀝니다.",
+    ),
+    ("field.engine.toggle", "Turn on/off", "켜기/끄기"),
+    ("field.engine.pause", "Pause", "일시 정지"),
+    ("field.engine.resume", "Resume", "다시 시작"),
+    ("field.engine.disable", "Turn Ddalgak off", "Ddalgak 끄기"),
     ("tile.block", "Block this key", "이 키 막기"),
     (
         "tile.block.example",
@@ -1509,6 +1614,8 @@ pub const PROBLEMS: &[(&str, &str)] = &[
     ("200–5000 ms", "200–5000 ms 사이로 정하세요"),
     ("100–600000 ms", "100–600000 ms 사이로 정하세요"),
     ("choose a mode", "모드를 고르세요"),
+    ("choose a media key", "미디어 키를 고르세요"),
+    ("choose a volume key", "음량 키를 고르세요"),
     (
         "that mode is not in the profile",
         "그 모드는 이 프로필에 없습니다",
@@ -1635,6 +1742,23 @@ impl Lang {
         {
             return format!("이 프로필에 `{m}` 모드가 없습니다");
         }
+        // ADR 0101: keys another rule already has.
+        if let Some(t) = message
+            .strip_prefix("these keys turn automation off and on (rule \u{201c}")
+            .and_then(|r| r.strip_suffix("\u{201d}); choose other keys"))
+        {
+            return format!(
+                "이 키는 자동화를 끄고 켭니다 (규칙 \u{201c}{t}\u{201d}). 다른 키를 고르세요"
+            );
+        }
+        if let Some(t) = message
+            .strip_prefix("these keys are already used by the rule \u{201c}")
+            .and_then(|r| r.strip_suffix("\u{201d}; choose other keys"))
+        {
+            return format!(
+                "이 키는 이미 규칙 \u{201c}{t}\u{201d}이(가) 쓰고 있습니다. 다른 키를 고르세요"
+            );
+        }
         if let Some(r) = message.strip_prefix("Not ready: ") {
             return format!("아직 준비 안 됨: {}", self.problem(r));
         }
@@ -1672,7 +1796,7 @@ mod tests {
             ("tile.open_url", "Open a website", "웹사이트 열기"),
             ("tile.mouse", "Mouse", "마우스"),
             ("tile.mode", "Switch mode", "모드 전환"),
-            ("tile.engine", "Pause Ddalgak", "딸깍 일시 정지"),
+            ("tile.engine", "Automation on/off", "자동화 켜기/끄기"),
             ("form.when_press", "When I press", "이 키를 누르면"),
             ("form.simulate", "Simulate", "시뮬레이션"),
             ("header.profile", "Profile", "프로필"),

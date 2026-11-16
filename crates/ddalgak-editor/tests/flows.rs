@@ -480,8 +480,12 @@ fn every_action_form_validates_in_the_window() {
         ("Open a website", Effect::OpenUrl),
         ("Mouse", Effect::Mouse),
         ("Switch mode", Effect::Mode),
-        ("Pause Ddalgak", Effect::Engine),
+        ("Automation on/off", Effect::Engine),
         ("Block this key", Effect::Block),
+        // ADR 0101.
+        ("Media control", Effect::Media),
+        ("Volume", Effect::Volume),
+        ("Open Settings", Effect::Settings),
     ];
     for (i, (tile, effect)) in tiles.into_iter().enumerate() {
         click(&mut h, "New Rule");
@@ -495,7 +499,15 @@ fn every_action_form_validates_in_the_window() {
             Some(effect),
             "{tile}"
         );
-        let needs_input = !matches!(effect, Effect::Engine | Effect::Block | Effect::Mouse);
+        let needs_input = !matches!(
+            effect,
+            Effect::Engine
+                | Effect::Block
+                | Effect::Mouse
+                | Effect::Media
+                | Effect::Volume
+                | Effect::Settings
+        );
         let blocked = !h
             .get_by_role_and_label(Role::Button, "Save and enable")
             .accesskit_node()
@@ -872,7 +884,7 @@ fn korean_labels() {
         "Open a website",
         "Mouse",
         "Switch mode",
-        "Pause Ddalgak",
+        "Automation on/off",
     ] {
         assert!(h.query_by_label(tile).is_some(), "{tile}");
     }
@@ -2044,4 +2056,143 @@ fn choosing_a_theme_keeps_the_language() {
         "the theme changed, the language stayed"
     );
     assert_eq!(h.state().prefs().theme, kim_ui::ThemePref::Light);
+}
+
+/// ADR 0101: the maintainer's keyboard mappings from an empty profile, by clicking only:
+/// CapsLock+W → Up (CapsLock picked as a modifier, no mode made), Right Shift+Enter → Media
+/// Play/Pause, CapsLock+< → types "←" (the `<` symbol is Shift+Comma), CapsLock+Backspace →
+/// automation on/off, CapsLock+/ → Settings; the sentences say it in words; Settings keeps
+/// CapsLock off and lists the shortcut that works while automation is off.
+#[test]
+fn adr0101_capslock_right_shift_media_and_arrows_by_clicking() {
+    let sb = Sandbox::new("adr0101");
+    let mut h = harness(app(&sb, sb.fake()));
+    settle(&mut h);
+    let save = |h: &mut Harness<'static, EditorApp>| {
+        click(h, "Save and enable");
+        if h.query_all_by_label("Allow").next().is_some() {
+            click_last_button(h, "Allow");
+        }
+        settle(h);
+    };
+    let pick = |h: &mut Harness<'static, EditorApp>, field: &str, keys: &[&str]| {
+        click(h, &format!("Pick keys by clicking: {field}"));
+        click_last_button(h, "Clear");
+        for k in keys {
+            if *k == "<" || *k == "/" {
+                click_last_button_or_item(h, "Symbols");
+            } else if k.len() == 1 {
+                click_last_button_or_item(h, "A–Z, 0–9");
+            } else {
+                click_last_button_or_item(h, "Common");
+            }
+            click_last_button(h, k);
+        }
+        assert!(
+            h.query_by_label_contains("This combination can be used")
+                .is_some(),
+            "{keys:?}"
+        );
+        click_last_button(h, "Confirm");
+    };
+    // 1. CapsLock + W → Up.
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape);
+    h.run();
+    pick(&mut h, "Keys", &["CapsLock", "W"]);
+    assert_eq!(h.state().form().unwrap().fields.trigger.keys, "CapsLock+W");
+    click(&mut h, "Act as another key");
+    pick(&mut h, "Acts as", &["Up"]);
+    assert!(
+        h.query_by_label_contains("When CapsLock is held and W is pressed, send Up arrow.")
+            .is_some(),
+        "the rule in words"
+    );
+    save(&mut h);
+    // 2. Right Shift + Enter → Play/Pause.
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape);
+    h.run();
+    pick(&mut h, "Keys", &["RShift", "Enter"]);
+    click(&mut h, "Media control");
+    assert!(
+        h.query_by_label_contains("When Right Shift + Enter is pressed, toggle media playback.")
+            .is_some()
+    );
+    save(&mut h);
+    // 3. CapsLock + < → types ←.
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape);
+    h.run();
+    pick(&mut h, "Keys", &["CapsLock", "<"]);
+    assert_eq!(
+        h.state().form().unwrap().fields.trigger.keys,
+        "CapsLock+Shift+Comma"
+    );
+    click(&mut h, "Type text");
+    input(&h, "Text").set_text_value_accesskit("\u{2190}");
+    h.run();
+    assert!(
+        h.query_by_label_contains("When CapsLock is held and < is pressed, type")
+            .is_some()
+    );
+    save(&mut h);
+    // 4. CapsLock + Backspace → automation on/off (no consent: nothing is injected).
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape);
+    h.run();
+    pick(&mut h, "Keys", &["CapsLock", "Backspace"]);
+    click(&mut h, "Automation on/off");
+    save(&mut h);
+    // 5. CapsLock + / → Settings.
+    click(&mut h, "New Rule");
+    h.key_press(Key::Escape);
+    h.run();
+    pick(&mut h, "Keys", &["CapsLock", "/"]);
+    click(&mut h, "Open Settings");
+    save(&mut h);
+    let d = sb.rules();
+    let rules = d["profiles"][0]["rules"].as_array().unwrap();
+    let by = |keys: &str| {
+        rules
+            .iter()
+            .find(|r| r["trigger"]["keys"] == keys)
+            .unwrap_or_else(|| panic!("no rule on {keys}: {rules:#?}"))
+    };
+    assert_eq!(
+        by("CapsLock+W")["steps"][0],
+        json!({ "type": "remap", "to": "Up" })
+    );
+    assert!(by("CapsLock+W").get("modes").is_none(), "no layer mode");
+    assert_eq!(
+        by("RShift+Enter")["steps"][0],
+        json!({ "type": "send_keys", "keys": "MediaPlayPause" })
+    );
+    assert_eq!(by("CapsLock+Shift+Comma")["steps"][0]["text"], "\u{2190}");
+    assert_eq!(
+        by("CapsLock+Backspace")["steps"][0],
+        json!({ "type": "engine", "op": "toggle_pause" })
+    );
+    assert_eq!(
+        by("CapsLock+code:Slash")["steps"][0],
+        json!({ "type": "engine", "op": "open_settings" })
+    );
+    assert_eq!(d["profiles"][0]["modes"].as_array().unwrap().len(), 1);
+    assert!(rules.iter().all(|r| r["enabled"] == true));
+    // Every one is active in the engine's own loader.
+    let l = ddalgak::rules::parse(&serde_json::to_vec(&d).unwrap());
+    assert!(l.inactive.is_empty(), "{:?}", l.inactive);
+    assert_eq!(l.bindings.len(), 5);
+    // Settings: CapsLock stays off; the on/off shortcut is listed.
+    open_settings(&mut h, "General");
+    assert!(
+        h.query_by_label_contains("CapsLock + Backspace").is_some(),
+        "the shortcut that works while automation is off"
+    );
+    h.get_all_by_role_and_label(Role::Switch, "Keep CapsLock off")
+        .next()
+        .expect("the CapsLock switch")
+        .click();
+    settle(&mut h);
+    assert_eq!(sb.rules()["settings"]["capslock"], "always_off");
 }

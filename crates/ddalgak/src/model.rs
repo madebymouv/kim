@@ -65,6 +65,9 @@ pub struct Settings {
     /// #100: opt-in profile switching by the foreground program (off unless `enabled`).
     #[serde(default, skip_serializing_if = "none")]
     pub app_profiles: Option<AppProfiles>,
+    /// ADR 0101: what Ddalgak does with CapsLock's toggle (`default` when absent).
+    #[serde(default, skip_serializing_if = "none")]
+    pub capslock: Option<CapsLockPolicy>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -996,11 +999,16 @@ snake_enum!(ModeOp {
     Previous = "previous",
     Default = "default",
 });
+snake_enum!(CapsLockPolicy {
+    Default = "default",
+    AlwaysOff = "always_off",
+});
 snake_enum!(EngineOp {
     Pause = "pause",
     Resume = "resume",
     TogglePause = "toggle_pause",
     Disable = "disable",
+    OpenSettings = "open_settings",
 });
 
 /// One step of a rule (§5). Serialized with its `type` first.

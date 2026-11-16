@@ -382,6 +382,10 @@ pub struct Core {
     /// Step 77: what conditions ask about the focused window (asked only for a matched
     /// binding with `when`, at most once per event).
     foreground: Arc<dyn crate::context::Foreground>,
+    /// ADR 0101: CapsLock is held as a modifier (only while the table owns CapsLock).
+    caps_held: bool,
+    /// Another key went down while CapsLock was held (its up is then no tap).
+    caps_used: bool,
 }
 
 const WIN_BITS: u8 = 0x40 | 0x80;
@@ -423,7 +427,14 @@ impl Core {
             want_timer: false,
             now: 0,
             foreground: Arc::new(crate::context::NoForeground),
+            caps_held: false,
+            caps_used: false,
         }
+    }
+
+    /// ADR 0101: whether CapsLock is held as a modifier right now (diagnostics and tests).
+    pub fn caps_held(&self) -> bool {
+        self.caps_held
     }
 
     /// The mode state (Step 72).
@@ -652,6 +663,10 @@ impl Core {
     /// because the trigger's up may never arrive.
     pub fn reset_keys(&mut self) -> Vec<Signal> {
         self.norm.reset();
+        // CapsLock's up may have been made where the hook could not see it (its up, if it still
+        // comes, stays consumed; a repeat while it is still held holds it again).
+        self.caps_held = false;
+        self.caps_used = false;
         self.hs.clear();
         self.release = None;
         self.hold = None;
@@ -806,6 +821,12 @@ impl Core {
     /// `Some(true)`: the chord matches exactly; `Some(false)`: only through widening (a trigger
     /// without modifiers of a remap or block, with modifiers held); `None`: no match.
     fn chord_match(&self, c: &CChord, ev: &KeyEvent, widen: bool) -> Option<bool> {
+        // ADR 0101: CapsLock held as a modifier is part of the chord, exactly: `CapsLock+W`
+        // needs it held and `W` needs it up (with CapsLock held, keys without a CapsLock rule
+        // reach the application unchanged).
+        if c.caps != self.caps_held {
+            return None;
+        }
         // The key first: most chords fail there, before the modifier state is computed.
         let key_ok = match c.key {
             KeyMatch::Modifier(m) => {
@@ -1111,6 +1132,14 @@ impl Core {
         if ev.source == Source::Own {
             return self.pass(&ev, None);
         }
+        // ADR 0101: CapsLock as a modifier owns CapsLock's events in every state of a hooked
+        // engine (running or paused), so CapsLock+Backspace can resume a paused engine.
+        if ev.vk == vk::VK_CAPITAL && self.table.caps.layer {
+            return self.caps_event(&ev);
+        }
+        if self.caps_held && ev.transition == Transition::Down {
+            self.caps_used = true;
+        }
         let vk_i = usize::from(ev.vk & 0xFF);
         match ev.transition {
             // 3. Consumed down, consumed up.
@@ -1150,6 +1179,12 @@ impl Core {
                     .and_then(|i| self.motions[i].take())
                     .map(|(_, binding)| Signal::MotionEnd { binding });
                 let mut d = self.down(&ev, mode, flags);
+                // ADR 0101: with `capslock: always_off` a CapsLock no rule took never reaches
+                // Windows (its up is consumed with it), so it never toggles.
+                if ev.vk == vk::VK_CAPITAL && self.table.caps.always_off && !d.consume {
+                    self.consumed.insert(ev.vk);
+                    d.consume = true;
+                }
                 let stale = stale
                     .map(|s| Signal::Remap {
                         binding: s.binding,
@@ -1162,6 +1197,37 @@ impl Core {
                     } else {
                         d.post = d.post.or(Some(r));
                     }
+                }
+                d
+            }
+        }
+    }
+
+    /// ADR 0101: CapsLock while a rule holds it as a modifier. Its down, repeats and up are
+    /// consumed, so Windows never toggles it; with `capslock: default` a tap (no other key while
+    /// it was held) is sent on as a CapsLock tap, so CapsLock alone still works as before.
+    fn caps_event(&mut self, ev: &KeyEvent) -> Decision {
+        match ev.transition {
+            Transition::Down | Transition::Repeat => {
+                if !self.caps_held {
+                    self.caps_held = true;
+                    self.caps_used = false;
+                    // What the application saw typed so far is no longer a word in progress.
+                    self.hs.clear();
+                }
+                self.consumed.insert(ev.vk);
+                Decision::new(true, None, ev.source)
+            }
+            Transition::Up => {
+                let tap = self.caps_held && !self.caps_used && !self.table.caps.always_off;
+                self.caps_held = false;
+                self.caps_used = false;
+                self.consumed.remove(ev.vk);
+                let mut d = Decision::new(true, None, ev.source);
+                if tap {
+                    let code = Self::replay_code(ev);
+                    d.signal = Some(Signal::Replay { code, up: false });
+                    d.post = Some(Signal::Replay { code, up: true });
                 }
                 d
             }
@@ -4440,5 +4506,192 @@ mod tests {
             }));
         let d = t.type_keys(&["B", "T", "W", "Space"]);
         assert_eq!(T::fired_hotstring(&d).map(|f| f.0), Some(1), "{d:?}");
+    }
+
+    /// ADR 0101: CapsLock as a modifier. CapsLock's down, repeats and up never reach Windows
+    /// (it never toggles), `CapsLock+W` remaps W only while CapsLock is held, plain W passes, a
+    /// tap of CapsLock alone is sent on as a tap (`capslock: default`) or swallowed
+    /// (`always_off`).
+    #[test]
+    fn capslock_is_a_held_modifier_that_never_toggles() {
+        let mut t = T::new(vec![remap("up", "CapsLock+W", "Up")]);
+        assert!(t.core.table().caps.layer);
+        let d = t.ev("CapsLock", false);
+        assert!(d.consume && d.signal.is_none(), "{d:?}");
+        assert!(t.core.caps_held());
+        assert!(
+            t.ev("CapsLock", false).consume,
+            "auto-repeat of CapsLock is consumed"
+        );
+        let d = t.ev("W", false);
+        assert!(d.consume, "W never reaches the application");
+        assert_eq!(op(&d), Some(press(&[], &[], Some(vk("Up")))));
+        assert!(t.ev("W", false).consume, "W's auto-repeat repeats Up");
+        let d = t.ev("W", true);
+        assert!(d.consume);
+        assert_eq!(op(&d), Some(release(Some(vk("Up")), &[], &[])));
+        let d = t.ev("CapsLock", true);
+        assert!(
+            d.consume && d.signal.is_none() && d.post.is_none(),
+            "no tap after a chord: {d:?}"
+        );
+        assert!(!t.core.caps_held());
+        // W without CapsLock is W.
+        let d = t.ev("W", false);
+        assert!(!d.consume && d.signal.is_none());
+        assert!(!t.ev("W", true).consume);
+        // A tap of CapsLock alone is sent on as a tap (Ddalgak's own input, so it toggles once).
+        t.ev("CapsLock", false);
+        let d = t.ev("CapsLock", true);
+        assert!(d.consume);
+        assert!(
+            matches!(d.signal, Some(Signal::Replay { up: false, .. })),
+            "{d:?}"
+        );
+        assert!(
+            matches!(d.post, Some(Signal::Replay { up: true, .. })),
+            "{d:?}"
+        );
+        // `always_off`: the tap is swallowed too.
+        let mut table = Table::compile(vec![remap("up", "CapsLock+W", "Up")], 20);
+        table.caps.always_off = true;
+        let mut t = T::new(vec![]);
+        t.core = Core::new(table);
+        t.ev("CapsLock", false);
+        let d = t.ev("CapsLock", true);
+        assert!(d.consume && d.signal.is_none() && d.post.is_none(), "{d:?}");
+    }
+
+    /// ADR 0101: `capslock: always_off` without any CapsLock rule: CapsLock is swallowed, other
+    /// keys are untouched, a rule on CapsLock itself still gets it.
+    #[test]
+    fn always_off_swallows_capslock_without_a_layer() {
+        let mut table = Table::compile(vec![binding("f13", "F13")], 20);
+        table.caps.always_off = true;
+        let mut t = T::new(vec![]);
+        t.core = Core::new(table);
+        assert!(!t.core.table().caps.layer);
+        assert!(t.ev("CapsLock", false).consume);
+        assert!(t.ev("CapsLock", false).consume, "repeat");
+        assert!(t.ev("CapsLock", true).consume, "up with its down");
+        assert!(!t.ev("A", false).consume && !t.ev("A", true).consume);
+        let mut table = Table::compile(vec![remap("esc", "CapsLock", "Escape")], 20);
+        table.caps.always_off = true;
+        t.core = Core::new(table);
+        let d = t.ev("CapsLock", false);
+        assert!(d.consume);
+        assert_eq!(op(&d), Some(press(&[], &[], Some(vk("Escape")))));
+    }
+
+    /// ADR 0101: while paused the CapsLock layer still exists, so the engine-control rule on
+    /// CapsLock+Backspace resumes the engine; ordinary CapsLock rules step aside (the key passes)
+    /// and CapsLock itself is still swallowed.
+    #[test]
+    fn capslock_backspace_works_while_paused_and_nothing_else_does() {
+        let mut toggle = binding("toggle", "CapsLock+Backspace");
+        toggle.action = Action::Engine(vec![EngineOp::TogglePause]);
+        let mut t = T::new(vec![remap("up", "CapsLock+W", "Up"), toggle]);
+        t.mode = Mode::Paused;
+        assert!(
+            t.ev("CapsLock", false).consume,
+            "CapsLock is still owned while paused"
+        );
+        let d = t.ev("W", false);
+        assert!(!d.consume, "ordinary rules wait while paused");
+        assert!(matches!(
+            d.signal,
+            Some(Signal::Skipped {
+                code: Skip::Paused,
+                ..
+            })
+        ));
+        t.ev("W", true);
+        let d = t.ev("Backspace", false);
+        assert!(d.consume);
+        assert_eq!(fired(&d), Some((1, FireKind::Press)));
+        assert!(t.ev("Backspace", true).consume);
+        assert!(t.ev("CapsLock", true).consume);
+        // Backspace without CapsLock is Backspace, paused or not.
+        assert!(!t.ev("Backspace", false).consume);
+        t.ev("Backspace", true);
+        t.mode = Mode::Running;
+        t.ev("CapsLock", false);
+        assert_eq!(fired(&t.ev("Backspace", false)), Some((1, FireKind::Press)));
+    }
+
+    /// ADR 0101: `CapsLock+W` with Shift held is Shift+Up (a remap widens over the other
+    /// modifiers, so Shift+CapsLock+W selects); an exact `CapsLock+Shift+Comma` rule wins over a
+    /// `CapsLock+Comma` rule; the emergency chord still trips with CapsLock held.
+    #[test]
+    fn capslock_chords_combine_with_shift_and_the_emergency_chord_still_wins() {
+        let mut lt = binding("lt", "CapsLock+Shift+Comma");
+        lt.action = Action::Block;
+        let mut comma = binding("comma", "CapsLock+Comma");
+        comma.action = Action::Block;
+        let mut t = T::new(vec![remap("up", "CapsLock+W", "Up"), comma, lt]);
+        t.down(&["CapsLock", "LShift"]);
+        let d = t.ev("W", false);
+        assert!(d.consume);
+        assert_eq!(
+            op(&d),
+            Some(press(&[], &[], Some(vk("Up")))),
+            "Shift stays held: Shift+Up"
+        );
+        t.ev("W", true);
+        assert_eq!(
+            fired(&t.ev("Comma", false)),
+            Some((2, FireKind::Press)),
+            "<"
+        );
+        t.ev("Comma", true);
+        t.ev("LShift", true);
+        assert_eq!(
+            fired(&t.ev("Comma", false)),
+            Some((1, FireKind::Press)),
+            ","
+        );
+        t.ev("Comma", true);
+        let d = t.down(&["LCtrl", "LAlt", "LShift", "Escape"]);
+        assert_eq!(d.signal, Some(Signal::Emergency));
+        assert!(t.core.tripped());
+        t.up(&["LCtrl", "LAlt", "LShift", "Escape"]);
+        assert!(
+            !t.ev("CapsLock", true).consume,
+            "after the emergency everything passes"
+        );
+    }
+
+    /// ADR 0101: Right Shift is not Left Shift: `RShift+Enter` fires on Right Shift only and
+    /// LShift+Enter (and Enter) reach the application.
+    #[test]
+    fn right_shift_rules_never_fire_on_left_shift() {
+        let mut play = binding("play", "RShift+Enter");
+        play.action = Action::Block;
+        let mut t = T::new(vec![play]);
+        t.ev("RShift", false);
+        assert_eq!(fired(&t.ev("Enter", false)), Some((0, FireKind::Press)));
+        t.ev("Enter", true);
+        t.ev("RShift", true);
+        t.ev("LShift", false);
+        let d = t.ev("Enter", false);
+        assert!(!d.consume && fired(&d).is_none());
+        t.ev("Enter", true);
+        t.ev("LShift", true);
+        assert!(!t.ev("Enter", false).consume);
+    }
+
+    /// ADR 0101: a key reset (another desktop, an unlock) forgets that CapsLock is held; its up
+    /// stays consumed and a repeat holds it again.
+    #[test]
+    fn a_key_reset_forgets_capslock_but_keeps_its_up_paired() {
+        let mut t = T::new(vec![remap("up", "CapsLock+W", "Up")]);
+        t.ev("CapsLock", false);
+        t.core.reset_keys();
+        assert!(!t.core.caps_held());
+        assert!(!t.ev("W", false).consume);
+        t.ev("W", true);
+        assert!(t.ev("CapsLock", false).consume, "a repeat after the reset");
+        assert!(t.core.caps_held());
+        assert!(t.ev("CapsLock", true).consume);
     }
 }

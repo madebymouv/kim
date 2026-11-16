@@ -20,6 +20,18 @@ fn caption(text: impl Into<String>, color: egui::Color32) -> egui::RichText {
         .color(color)
 }
 
+/// ADR 0101: the remap targets offered as one-click buttons under *Acts as*.
+const QUICK_TARGETS: [&str; 10] = [
+    "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "Escape", "Enter",
+];
+
+fn kim_lang(lang: Lang) -> kim_design::Lang {
+    match lang {
+        Lang::Ko => kim_design::Lang::Ko,
+        Lang::En => kim_design::Lang::En,
+    }
+}
+
 /// A full-width single-line text field.
 fn line(ui: &mut egui::Ui, value: &mut String, label: &str, hint: &str) -> egui::Response {
     let w = ui.available_width();
@@ -276,8 +288,15 @@ impl EditorApp {
             problems.to_vec()
         };
         // The rule as a sentence, once it says something.
+        let caps_hold = f
+            .fields
+            .trigger
+            .hold_key
+            .trim()
+            .eq_ignore_ascii_case("CapsLock");
         let keys = if f.fields.trigger.combo == Combo::Hold
             && !f.fields.trigger.hold_key.trim().is_empty()
+            && !caps_hold
         {
             format!(
                 "{} + {}",
@@ -288,7 +307,8 @@ impl EditorApp {
             f.trigger_text()
         };
         let summary = f.summary(profile);
-        self.rule_sentence(ui, &keys, &summary);
+        let sentence = f.sentence(profile, lang);
+        self.rule_sentence(ui, &keys, &summary, &sentence);
         let mut capture = std::mem::take(&mut self.capture);
         let mut target = self.capture_target;
         let mut pick = None;
@@ -304,6 +324,7 @@ impl EditorApp {
                 pick = trigger_section(ui, lang, f, &mut capture, &mut target, &shown);
             },
         );
+        let effect_before = f.fields.effect;
         kim_ui::form_section(
             ui,
             Some(2),
@@ -313,12 +334,15 @@ impl EditorApp {
                 action_section(ui, lang, f, profile);
             },
         );
+        // ADR 0101: a chosen action scrolls its settings into view (measured: they sat about
+        // 700 px below a 900 px window, so every rule needed a long scroll).
+        let chosen = f.fields.effect.is_some() && f.fields.effect != effect_before;
         let mut acts = Vec::new();
         if let Some(effect) = f.fields.effect {
             let title = lang.t(&format!("tile.{}", effect.key()));
             let example = lang.t(&format!("tile.{}.example", effect.key()));
             let focus_title = std::mem::take(&mut self.focus_title);
-            if self.audit_details {
+            if self.audit_details || chosen {
                 ui.scroll_to_cursor(Some(egui::Align::TOP));
             }
             let _ = example;
@@ -389,15 +413,7 @@ impl EditorApp {
                     CaptureTarget::SendKeys => f.fields.keys.keys.clone(),
                 };
                 if !cur.contains(',') && !cur.contains(' ') {
-                    for part in kim_ui::split_chord(cur.trim()) {
-                        if let Some(k) = view::trigger_keys()
-                            .into_iter()
-                            .chain(kim_ui::keys::modifiers(true))
-                            .find(|k| *k == part)
-                        {
-                            p.toggle(k);
-                        }
-                    }
+                    p = kim_ui::keys::KeyPicker::from_chord(&cur, &view::trigger_keys());
                 }
             }
             self.key_picker = Some((t, p));
@@ -406,7 +422,7 @@ impl EditorApp {
     }
 
     /// *When I press [CapsLock] → Types "…"*: the rule in one line above the sections.
-    fn rule_sentence(&self, ui: &mut egui::Ui, keys: &str, summary: &str) {
+    fn rule_sentence(&self, ui: &mut egui::Ui, keys: &str, summary: &str, sentence: &str) {
         let c = Colors::get();
         let lang = self.lang;
         egui::Frame::new()
@@ -435,6 +451,26 @@ impl EditorApp {
                         );
                     }
                 });
+                // ADR 0101: the whole rule in words, in the window's language.
+                if !sentence.is_empty() {
+                    let r = ui.label(caption(sentence, c.text_secondary));
+                    kim_ui::inspect::record(
+                        ui,
+                        "rule-editor:sentence",
+                        "text",
+                        r.rect,
+                        Some(kim_ui::inspect::Painted {
+                            content: sentence,
+                            rect: r.rect,
+                            size: font::CAPTION,
+                            truncated: false,
+                        }),
+                        false,
+                        &[],
+                        Some(c.text_secondary),
+                        None,
+                    );
+                }
             });
         ui.add_space(space::M);
     }
@@ -857,6 +893,28 @@ fn details_section(
             ) {
                 *pick = Some(CaptureTarget::RemapTo);
             }
+            // ADR 0101: the targets people remap to most, one click each (the picker has the
+            // rest). Measured on the real desktop: a CapsLock+W → Up rule took 12–13 clicks
+            // through the picker, 10 with these.
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(space::XS, space::XS);
+                ui.label(caption(lang.t("field.quick_keys"), c.text_muted));
+                for k in QUICK_TARGETS {
+                    let shown = kim_ui::keys::readable_key(k, kim_lang(lang));
+                    if ui
+                        .add(
+                            kim_ui::Button::secondary(k)
+                                .compact()
+                                .selected(fl.remap.to.trim() == k)
+                                .named(format!("{}: {k}", lang.t("field.acts_as"))),
+                        )
+                        .on_hover_text(shown)
+                        .clicked()
+                    {
+                        fl.remap.to = k.to_string();
+                    }
+                }
+            });
             if key_input(
                 ui,
                 lang,
@@ -1139,14 +1197,40 @@ fn details_section(
                         ui,
                         &mut fl.engine,
                         &[
-                            (EngineOp::Pause, "Pause"),
-                            (EngineOp::Resume, "Resume"),
-                            (EngineOp::TogglePause, "Pause or resume"),
-                            (EngineOp::Disable, "Turn off"),
+                            (EngineOp::TogglePause, lang.t("field.engine.toggle")),
+                            (EngineOp::Pause, lang.t("field.engine.pause")),
+                            (EngineOp::Resume, lang.t("field.engine.resume")),
+                            (EngineOp::Disable, lang.t("field.engine.disable")),
                         ],
                     );
                 },
             );
+        }
+        // ADR 0101: media and volume keys by name, never as key codes.
+        Effect::Media | Effect::Volume => {
+            let (list, value, label): (&[(&str, &str, &str)], &mut String, &str) =
+                if effect == Effect::Media {
+                    (&form::MEDIA_KEYS, &mut fl.media, lang.t("field.media"))
+                } else {
+                    (&form::VOLUME_KEYS, &mut fl.volume, lang.t("field.volume"))
+                };
+            kim_ui::field(ui, label, Some(lang.t("field.media_note")), |ui| {
+                let opts: Vec<(usize, &str)> = list
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (_, en, ko))| (i, if lang == Lang::Ko { *ko } else { *en }))
+                    .collect();
+                let mut i = list.iter().position(|(k, _, _)| k == value).unwrap_or(0);
+                kim_ui::segmented(ui, &mut i, &opts);
+                *value = list[i].0.to_string();
+            });
+            if effect == Effect::Volume && fl.volume != "VolumeMute" {
+                ui.label(caption(lang.t("field.volume_repeat"), c.text_muted));
+            }
+            problems_for(ui, lang, problems, &["steps[0]"]);
+        }
+        Effect::Settings => {
+            ui.label(caption(lang.t("tile.settings.note"), c.text_muted));
         }
         Effect::Window => {
             use ddalgak::model::WindowOp as W;

@@ -230,6 +230,14 @@ fn canonical_mouse(step: &str) -> Option<Result<String, TriggerError>> {
 }
 
 fn canonical_step(step: &str, output: bool) -> Result<String, TriggerError> {
+    // ADR 0101: `capslock+w` → `CapsLock+W` (CapsLock as a modifier, triggers only).
+    if !output
+        && step.len() > trigger::CAPS_PREFIX.len()
+        && step[..trigger::CAPS_PREFIX.len()].eq_ignore_ascii_case(trigger::CAPS_PREFIX)
+    {
+        let rest = canonical_step(&step[trigger::CAPS_PREFIX.len()..], false)?;
+        return Ok(format!("{}{rest}", trigger::CAPS_PREFIX));
+    }
     if let Some(b) = BARE.iter().find(|b| b.eq_ignore_ascii_case(step)) {
         if !output && b.ends_with("Win") {
             return Err(TriggerError::Reserved("Windows key shortcut"));
@@ -501,8 +509,9 @@ pub fn build_step(kind: &str, i: &StepInputs) -> Result<Action, String> {
             extra: extra(),
         }),
         "engine" => Action::Engine(EngineStep {
-            op: parse("engine op", &i.op, EngineOp::parse)?
-                .ok_or("`--action engine` needs --op pause|resume|toggle_pause|disable")?,
+            op: parse("engine op", &i.op, EngineOp::parse)?.ok_or(
+                "`--action engine` needs --op pause|resume|toggle_pause|disable|open_settings",
+            )?,
             extra: extra(),
         }),
         "mode" => Action::Mode(ModeStep {
@@ -1033,6 +1042,21 @@ mod tests {
             "Shift+CapsLock"
         );
         assert_eq!(canonical_trigger("ralt").unwrap(), "RAlt");
+        // ADR 0101: CapsLock as a modifier.
+        assert_eq!(canonical_trigger("capslock+w").unwrap(), "CapsLock+W");
+        assert_eq!(
+            canonical_trigger("CapsLock+shift+comma").unwrap(),
+            "CapsLock+Shift+Comma"
+        );
+        assert_eq!(
+            canonical_trigger("capslock+code:Slash").unwrap(),
+            "CapsLock+code:Slash"
+        );
+        assert!(canonical_trigger("capslock+alt+f4").is_err());
+        assert!(
+            canonical_output("CapsLock+W", 1).is_err(),
+            "never an output"
+        );
         assert_eq!(
             canonical_trigger("Ctrl+K  Ctrl+U").unwrap(),
             "Ctrl+K Ctrl+U"

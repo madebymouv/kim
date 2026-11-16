@@ -48,5 +48,9 @@ pub mod transfer;
 
 pub use app::{EditorApp, Options};
 
+/// ADR 0101: another start with `--settings` (a rule on CapsLock+/ through the tray app) asks
+/// the running editor to open its Settings window; the next frame does.
+pub static OPEN_SETTINGS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The editor's file name; the tray app starts it from its own folder.
 pub const EDITOR_EXE: &str = "ddalgak-editor.exe";

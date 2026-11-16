@@ -494,8 +494,14 @@ impl EditorApp {
                                 kim_ui::keycaps(ui, &trigger);
                             }
                         });
+                        // ADR 0101: the rule in the window's language.
+                        let said = if self.lang == Lang::Ko && !r.summary_ko.is_empty() {
+                            &r.summary_ko
+                        } else {
+                            &r.summary
+                        };
                         ui.add(
-                            egui::Label::new(caption(&r.summary, c.text_muted))
+                            egui::Label::new(caption(said, c.text_muted))
                                 .truncate()
                                 .selectable(false),
                         );
