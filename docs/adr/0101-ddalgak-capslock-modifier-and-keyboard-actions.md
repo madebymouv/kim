@@ -141,8 +141,8 @@ keys trigger rules that ignore injected input.
 ## Consequences
 
 - A profile can mix CapsLock chords with a rule on CapsLock itself; the CapsLock rule then never
-  fires (the layer takes CapsLock first). Not yet a validation warning (left open in
-  DDALGAK_KEYBOARD_TASK §12).
+  fires (the layer takes CapsLock first). Validation says so: `trigger_shadowed` (a warning, with
+  rebind, disable and keep offers) names the rule that holds CapsLock as a modifier (2026-11-17).
 - `<` and `>` are stored as `Shift+Comma` / `Shift+Period`: the key, not the character. On a
   layout where `<` is another key (German `IntlBackslash`) the rule still fires on Shift+Comma
   and the readable name assumes a US-style layout.

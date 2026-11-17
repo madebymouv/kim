@@ -184,7 +184,8 @@ are consumed (Windows never toggles it) and the core tracks whether it is held, 
 CapsLock is held and one without it only while it is up; other modifiers keep §3.2 (a remap on
 `CapsLock+W` widens, so Shift + CapsLock + W gives Shift + Up). Keys without a CapsLock rule pass
 unchanged while CapsLock is held. A key reset forgets the held state (its up stays consumed);
-the emergency chord is checked first.
+the emergency chord is checked first. A rule on CapsLock itself (`CapsLock`, `Shift+CapsLock`)
+then never fires; validation warns with `trigger_shadowed` and names the CapsLock chord rule.
 
 `settings.capslock`: `default` (absent) — CapsLock toggles as Windows does, and while a CapsLock
 chord is active a tap of CapsLock alone is sent on as a tap; `always_off` — while the engine is on
@@ -885,7 +886,7 @@ either.
 | `step_unsupported`, `condition_unsupported`, `rule_unsupported` | info | runtime | Inactive in this version: an unknown step type or one a later Step implements, a condition not evaluated yet, or an unknown field inside the rule (§9). |
 | `profile_disabled`, `mode_disabled` | info | runtime | Step 73: inactive by the user's choice, not a problem (`rule check` lists no problem for them; `status` and `rule list` show the code): the rule's profile has `enabled: false`, or every mode the rule is limited to (or the mode a `mode` step switches to) has `enabled: false` (§7.3). |
 | `altgr_collision`, `ime_toggle`, `os_shortcut`, `hook_overrides_global` | warning | semantic | §3.1. `hook_overrides_global` needs the other Kim tools and is reported by `kim hotkeys check --all-tools` (Step 81). |
-| `trigger_shadowed` | warning | runtime | Another enabled rule with the same keys and conditions wins by precedence (§7.1) in every mode this rule works in, so it never fires (a lower `priority`, or `on: release` behind `on: press`). |
+| `trigger_shadowed` | warning | runtime | Another enabled rule with the same keys and conditions wins by precedence (§7.1) in every mode this rule works in, so it never fires (a lower `priority`, or `on: release` behind `on: press`); or a rule on CapsLock itself while another rule holds CapsLock as a modifier (§3.6, ADR 0101). |
 | `sequence_prefix` | warning | runtime | A shorter trigger of another rule is the start of this sequence in a mode both work in; that rule fires first and this sequence never completes. |
 | `target_missing` | warning | runtime | An `open_program` path or working folder does not exist on this computer (checked by the CLI, never searched for; the run would end with `program_not_found`). |
 | `trigger_overridden` | info | runtime | In some modes a mode-scoped rule takes this rule's trigger first (intended layering, §7.3). |

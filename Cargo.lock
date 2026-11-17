@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "ddalgak"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "kim-hotkeys",
  "kim-winres",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "ddalgak-editor"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "ddalgak",
  "eframe",

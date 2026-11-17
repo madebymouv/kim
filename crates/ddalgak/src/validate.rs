@@ -1056,6 +1056,35 @@ fn extend(
                 i.rule.enabled && i.trigger.is_some() && !duplicate_trigger.contains(&(i.pi, i.ri))
             })
             .collect();
+        // ADR 0101: while a rule holds CapsLock as a modifier the engine takes CapsLock itself
+        // first (in every mode), so a rule on CapsLock (`CapsLock`, `Shift+CapsLock`) never fires.
+        if let Some(layer) = enabled
+            .iter()
+            .find(|i| i.trigger.as_ref().is_some_and(Trigger::uses_caps))
+        {
+            for b in enabled
+                .iter()
+                .filter(|i| i.trigger.as_ref().is_some_and(Trigger::is_capslock_key))
+            {
+                let mut offers: Vec<Offer> =
+                    suggestions(b).into_iter().map(Offer::Rebind).collect();
+                offers.extend([Offer::Disable, Offer::Keep]);
+                push(
+                    b,
+                    "trigger_shadowed",
+                    Severity::Warning,
+                    format!("profiles[{}].rules[{}].trigger", b.pi, b.ri),
+                    format!(
+                        "rule `{}` holds CapsLock as a modifier (`{}`), so Ddalgak takes CapsLock first and `{}` never fires",
+                        layer.rule.id,
+                        layer.rule.trigger.keys_text(),
+                        b.rule.trigger.keys_text()
+                    ),
+                    Some(json!({ "rule": layer.rule.id })),
+                    offers,
+                );
+            }
+        }
         // What the pairwise checks compare, computed once per rule. Step 72: a rule works in the
         // modes whose chain (the mode, its parent, …) reaches one of its modes, and in each mode
         // it ranks by how near its mode is, then priority, then file order (§7.1).
@@ -1688,6 +1717,41 @@ mod tests {
             "{:?}",
             low.offers
         );
+    }
+
+    #[test]
+    fn a_capslock_rule_is_shadowed_while_capslock_is_held_as_a_modifier() {
+        let alone = check(
+            &doc(json!([engine("caps", "CapsLock")])),
+            &Context::default(),
+        );
+        assert!(!codes(&alone).iter().any(|(c, _)| *c == "trigger_shadowed"));
+        let r = check(
+            &doc(json!([
+                engine("caps", "CapsLock"),
+                engine("shift-caps", "Shift+CapsLock"),
+                engine("toggle", "CapsLock+Backspace"),
+            ])),
+            &Context::default(),
+        );
+        let c = codes(&r);
+        assert!(
+            c.contains(&("trigger_shadowed", Some("caps".into()))),
+            "{c:?}"
+        );
+        assert!(
+            c.contains(&("trigger_shadowed", Some("shift-caps".into()))),
+            "{c:?}"
+        );
+        let p = r
+            .problems
+            .iter()
+            .find(|p| p.rule.as_deref() == Some("caps"))
+            .unwrap();
+        assert_eq!(p.severity, Severity::Warning);
+        assert!(p.message.contains("toggle"), "{}", p.message);
+        // A warning, not an error: the rules stay as they are.
+        assert!(r.all().all(|p| p.severity != Severity::Error), "{c:?}");
     }
 
     #[test]
