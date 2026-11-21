@@ -1,0 +1,187 @@
+//! The clipboard (`JARAK-FR-031`): Jarak reads and writes it itself through Win32, only on an
+//! explicit Copy, Cut or Paste (`JARAK-SEC-003`), so it controls the formats (text now, images in
+//! Step 90) and needs no extra crate. eframe's own clipboard shortcuts are off
+//! (`NativeOptions::clipboard_shortcuts`), so Ctrl+C/X/V reach Jarak as ordinary keys.
+
+/// Where Copy, Cut and Paste go (the Windows clipboard in the program, a fake in tests).
+pub trait Clipboard: Send + Sync {
+    fn get_text(&self) -> Option<String>;
+    fn set_text(&self, text: &str) -> bool;
+}
+
+/// An in-memory clipboard (tests, and no system clipboard).
+#[derive(Debug, Default)]
+pub struct MemoryClipboard(pub std::sync::Mutex<Option<String>>);
+
+impl Clipboard for MemoryClipboard {
+    fn get_text(&self) -> Option<String> {
+        self.0.lock().ok()?.clone()
+    }
+    fn set_text(&self, text: &str) -> bool {
+        self.0
+            .lock()
+            .map(|mut c| *c = Some(text.to_string()))
+            .is_ok()
+    }
+}
+
+/// The Windows clipboard, `CF_UNICODETEXT`.
+#[derive(Debug, Default)]
+pub struct WinClipboard;
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod win {
+    use windows_sys::Win32::Foundation::{GlobalFree, HANDLE};
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
+        OpenClipboard, SetClipboardData,
+    };
+    use windows_sys::Win32::System::Memory::{
+        GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock,
+    };
+
+    const CF_UNICODETEXT: u32 = 13;
+
+    /// Opens the clipboard, retrying briefly while another program holds it.
+    fn open() -> bool {
+        for _ in 0..10 {
+            // SAFETY: no owner window; the clipboard is closed again by `close`.
+            if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        false
+    }
+
+    fn close() {
+        // SAFETY: only called after a successful `open`.
+        unsafe {
+            CloseClipboard();
+        }
+    }
+
+    pub fn get_text() -> Option<String> {
+        // SAFETY: a plain query.
+        if unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) } == 0 || !open() {
+            return None;
+        }
+        // SAFETY: the clipboard is open; the handle stays owned by the clipboard; the locked
+        // memory is a NUL-terminated UTF-16 string, read up to its NUL or its size.
+        let text = unsafe {
+            let h = GetClipboardData(CF_UNICODETEXT);
+            if h.is_null() {
+                None
+            } else {
+                let p = GlobalLock(h as _) as *const u16;
+                if p.is_null() {
+                    None
+                } else {
+                    let size = windows_sys::Win32::System::Memory::GlobalSize(h as _) / 2;
+                    let mut n = 0usize;
+                    while n < size && *p.add(n) != 0 {
+                        n += 1;
+                    }
+                    let s = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));
+                    GlobalUnlock(h as _);
+                    Some(s)
+                }
+            }
+        };
+        close();
+        text
+    }
+
+    pub fn set_text(text: &str) -> bool {
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        if !open() {
+            return false;
+        }
+        // SAFETY: the clipboard is open; the global memory is filled while locked and handed to
+        // the clipboard, which owns it after a successful SetClipboardData (freed here only when
+        // that fails).
+        let ok = unsafe {
+            EmptyClipboard();
+            let mem = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2);
+            if mem.is_null() {
+                false
+            } else {
+                let p = GlobalLock(mem) as *mut u16;
+                if p.is_null() {
+                    GlobalFree(mem);
+                    false
+                } else {
+                    std::ptr::copy_nonoverlapping(wide.as_ptr(), p, wide.len());
+                    GlobalUnlock(mem);
+                    if SetClipboardData(CF_UNICODETEXT, mem as HANDLE).is_null() {
+                        GlobalFree(mem);
+                        false
+                    } else {
+                        true
+                    }
+                }
+            }
+        };
+        close();
+        ok
+    }
+}
+
+impl Clipboard for WinClipboard {
+    fn get_text(&self) -> Option<String> {
+        #[cfg(windows)]
+        {
+            win::get_text()
+        }
+    }
+    fn set_text(&self, text: &str) -> bool {
+        #[cfg(windows)]
+        {
+            win::set_text(text)
+        }
+    }
+}
+
+/// Pasted text with its line endings changed to the document's (`\r\n`, `\n` or `\r`), as
+/// Notepad++ pastes by default.
+pub fn with_line_endings(text: &str, eol: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push_str(eol);
+            }
+            '\n' => out.push_str(eol),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pasted_line_endings_follow_the_document() {
+        assert_eq!(
+            with_line_endings("a\nb\r\nc\rd", "\r\n"),
+            "a\r\nb\r\nc\r\nd"
+        );
+        assert_eq!(with_line_endings("a\r\nb", "\n"), "a\nb");
+        assert_eq!(with_line_endings("한글", "\r\n"), "한글");
+    }
+
+    #[test]
+    fn the_memory_clipboard_keeps_text() {
+        let c = MemoryClipboard::default();
+        assert_eq!(c.get_text(), None);
+        assert!(c.set_text("x"));
+        assert_eq!(c.get_text().as_deref(), Some("x"));
+    }
+}

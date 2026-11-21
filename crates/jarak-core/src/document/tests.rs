@@ -380,3 +380,51 @@ fn random_edits_keep_the_rope_identical_to_a_string_model() {
         }
     }
 }
+
+#[test]
+fn tab_indents_selected_lines_and_shift_tab_outdents_them() {
+    let mut d = doc("one\ntwo\nthree");
+    // Without a selection over lines, Tab is a tab character.
+    at(&mut d, 1);
+    d.indent();
+    assert_eq!(d.text().to_string(), "o\tne\ntwo\nthree");
+    d.undo();
+    // Lines 0-1 selected (ending inside line 1): both indented, selection kept over the text.
+    d.set_selection(&Selection::single(Range::new(1, 6)));
+    d.indent();
+    assert_eq!(d.text().to_string(), "\tone\n\ttwo\nthree");
+    assert_eq!(d.selection().primary(), Range::new(2, 8));
+    d.outdent();
+    assert_eq!(d.text().to_string(), "one\ntwo\nthree");
+    assert_eq!(d.selection().primary(), Range::new(1, 6));
+    // Spaces: up to one tab width; a selection ending at a line start leaves that line out.
+    let mut d = doc("      a\n  b\nc");
+    d.set_selection(&Selection::single(Range::new(0, 13)));
+    d.outdent();
+    assert_eq!(d.text().to_string(), "  a\nb\nc");
+    let mut d = doc("a\nb\nc");
+    d.set_selection(&Selection::single(Range::new(0, 4)));
+    d.indent();
+    assert_eq!(d.text().to_string(), "\ta\n\tb\nc");
+    assert!(d.undo());
+    assert_eq!(d.text().to_string(), "a\nb\nc", "one undo step");
+}
+
+#[test]
+fn overwrite_replaces_the_next_grapheme_but_not_the_line_break() {
+    let mut d = doc("ab\ncd");
+    at(&mut d, 0);
+    d.overwrite_text("한");
+    assert_eq!(d.text().to_string(), "한b\ncd");
+    d.overwrite_text("x");
+    d.overwrite_text("y");
+    assert_eq!(
+        d.text().to_string(),
+        "한xy\ncd",
+        "at the line end it inserts"
+    );
+    let mut d = doc("e\u{301}z");
+    at(&mut d, 0);
+    d.overwrite_text("a");
+    assert_eq!(d.text().to_string(), "az", "a whole cluster is replaced");
+}

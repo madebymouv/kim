@@ -1,6 +1,6 @@
 [package]
 name = "jarak"
-version = "0.0.4"
+version = "0.0.5"
 description = "Jarak (자락): the headless CLI of Kim's native text editor; never opens a window except `jarak open` (ADR 0102)"
 edition.workspace = true
 rust-version.workspace = true
@@ -19,7 +19,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-jarak-core = { version = "0.0.4", path = "../jarak-core" }
+jarak-core = { version = "0.0.5", path = "../jarak-core" }
 serde_json = "1.0.154"
 
 [build-dependencies]

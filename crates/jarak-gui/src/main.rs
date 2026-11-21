@@ -201,15 +201,23 @@ fn run(
     let lang = lang.unwrap_or_else(kim_design::Lang::system);
     let zoom = kim_design::scale::startup_zoom();
     let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title(jarak_gui::TITLE)
+        .with_app_id("mouv.jarak")
+        .with_inner_size([960.0 * zoom, 640.0 * zoom])
+        .with_min_inner_size([360.0 * zoom, 240.0 * zoom]);
+    // The window's own icon in the title bar and the taskbar (the .exe carries it too).
+    if let Ok(icon) =
+        eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/jarak/jarak-256.png"))
+    {
+        viewport = viewport.with_icon(icon);
+    }
     let options = eframe::NativeOptions {
-        viewport: kim_ui::inspect::audit_viewport(
-            egui::ViewportBuilder::default()
-                .with_title(jarak_gui::TITLE)
-                .with_app_id("mouv.jarak")
-                .with_inner_size([960.0 * zoom, 640.0 * zoom])
-                .with_min_inner_size([360.0 * zoom, 240.0 * zoom]),
-        ),
+        viewport: kim_ui::inspect::audit_viewport(viewport),
         renderer: eframe::Renderer::Glow,
+        // Ctrl+C/X/V reach Jarak as keys; it uses the clipboard itself (text, and images in
+        // Step 90).
+        clipboard_shortcuts: false,
         ..Default::default()
     };
     let result = eframe::run_native(
@@ -233,7 +241,21 @@ fn run(
                 });
             }
             // `Owner` has no `Drop`: its handles stay open until the process ends.
-            Ok(Box::new(JarakApp::new(lang, &files, incoming)))
+            let mut app = JarakApp::with(
+                lang,
+                &files,
+                incoming,
+                Arc::new(jarak_gui::WinDialogs),
+                jarak_core::file::system_encoding(),
+            )
+            .with_clipboard(Arc::new(jarak_gui::clipboard::WinClipboard));
+            // ADR 0099: a UI audit names the view to photograph.
+            if kim_ui::inspect::active()
+                && let Ok(screen) = std::env::var("KIM_UI_SCREEN")
+            {
+                app.prepare_audit(&screen);
+            }
+            Ok(Box::new(app))
         }),
     );
     match result {

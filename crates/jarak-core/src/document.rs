@@ -352,6 +352,169 @@ impl Document {
         self.change(parts, Kind::Other);
     }
 
+    /// Insert (overwrite) mode: typed text replaces the grapheme after each caret (never a line
+    /// break); a selection is replaced as usual.
+    pub fn overwrite_text(&mut self, s: &str) {
+        let t = self.text.slice(..);
+        let parts = self
+            .sel
+            .ranges()
+            .iter()
+            .map(|r| {
+                if r.is_empty() {
+                    let next = text::next_grapheme(t, r.head);
+                    let line = self.text.char_to_line(r.head);
+                    let end = self.text.line_to_char(line) + text::line_len(self.text.line(line));
+                    (r.head, next.min(end).max(r.head), s.to_string())
+                } else {
+                    (r.from(), r.to(), s.to_string())
+                }
+            })
+            .collect();
+        self.change(parts, Kind::Other);
+    }
+
+    /// The lines the selection touches (a range ending at a line start leaves that line out).
+    fn selected_lines(&self) -> Vec<usize> {
+        let mut out: Vec<usize> = Vec::new();
+        for r in self.sel.ranges() {
+            let first = self.text.char_to_line(r.from());
+            let mut last = self.text.char_to_line(r.to());
+            if last > first && self.text.line_to_char(last) == r.to() {
+                last -= 1;
+            }
+            for l in first..=last {
+                if out.last() != Some(&l) {
+                    out.push(l);
+                }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    /// Tab: with a selection over several lines, indent each of them by one tab; otherwise a
+    /// tab character at each caret.
+    pub fn indent(&mut self) {
+        let multi = self.sel.ranges().iter().any(|r| {
+            !r.is_empty() && self.text.char_to_line(r.from()) != self.text.char_to_line(r.to())
+        });
+        if !multi {
+            self.insert_kind("\t", Kind::Other);
+            return;
+        }
+        let before = self.sel.clone();
+        let lines = self.selected_lines();
+        let parts: Vec<(usize, usize, String)> = lines
+            .iter()
+            .map(|l| {
+                let at = self.text.line_to_char(*l);
+                (at, at, "\t".to_string())
+            })
+            .collect();
+        self.change_keep_selection(&parts, before, &lines, 1);
+    }
+
+    /// Shift+Tab: removes one level of indentation (a tab, or up to `tab_width` spaces) from
+    /// each line the selection touches (the caret's line without a selection).
+    pub fn outdent(&mut self) {
+        let before = self.sel.clone();
+        let lines = self.selected_lines();
+        let parts: Vec<(usize, usize, String)> = lines
+            .iter()
+            .filter_map(|l| {
+                let at = self.text.line_to_char(*l);
+                let line = self.text.line(*l);
+                let n = match line.chars().next() {
+                    Some('\t') => 1,
+                    Some(' ') => line
+                        .chars()
+                        .take(self.tab_width.max(1))
+                        .take_while(|c| *c == ' ')
+                        .count(),
+                    _ => 0,
+                };
+                (n > 0).then(|| (at, at + n, String::new()))
+            })
+            .collect();
+        if parts.is_empty() {
+            return;
+        }
+        let removed: Vec<usize> = parts.iter().map(|(a, b, _)| b - a).collect();
+        self.change_outdent(&parts, before, &removed);
+    }
+
+    /// Applies line-start insertions and keeps the selection over the same text.
+    fn change_keep_selection(
+        &mut self,
+        parts: &[(usize, usize, String)],
+        before: Selection,
+        lines: &[usize],
+        width: usize,
+    ) {
+        let starts: Vec<usize> = lines.iter().map(|l| self.text.line_to_char(*l)).collect();
+        let mut edits = Vec::new();
+        for (from, to, ins) in parts.iter().rev() {
+            let e = Edit {
+                at: *from,
+                removed: self.text.slice(*from..*to).to_string(),
+                inserted: ins.clone(),
+            };
+            Self::apply(&mut self.text, &e);
+            edits.push(e);
+        }
+        // A position moves by the insertions at line starts at or before it.
+        let shift = |p: usize| p + starts.iter().filter(|s| **s <= p).count() * width;
+        let after = before.map(|r| Range {
+            anchor: shift(r.anchor),
+            head: shift(r.head),
+            goal: None,
+        });
+        self.history
+            .record(edits, before, after.clone(), Kind::Other, false);
+        self.sel = after;
+    }
+
+    fn change_outdent(
+        &mut self,
+        parts: &[(usize, usize, String)],
+        before: Selection,
+        removed: &[usize],
+    ) {
+        let cuts: Vec<(usize, usize)> = parts.iter().map(|(a, b, _)| (*a, *b)).collect();
+        let mut edits = Vec::new();
+        for (from, to, ins) in parts.iter().rev() {
+            let e = Edit {
+                at: *from,
+                removed: self.text.slice(*from..*to).to_string(),
+                inserted: ins.clone(),
+            };
+            Self::apply(&mut self.text, &e);
+            edits.push(e);
+        }
+        // A position inside a removed run lands at its start; after it, it moves back by it.
+        let shift = |p: usize| {
+            let mut out = p;
+            for ((a, b), n) in cuts.iter().zip(removed) {
+                if p >= *b {
+                    out -= n;
+                } else if p > *a {
+                    out -= p - a;
+                }
+            }
+            out
+        };
+        let after = before.map(|r| Range {
+            anchor: shift(r.anchor),
+            head: shift(r.head),
+            goal: None,
+        });
+        self.history
+            .record(edits, before, after.clone(), Kind::Other, false);
+        self.sel = after;
+    }
+
     /// Undo the newest step; `false` when there is none.
     pub fn undo(&mut self) -> bool {
         let Some(entry) = self.history.undo() else {

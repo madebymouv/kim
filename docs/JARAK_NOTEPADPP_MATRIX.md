@@ -2,7 +2,8 @@
 
 Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` partial and
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
-rows partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
+Step 110 — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -50,19 +51,19 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| FILE-01 | New untitled document (Ctrl+N) | partial | `JARAK-FR-020` | 87 | T, M | Step 87: `FileDocument::untitled` (tests); the key and the window come with Step 88 |
-| FILE-02 | Open one or several files with a dialog (Ctrl+O) | partial | `JARAK-FR-020` | 87 | T, M | Step 87: `FileDocument::open` with detection (tests, e2e `step87`); the dialog comes with Step 88 |
-| FILE-03 | Open files by drag and drop onto the window | planned | `JARAK-FR-032` | 88 | M | — |
+| FILE-01 | New untitled document (Ctrl+N) | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+N opens a new untitled document (key test); shown with tabs in Step 93 |
+| FILE-02 | Open one or several files with a dialog (Ctrl+O) | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+O with the Windows Open dialog (`GetOpenFileNameW`); the dialog itself not exercised by a test yet |
+| FILE-03 | Open files by drag and drop onto the window | partial | `JARAK-FR-032` | 88 | M | Step 88: files dropped on the window open (`dropped_files`); a real drop not yet verified |
 | FILE-04 | Open containing folder in Explorer / in a command prompt | planned | `JARAK-FR-060` | 93 | T | — |
 | FILE-05 | Open the file in the default viewer (shell association) | planned | `JARAK-FR-060` | 93 | T | — |
 | FILE-06 | Open Folder as Workspace | planned | `JARAK-FR-063` | 93 | T, M | — |
 | FILE-07 | Reload from disk | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::reload` (tests); the command comes with Step 88 |
-| FILE-08 | Save (Ctrl+S) | partial | `JARAK-FR-020` | 87 | T, M | Step 87: atomic `FileDocument::save` keeping bytes, encoding and attributes (fault-injection tests); the key comes with Step 88 |
-| FILE-09 | Save As | partial | `JARAK-FR-020` | 87 | T, M | Step 87: `FileDocument::save_as` (tests); the dialog comes with Step 88 |
+| FILE-08 | Save (Ctrl+S) | supported | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+S, atomic (window test; real desktop: the file written with CRLF, nothing left behind) |
+| FILE-09 | Save As | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+Shift+S and Ctrl+S on an untitled document ask for a name (window test with a scripted dialog); the real dialog not exercised yet |
 | FILE-10 | Save a Copy As (document keeps its path) | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::save_copy` keeps the document's file and dirty state (tests); the dialog comes with Step 88 |
 | FILE-11 | Save All | planned | `JARAK-FR-020` | 93 | T | — |
 | FILE-12 | Rename the file of the document | planned | `JARAK-FR-020` | 93 | T | — |
-| FILE-13 | Close (Ctrl+W) | planned | `JARAK-FR-020` | 87 | T, M | — |
+| FILE-13 | Close (Ctrl+W) | supported | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+W/Ctrl+F4 with the unsaved-changes question (window tests; real desktop) |
 | FILE-14 | Close All | planned | `JARAK-FR-020` | 93 | T | — |
 | FILE-15 | Close more: all but active, to the left, to the right, all unchanged | planned | `JARAK-FR-020` | 93 | T | — |
 | FILE-16 | Move the file to the Recycle Bin | planned | `JARAK-FR-020` | 93 | T | — |
@@ -73,23 +74,23 @@ palette, the headless CLI) follow in §2.
 | FILE-21 | Recent files list | planned | `JARAK-FR-028` | 93 | T | — |
 | FILE-22 | Restore recently closed file (Ctrl+Shift+T) | planned | `JARAK-FR-028` | 93 | T | — |
 | FILE-23 | Open all recent files / empty the recent files list | planned | `JARAK-FR-028` | 93 | T | — |
-| FILE-24 | Exit with unsaved-change prompts | planned | `JARAK-FR-024` | 87 | T, M | — |
-| FILE-25 | Prompt Save / Don't save / Cancel when closing a dirty document | planned | `JARAK-FR-024` | 87 | T, M | — |
+| FILE-24 | Exit with unsaved-change prompts | supported | `JARAK-FR-024` | 87 | T, M | Step 88: closing the window asks for each unsaved document (window test; real desktop: Esc kept it, Enter saved and closed) |
+| FILE-25 | Prompt Save / Don't save / Cancel when closing a dirty document | supported | `JARAK-FR-024` | 87 | T, M | Step 88: Save (Enter) / Don't save / Cancel (Esc) (window tests; real desktop; audited `question` view) |
 
 ### EDIT — Edit menu: clipboard, selection and basic editing (sources U, E)
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| EDIT-01 | Undo / Redo (Ctrl+Z, Ctrl+Y) | partial | `JARAK-FR-013` | 86 | T | Step 86: transactions, grouping, save point and selection restore in `jarak-core` (`document::tests`, 40-seed random test); the keys arrive with the text view (Step 88) |
-| EDIT-02 | Cut / Copy / Paste / Delete | planned | `JARAK-FR-031` | 88 | T, M | — |
-| EDIT-03 | Select All | partial | `JARAK-FR-012` | 86 | T | Step 86: `select.all` command (`command::tests`, `document::tests`); the key arrives with the text view (Step 88) |
+| EDIT-01 | Undo / Redo (Ctrl+Z, Ctrl+Y) | supported | `JARAK-FR-013` | 86 | T | Step 88: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z on the core transactions (window tests; real desktop: Ctrl+Z back to the saved state) |
+| EDIT-02 | Cut / Copy / Paste / Delete | supported | `JARAK-FR-031` | 88 | T, M | Step 88: Ctrl+C/X/V, Ctrl+Insert, Shift+Delete, Shift+Insert, Delete through the Windows clipboard (window test; real desktop: copy and paste) |
+| EDIT-03 | Select All | supported | `JARAK-FR-012` | 86 | T | Step 88: Ctrl+A (window tests; real desktop) |
 | EDIT-04 | Begin/End Select (stream) for keyboard-free range selection | planned | `JARAK-FR-012` | 96 | T | — |
 | EDIT-05 | Begin/End Select in column mode | planned | `JARAK-FR-081` | 96 | T | — |
-| EDIT-06 | Copy the current line when nothing is selected (setting) | planned | `JARAK-FR-031` | 97 | T | — |
+| EDIT-06 | Copy the current line when nothing is selected (setting) | partial | `JARAK-FR-031` | 97 | T | Step 88: Copy and Cut without a selection take the current line (window test); always on until the setting in Step 105 |
 | EDIT-07 | Insert date and time: short, long, customised format | planned | `JARAK-FR-087` | 97 | T | — |
 | EDIT-08 | Copy to clipboard: full path, file name, directory of the document | planned | `JARAK-FR-087` | 97 | T | — |
 | EDIT-09 | Copy to clipboard: names and paths of all open documents | planned | `JARAK-FR-087` | 97 | T | — |
-| EDIT-10 | Increase / decrease line indent (Tab, Shift+Tab) | planned | `JARAK-FR-085` | 88 | T | — |
+| EDIT-10 | Increase / decrease line indent (Tab, Shift+Tab) | supported | `JARAK-FR-085` | 88 | T | Step 88: Tab/Shift+Tab indent and unindent the selected lines, Tab inserts a tab otherwise (core tests, key test) |
 | EDIT-11 | Set read-only for the document / clear the file's read-only attribute | partial | `JARAK-FR-027` | 87 | T | Step 87: read-only files refused and lossy/binary documents read-only with a reason (tests); the menu commands come with Step 88 |
 | EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | planned | `JARAK-FR-027` | 103 | T | — |
 | EDIT-13 | Paste HTML / RTF clipboard content as source | planned | `JARAK-FR-087` | 110 | T | — |
@@ -97,7 +98,7 @@ palette, the headless CLI) follow in §2.
 | EDIT-15 | On selection: search on the internet (explicit, configurable engine) | planned | `JARAK-FR-111` | 102 | T | — |
 | EDIT-16 | Character panel (insert a character by code) | planned | `JARAK-FR-087` | 110 | T | — |
 | EDIT-17 | Clipboard history panel | planned | `JARAK-FR-087` | 110 | T | — |
-| EDIT-18 | Drag and drop of selected text inside the document | planned | `JARAK-FR-032` | 88 | M | — |
+| EDIT-18 | Drag and drop of selected text inside the document | planned | `JARAK-FR-032` | 110 | M | — |
 
 ### CASE — Edit → Convert Case to (sources U, E)
 
@@ -258,8 +259,8 @@ palette, the headless CLI) follow in §2.
 | VIEW-09 | Show all characters | planned | `JARAK-FR-037` | 103 | T | — |
 | VIEW-10 | Show indent guide | planned | `JARAK-FR-037` | 103 | T | — |
 | VIEW-11 | Show wrap symbol | planned | `JARAK-FR-037` | 103 | T | — |
-| VIEW-12 | Zoom in / out / restore (Ctrl+wheel, Ctrl+Num+/-/) | planned | `JARAK-FR-034` | 88 | T | — |
-| VIEW-13 | Word wrap | planned | `JARAK-FR-030` | 88 | T | — |
+| VIEW-12 | Zoom in / out / restore (Ctrl+wheel, Ctrl+Num+/-/) | supported | `JARAK-FR-034` | 88 | T | Step 88: Ctrl+=, Ctrl+-, Ctrl+0, Ctrl+wheel (window test) |
+| VIEW-13 | Word wrap | supported | `JARAK-FR-030` | 88 | T | Step 88: Alt+Z, wrapped selections and caret (window test; audited `editor-wrap` view) |
 | VIEW-14 | Hide lines | planned | `JARAK-FR-104` | 101 | T | — |
 | VIEW-15 | Summary (characters, words, lines, bytes) | planned | `JARAK-FR-104` | 101 | T | — |
 | VIEW-16 | Text direction right-to-left / left-to-right | planned | `JARAK-NFR-008` | 110 | M | — |
@@ -313,7 +314,7 @@ palette, the headless CLI) follow in §2.
 | ENC-13 | Convert to UTF-16 BE BOM / UTF-16 LE BOM | planned | `JARAK-FR-025` | 103 | T | — |
 | ENC-14 | Automatic encoding detection on open | partial | `JARAK-FR-021` | 87 | T | Step 87: BOM, UTF-8, UTF-16 without BOM, then the locale's legacy code page (tests, `jarak info`, e2e `step87`); shown in the status bar with Step 88 |
 | ENC-15 | Default encoding for new documents (setting) | planned | `JARAK-FR-021` | 87 | T | — |
-| ENC-16 | Status-bar encoding and EOL indicators (clickable) | planned | `JARAK-FR-035` | 88 | T, M | — |
+| ENC-16 | Status-bar encoding and EOL indicators (clickable) | partial | `JARAK-FR-035` | 88 | T, M | Step 88: encoding label and line ending (or Mixed EOL) in the status bar (window tests); clickable in Step 103 |
 
 ### LANG — Language menu and syntax highlighting (sources L, P)
 
@@ -446,13 +447,13 @@ palette, the headless CLI) follow in §2.
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | UI-01 | Tab bar with dirty markers, close buttons and context menu | planned | `JARAK-FR-060` | 93 | T, M | — |
-| UI-02 | Status bar: language, length/lines, position, EOL, encoding, insert/overwrite | planned | `JARAK-FR-035` | 88 | T, M | — |
-| UI-03 | Overwrite mode (Insert key) | planned | `JARAK-FR-031` | 88 | T | — |
-| UI-04 | Line number margin | planned | `JARAK-FR-030` | 88 | T, M | — |
-| UI-05 | Current line highlight | planned | `JARAK-FR-030` | 88 | T | — |
+| UI-02 | Status bar: language, length/lines, position, EOL, encoding, insert/overwrite | partial | `JARAK-FR-035` | 88 | T, M | Step 88: Ln/Col, selection, encoding, EOL, language, INS/OVR (window tests, audited views); the length/lines summary comes with Step 101 |
+| UI-03 | Overwrite mode (Insert key) | supported | `JARAK-FR-031` | 88 | T | Step 88: Insert toggles overwrite; typing replaces the next grapheme, never a line break (core test, window test) |
+| UI-04 | Line number margin | supported | `JARAK-FR-030` | 88 | T, M | Step 88: line numbers, the caret's line brighter (audited views, real screenshots) |
+| UI-05 | Current line highlight | supported | `JARAK-FR-030` | 88 | T | Step 88: the caret's line highlighted (audited views) |
 | UI-06 | Vertical edge line(s) at configured columns | planned | `JARAK-FR-037` | 103 | T | — |
 | UI-07 | Clickable links (Ctrl+click) | planned | `JARAK-FR-046` | 89 | T | — |
-| UI-08 | Context menu in the text | planned | `JARAK-FR-031` | 88 | M | — |
+| UI-08 | Context menu in the text | planned | `JARAK-FR-031` | 110 | M | — |
 | UI-09 | Toolbar with icons | not intended | — | 88 | D | — |
 | UI-10 | Menu bar (Jarak: hidden by default, shown with Alt or from the palette) | planned | `JARAK-FR-054` | 92 | T | — |
 

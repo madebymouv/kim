@@ -64,7 +64,7 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
         tabs: 0,
         baseline,
     };
-    let screens: [(&str, &[&str]); 3] = [
+    let screens: [(&str, &[&str]); 4] = [
         (
             "kim",
             &[
@@ -104,6 +104,18 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "settings-shortcuts",
                 "settings-appearance",
                 "settings-advanced",
+            ],
+        ),
+        // Step 88 (ADR 0102): Jarak's editor with a document, empty, with a selection, with word
+        // wrap, and the unsaved-changes question.
+        (
+            "jarak",
+            &[
+                "editor",
+                "editor-empty",
+                "editor-selection",
+                "editor-wrap",
+                "question",
             ],
         ),
     ];
@@ -289,6 +301,8 @@ fn sandbox(dir: &Path) -> (PathBuf, PathBuf) {
 
 /// ADR 0100: the rules a Ddalgak audit shows (no consent: nothing here can run).
 const DDALGAK_FIXTURE: &str = include_str!("../../design/ui-fixtures/ddalgak-rules.json");
+/// Step 88: the document a Jarak audit opens (Korean, tabs, a long line, emoji).
+const JARAK_FIXTURE: &str = include_str!("../../design/ui-fixtures/jarak-sample.md");
 
 /// One egui program's view.
 fn run_egui(root: &Path, out: &Path, r: &Run) -> Result<(PathBuf, PathBuf), String> {
@@ -306,6 +320,22 @@ fn run_egui(root: &Path, out: &Path, r: &Run) -> Result<(PathBuf, PathBuf), Stri
                 format!(r#"{{"theme":"{}","language":"{}"}}"#, r.theme, r.lang),
             );
             ("kim-manager", vec!["--no-hotkeys".into()])
+        }
+        "jarak" => {
+            let mut args = vec![
+                "--instance".into(),
+                format!("ui-audit-{}", std::process::id()),
+                "--lang".into(),
+                r.lang.into(),
+            ];
+            if r.screen != "editor-empty" {
+                let docs = roaming.join("docs");
+                let _ = std::fs::create_dir_all(&docs);
+                let doc = docs.join("sample.md");
+                let _ = std::fs::write(&doc, JARAK_FIXTURE);
+                args.push(format!("{}:3:9", doc.display()));
+            }
+            ("jarak-gui", args)
         }
         "noeul" => (
             "noeul-settings",
@@ -541,6 +571,8 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
             "ddalgak-editor",
             "-p",
             "ddalgak",
+            "-p",
+            "jarak-gui",
         ],
     )?;
     let out = root.join("target").join("ui-audit");

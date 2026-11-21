@@ -56,7 +56,7 @@ COMMANDS:
     e2e --force       Run the e2e suite locally anyway; must be justified in e2e/LEDGER.md.
     e2e-status        Print how many Step issues were processed since the last recorded run
     package <kim|subak|noeul> [--skip-build]
-    ui-audit [--quick] [--only kim|subak|noeul|ddalgak] [--bless]
+    ui-audit [--quick] [--only kim|subak|noeul|ddalgak|jarak] [--bless]
                       ADR 0099: open every audited view of the real programs (sandboxed), check the
                       measured geometry against the design contract and compare screenshots with
                       design/ui-baselines; writes target/ui-audit/report.txt

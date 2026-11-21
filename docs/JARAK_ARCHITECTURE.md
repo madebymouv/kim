@@ -1,7 +1,8 @@
 # Jarak Architecture
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
-integration; Step 86: the text model, §8; Step 87: files and encodings, §9) · Owner: mouv · Decision:
+integration; Step 86: the text model, §8; Step 87: files and encodings, §9; Step 88: the editor
+window, §10) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -11,7 +12,7 @@ integration; Step 86: the text model, §8; Step 87: files and encodings, §9) ·
 | --- | --- | --- | --- |
 | `jarak-core` | — (library) | `paths` (per-user folders), `target` (`file[:line[:column]]` open targets), the text model (`text`, `selection`, `history`, `document`, `command`; §8) | a GUI toolkit, windowing, the clipboard (`cargo xtask deps-check`) |
 | `jarak` | `jarak.exe` | The headless CLI: `version`, `capabilities`, `paths`, `open`, `info` | a GUI toolkit (`deps-check`) |
-| `jarak-gui` | `jarak-gui.exe` | The window shell on `kim-ui` (egui + glow), the single-instance hand-off | — |
+| `jarak-gui` | `jarak-gui.exe` | The editor window on `kim-ui` (egui + glow): the text view, keys, IME, clipboard, open/save/close with the Windows dialogs and the unsaved-changes question, the status bar (§10); the single-instance hand-off | — |
 
 All three ship under one version (`cargo xtask bump` group `jarak`). The later Steps add their
 modules to `jarak-core` (text model, files, search, Markdown render model) and their views to
@@ -194,3 +195,73 @@ read-only file refused and a hidden file still hidden after a save; folders, mis
 oversized files refused; `FileDocument` open/save/edit in EUC-KR/save-as/copy/reload/new file/
 untitled; lossy files refusing save and save-as. e2e `step87_jarak_files.rs` runs `jarak info` on
 such a corpus (first focused run PASS).
+
+## 10. The editor window (Step 88, `jarak-gui`)
+
+- **Text view** (`view.rs`): Jarak draws the document itself on egui's painter — one galley per
+  visible line (`top_line` plus what fits), so cost per frame does not grow with the file. Tabs
+  are expanded to the next stop (wide characters count two columns) with a map between document
+  offsets and drawn characters, so the caret, selections and clicks stay exact. The view scrolls
+  by line plus a pixel offset into the top line (word wrap and huge files need no total height);
+  a thin scrollbar maps to the line index and can be dragged or clicked. Gutter with line numbers
+  (the caret's line brighter), current-line highlight, selections (with an end-of-line mark when a
+  line break is selected, across wrapped rows), the caret in the accent colour (a box in
+  overwrite mode), steady (no blink: no repaint while idle). Word wrap (Alt+Z), zoom (Ctrl+=,
+  Ctrl+−, Ctrl+0, Ctrl+wheel), a read-only document has a warning-coloured frame.
+- **Mouse**: click places the caret (on a grapheme start), Shift+click extends, drag selects (by
+  word after a double click, by line after a triple click), dragging past the edge scrolls, the
+  wheel scrolls (Shift+wheel sideways), files dropped on the window open.
+- **Keys** (`keys.rs`): the standard Windows editing keys — arrows, Ctrl+arrows, Home (smart) /
+  End, Ctrl+Home/End, Page Up/Down, Shift to select, Backspace/Delete (Ctrl for words), Enter
+  (keeps indentation), Tab / Shift+Tab (indent or unindent the selected lines), Insert
+  (overwrite), Ctrl+A/Z/Y/Shift+Z, Ctrl+C/X/V and Ctrl+Insert/Shift+Delete/Shift+Insert,
+  Ctrl+N/O/S/Shift+S/W/F4, Ctrl+Tab between open documents. One document is shown at a time; tabs
+  are Step 93.
+- **IME** (`JARAK-FR-033`): egui's composition events — the composition is drawn at the caret,
+  underlined in the accent colour, and only the committed text enters the document; the IME
+  window is told where the caret is (`IMEOutput`).
+- **Clipboard** (`clipboard.rs`): eframe's clipboard shortcuts are off; Jarak uses the Windows
+  clipboard itself (`CF_UNICODETEXT`, retrying while another program holds it), only on Copy,
+  Cut or Paste. Copy without a selection takes the current line (as Notepad++ does by default);
+  pasted line endings become the document's.
+- **Files**: Ctrl+O and Save As use the Windows dialogs (`GetOpenFileNameW` /
+  `GetSaveFileNameW`); Ctrl+S on an untitled document asks for a name; a save shows "Saved …" or
+  why not in the status bar; a read-only document refuses edits and says why.
+- **Unsaved changes** (`JARAK-FR-024`): Ctrl+W and closing the window ask "Save changes to …?"
+  with Save (default, Enter), Don't save and Cancel (Esc); closing the window asks for each
+  unsaved document in turn and closes only when all are answered; a failed or cancelled save
+  closes nothing. A UI audit run (`KIM_UI_INSPECT`) closes without asking (it holds no user data).
+- **Status bar**: Ln/Col (display columns, 1-based) and the selected count, encoding label,
+  line ending (or "Mixed EOL"), language (Markdown by extension; detection is Step 98),
+  INS/OVR, zoom, Wrap, Read-only, the document number when several are open, a message on the
+  left, the gear (`size::GEAR`) at the right end.
+- **UI audit**: `cargo xtask ui-audit --only jarak` — editor, empty, selection, wrap and the
+  question at 100/125/150/200 % dark English and 150 % light Korean: 25 runs, 0 layout failures
+  (the first run found the gear at 24 instead of `size::GEAR` 28 and an audit close blocked by
+  the question; both fixed).
+
+| Measurement (release, this PC) | Result | Budget |
+| --- | --- | --- |
+| Titled window after start: empty / 1 MB / 10 MB / 100 MB | 247 / 224 / 307 / 577 ms | ≤ 400 ms empty, ≤ 600 ms 1 MB (`JARAK-NFR-001`), ≤ 3 s 100 MB (`JARAK-NFR-004`) |
+| Idle CPU over 10 s with each of those open | 0 ms | ≈ 0 (`JARAK-NFR-003`) |
+| Working set: empty / 10 MB / 100 MB | 91.0 / 107.1 / 211.6 MB (private 113.8 / 133.7 / 238.7) | ≤ 100 MB empty; 100 MB file ≤ 3× (2.4×) |
+| Keystroke frame in a 10 MB document (headless CPU layout, `tests/perf.rs`) | p50 0.11 ms, p95 0.13 ms, max 1.65 ms | ≤ 16 ms (`JARAK-NFR-002`) |
+| Close right after the window appears | ends at once | (Step 85 observation; not reproduced) |
+
+The first keystroke measurement was p95 12.1 ms: the status bar recounted the line endings of
+the whole document every frame. It is now counted once per history state — in a document above
+two million characters only after half a second without edits (one scheduled repaint).
+
+**Real desktop (test-started window, sandboxed profile, every key only while the test window
+had the foreground, the maintainer idle, the clipboard restored):** typing English; Enter;
+Korean composed by the real IME (Hangul key, `g k s r m f`, Space → `한글`); Ctrl+S creating the
+file with CRLF; Ctrl+Z back to the saved state (title without `*`); Ctrl+A Ctrl+C (the clipboard
+held the text); Ctrl+V of LF text inserted with CRLF; Ctrl+Home Shift+End Delete and undo;
+closing asked (Esc kept the window, Enter saved and closed, exit 0); no temporary file left. A
+click past the end of a line, a double click replacing a word, a drag from the gutter selecting
+three lines, three wheel notches scrolling eight lines.
+
+**Known limits:** egui's fonts draw a ZWJ emoji family as separate glyphs and a flag as letters
+(the caret still treats each as one); the wheel scrolls about 2.7 lines per notch (egui's points
+per notch, not Windows' "lines to scroll" setting); dragging selected text inside the document,
+the text context menu and clickable status-bar items are later Steps (110, 110, 103).
