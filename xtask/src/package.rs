@@ -32,7 +32,7 @@ pub fn tool_crates() -> impl Iterator<Item = (&'static str, &'static [&'static s
     TOOLS.iter().map(|t| (t.id, t.crates))
 }
 
-const TOOLS: [Tool; 4] = [
+const TOOLS: [Tool; 5] = [
     Tool {
         id: "kim",
         crates: &["kim", "kim-manager", "kim-setup"],
@@ -64,6 +64,14 @@ const TOOLS: [Tool; 4] = [
         exes: &["ddalgak.exe", "ddalgak-gui.exe", "ddalgak-editor.exe"],
         entrypoint: "ddalgak.exe",
         summary: "Ddalgak: key remapping and automation (ddalgak.exe: the CLI, MCP adapter and Kim interop provider; ddalgak-gui.exe: the tray app that owns the engine; ddalgak-editor.exe: the rule editor)",
+    },
+    // Step 85 (ADR 0102): Jarak, the text editor (the headless CLI and the window).
+    Tool {
+        id: "jarak",
+        crates: &["jarak", "jarak-gui"],
+        exes: &["jarak.exe", "jarak-gui.exe"],
+        entrypoint: "jarak.exe",
+        summary: "Jarak: a native text editor for plain text, code and Markdown (jarak.exe: the headless CLI; jarak-gui.exe: the editor window)",
     },
 ];
 

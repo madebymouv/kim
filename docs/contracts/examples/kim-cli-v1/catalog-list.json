@@ -2,7 +2,7 @@
   "command": "catalog.list",
   "data": {
     "catalog": {
-      "catalog_version": 10,
+      "catalog_version": 11,
       "expires_at": "2027-05-04T00:00:00Z",
       "generated_at": "2026-11-04T00:00:00Z",
       "publisher": "mouv",
@@ -25,7 +25,7 @@
         "availability": "planned",
         "id": "kim",
         "incompatible_reason": null,
-        "installed_version": "0.0.5",
+        "installed_version": "0.0.6",
         "latest": null,
         "latest_compatible": null,
         "name": "Kim",
@@ -71,6 +71,19 @@
         "note": null,
         "status": "unreleased",
         "summary": "Automation engine: one key press runs the remaps, text, launches and macros you define",
+        "support": "in-development"
+      },
+      {
+        "availability": "planned",
+        "id": "jarak",
+        "incompatible_reason": null,
+        "installed_version": null,
+        "latest": null,
+        "latest_compatible": null,
+        "name": "Jarak",
+        "note": null,
+        "status": "unreleased",
+        "summary": "Text editor: Notepad++-class editing, Vim keys and instant Markdown preview with pasted images",
         "support": "in-development"
       }
     ]

@@ -1,7 +1,7 @@
 # Jarak–Notepad++ Feature Parity Matrix
 
-Status: **current** (inventory, Step 84; every row `planned` or `not intended` — the Step that
-implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` partial and
+`HELP-06` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -417,12 +417,12 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| HELP-01 | Command line: open files | planned | `JARAK-FR-003` | 85 | T | — |
-| HELP-02 | Command line: -n line / -c column / -p position | planned | `JARAK-FR-003` | 85 | T | — |
+| HELP-01 | Command line: open files | partial | `JARAK-FR-003` | 85 | T | Step 85: `jarak open` / `jarak-gui <file>…` take the files (single-instance hand-off, `tests/window.rs`, real desktop); the files are shown, not loaded, until Steps 87–88 |
+| HELP-02 | Command line: -n line / -c column / -p position | partial | `JARAK-FR-003` | 85 | T | Step 85: `file:line:column` parsed (`jarak-core` `target` tests, `open --dry-run` in e2e step85); the caret moves there once the text view exists (Step 88) |
 | HELP-03 | Command line: -l language / -udl | planned | `JARAK-FR-150` | 107 | T | — |
 | HELP-04 | Command line: -ro read-only | planned | `JARAK-FR-150` | 107 | T | — |
 | HELP-05 | Command line: -nosession / -openSession | planned | `JARAK-FR-150` | 107 | T | — |
-| HELP-06 | Command line: -multiInst (separate instance) | planned | `JARAK-FR-002` | 85 | T | — |
+| HELP-06 | Command line: -multiInst (separate instance) | supported | `JARAK-FR-002` | 85 | T | Step 85: `--new-window` / `jarak open --new-window` start a separate window; without it a second start hands its files to the running window (real desktop: title changed, second process exit 0) |
 | HELP-07 | Command line: -x / -y window position, -alwaysOnTop | planned | `JARAK-FR-150` | 110 | T | — |
 | HELP-08 | Command line: -qt / -qf ghost typing | not intended | — | 107 | D | — |
 | HELP-09 | Built-in updater (WinGUp) | not intended | — | 111 | D | — |

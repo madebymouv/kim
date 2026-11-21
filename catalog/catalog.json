@@ -1,7 +1,7 @@
 {
   "schema": "kim.catalog",
   "schema_version": 1,
-  "catalog_version": 10,
+  "catalog_version": 11,
   "generated_at": "2026-11-04T00:00:00Z",
   "expires_at": "2027-05-04T00:00:00Z",
   "publisher": "mouv",
@@ -323,6 +323,62 @@
           "id": "autostart",
           "detail": "Starts when you sign in only if you turn that on",
           "opt_in": true
+        }
+      ]
+    },
+    {
+      "id": "jarak",
+      "name": "Jarak",
+      "summary": "Text editor: Notepad++-class editing, Vim keys and instant Markdown preview with pasted images",
+      "description": "Jarak (자락) is a small native editor for plain text, code and Markdown: tabs and two views, powerful search and replace, multiple carets and column editing, encodings and line endings, syntax highlighting, optional Vim-style modal editing, and Markdown you can switch to a rendered preview with one key, with screenshots pasted by Ctrl+V into files next to the document. It never changes a file unless you save. In development; not released yet.",
+      "homepage": "https://github.com/madebymouv/kim",
+      "license": "MIT OR Apache-2.0",
+      "support": "in-development",
+      "releases": [],
+      "features": [
+        "Planned: tabs, split views, regex search, find in files, multiple carets, column mode",
+        "Planned: Markdown with an instant source/preview switch and Ctrl+V image paste",
+        "Planned: optional Vim-style modal editing with a visible mode and a command palette",
+        "Never writes a file unless you save; atomic saves and crash recovery",
+        "Headless CLI for scripts and agents (only `jarak open` opens a window)"
+      ],
+      "runs": "window",
+      "entry_points": [
+        {
+          "kind": "gui",
+          "command": "jarak-gui",
+          "summary": "Opens the Jarak editor window; a running window takes the files instead",
+          "status": "planned"
+        },
+        {
+          "kind": "cli",
+          "command": "jarak open <file>[:<line>[:<column>]]",
+          "summary": "Opens files in the Jarak window at a line",
+          "status": "planned"
+        },
+        {
+          "kind": "cli",
+          "command": "jarak capabilities --json",
+          "summary": "Lists Jarak's commands without opening a window",
+          "status": "planned"
+        }
+      ],
+      "links": [
+        {
+          "kind": "docs",
+          "title": "Jarak philosophy, requirements and Notepad++ parity matrix (Step 84)",
+          "url": "https://github.com/madebymouv/kim/blob/main/docs/JARAK_PHILOSOPHY.md"
+        },
+        {
+          "kind": "source",
+          "title": "Jarak roadmap (Steps 84–111)",
+          "url": "https://github.com/madebymouv/kim/issues/104"
+        }
+      ],
+      "permissions": [
+        {
+          "id": "clipboard",
+          "detail": "Reads the clipboard only when you paste (Ctrl+V), for text and images; never in the background"
         }
       ]
     }

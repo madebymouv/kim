@@ -26,6 +26,9 @@ pub const GUI_CRATES: &[&str] = &[
 /// Subak window `subak-gui`, which is plain Win32 (ADR 0039).
 pub const HEADLESS: &[&str] = &[
     "ddalgak",
+    // ADR 0102: Jarak's CLI and core; the window is the separate `jarak-gui` package.
+    "jarak",
+    "jarak-core",
     "kim",
     "kim-hotkeys",
     "noeul",

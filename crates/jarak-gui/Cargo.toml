@@ -1,0 +1,43 @@
+[package]
+name = "jarak-gui"
+version = "0.0.2"
+description = "Jarak (자락): the editor window (egui + glow through kim-ui); one process per user session"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# ADR 0102: the window is its own package, so `jarak.exe` (the headless CLI) links no GUI toolkit.
+[[bin]]
+name = "jarak-gui"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+jarak-core = { version = "0.0.2", path = "../jarak-core" }
+kim-ui = { version = "0.0.4", path = "../kim-ui" }
+kim-design = { version = "0.0.3", path = "../kim-design" }
+# ADR 0014: egui + glow for GUI chrome, AccessKit for UI Automation, the same pin as the other
+# Kim windows.
+eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
+serde_json = "1.0.154"
+
+[target."cfg(windows)".dependencies]
+# One window per user session (JARAK-FR-002): a named mutex marks the owner, a named event tells
+# it that a second start left files in the hand-off folder.
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+egui_kittest = "=0.37.0"
+
+[build-dependencies]
+kim-winres = { version = "0.0.1", path = "../kim-winres" }

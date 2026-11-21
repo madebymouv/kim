@@ -1,4 +1,4 @@
-"""Generate the Noeul and Ddalgak program icons (ADR 0090).
+"""Generate the Noeul, Ddalgak and Jarak program icons (ADR 0090, ADR 0102).
 
 Developer-only asset tool (not part of any shipped binary). Requires Pillow.
 
@@ -9,6 +9,8 @@ Both icons share Subak's tile (assets/subak/subak.svg): a 40-unit rounded square
 
 * Noeul (노을, the evening glow): a striped setting sun on a horizon with its reflection.
 * Ddalgak (딸깍, the sound of a click): a mint keycap pressed into its base, with click marks.
+* Jarak (자락, the hem of a cloth): a page with a folded corner, three lines of text and the
+  purple caret of the design system's accent.
 
 The SVG masters below are the source of truth for the geometry; this script draws the same
 shapes supersampled and writes the PNG sizes and a PNG-compressed multi-size .ico.
@@ -83,6 +85,20 @@ def ddalgak():
     return img
 
 
+def jarak():
+    img, d, u = canvas()
+    tile(d, u)
+    # The page with its top-right corner folded over.
+    d.rounded_rectangle([10.0 * u, 7.5 * u, 30.0 * u, 32.5 * u], radius=2.2 * u, fill=rgba("#E8E6F0"))
+    d.polygon([(25.0 * u, 7.0 * u), (30.5 * u, 7.0 * u), (30.5 * u, 12.5 * u)], fill=rgba(TILE))
+    d.polygon([(25.0 * u, 7.5 * u), (25.0 * u, 12.5 * u), (30.0 * u, 12.5 * u)], fill=rgba("#A9A6B8"))
+    # Three lines of text, the last one shorter, and the caret after it.
+    for y, w in [(15.0, 14.0), (19.5, 11.0), (24.0, 6.5)]:
+        d.rounded_rectangle([13.0 * u, y * u, (13.0 + w) * u, (y + 2.0) * u], radius=1.0 * u, fill=rgba("#55536A"))
+    d.rounded_rectangle([20.8 * u, 22.6 * u, 23.0 * u, 27.4 * u], radius=0.6 * u, fill=rgba("#9B86F0"))
+    return img
+
+
 def write(name, master):
     out = ROOT / "assets" / name
     out.mkdir(parents=True, exist_ok=True)
@@ -108,3 +124,4 @@ def write(name, master):
 if __name__ == "__main__":
     write("noeul", noeul())
     write("ddalgak", ddalgak())
+    write("jarak", jarak())

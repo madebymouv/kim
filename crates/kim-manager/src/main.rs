@@ -40,7 +40,8 @@ fn main() -> eframe::Result {
     let [mw, mh] = kim_manager::MIN_SIZE;
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Kim")
-        // ADR 0090: a small launcher: three tiles and the gear, generous space around them.
+        // ADR 0090: a small launcher: the tool tiles (four since ADR 0102) and the gear, generous
+        // space around them.
         .with_inner_size([w * zoom, h * zoom])
         .with_min_inner_size([mw * zoom, mh * zoom]);
     viewport = kim_ui::inspect::audit_viewport(viewport);

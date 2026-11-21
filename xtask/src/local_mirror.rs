@@ -3,7 +3,7 @@
 //! on this PC without a published release and without the network.
 //!
 //! - Builds the release programs once, then `cargo xtask package <tool> --skip-build` for kim,
-//!   subak, noeul and ddalgak (deterministic zips, `target/dist`).
+//!   subak, noeul, ddalgak and jarak (deterministic zips, `target/dist`).
 //! - Copies the zips into `<out>` (default `kim-local` at the repository root, next to the
 //!   root `kim.exe`) and writes `<out>/catalog.json`: the bundled catalog with one release per
 //!   tool whose package is a `file:///` URL into `<out>`, `catalog_version` one above the

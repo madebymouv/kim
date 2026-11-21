@@ -2,7 +2,8 @@
 //! version of the tools it changes by one patch step (`0.0.1` → `0.0.2`).
 //!
 //! - A *group* is what ships under one version: `kim` (kim, kim-manager, kim-setup), `subak`
-//!   (subak, subak-term), `noeul` (noeul, noeul-settings), `ddalgak` (ddalgak, ddalgak-editor);
+//!   (subak, subak-term), `noeul` (noeul, noeul-settings), `ddalgak` (ddalgak, ddalgak-editor),
+//!   `jarak` (jarak, jarak-core, jarak-gui; ADR 0102);
 //!   every other workspace library (kim-design, kim-ui, kim-hotkeys, kim-winres) is its own group.
 //! - `bump --changed` reads `git status`: a crate changed outside its `tests/`, `examples/` and
 //!   `benches/` marks its group, and every group that depends on a marked one (a shared library
@@ -20,17 +21,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const GROUPS: [(&str, &[&str]); 4] = [
+const GROUPS: [(&str, &[&str]); 5] = [
     ("kim", &["kim", "kim-manager", "kim-setup"]),
     ("subak", &["subak", "subak-term"]),
     ("noeul", &["noeul", "noeul-settings"]),
     ("ddalgak", &["ddalgak", "ddalgak-editor"]),
+    ("jarak", &["jarak", "jarak-core", "jarak-gui"]),
 ];
 /// Never versioned by this tool (development helpers, not shipped).
 const SKIP: [&str; 2] = ["xtask", "kim-e2e"];
 /// Published contract examples that tests compare with a group's real output: the group's
 /// version is their top-level or `data.version`. Kim's CLI golden files are re-blessed instead.
-const EXAMPLES: [(&str, &str); 5] = [
+const EXAMPLES: [(&str, &str); 6] = [
     (
         "kim",
         "docs/contracts/examples/tool-capabilities-v1/kim.json",
@@ -50,6 +52,10 @@ const EXAMPLES: [(&str, &str); 5] = [
     (
         "ddalgak",
         "docs/contracts/examples/tool-capabilities-v1/ddalgak.json",
+    ),
+    (
+        "jarak",
+        "docs/contracts/examples/tool-capabilities-v1/jarak.json",
     ),
 ];
 const JSON_FILES: [&str; 3] = [

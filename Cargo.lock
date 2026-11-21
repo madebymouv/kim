@@ -1565,6 +1565,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "jarak"
+version = "0.0.2"
+dependencies = [
+ "jarak-core",
+ "kim-winres",
+ "serde_json",
+]
+
+[[package]]
+name = "jarak-core"
+version = "0.0.2"
+
+[[package]]
+name = "jarak-gui"
+version = "0.0.2"
+dependencies = [
+ "eframe",
+ "egui_kittest",
+ "jarak-core",
+ "kim-design",
+ "kim-ui",
+ "kim-winres",
+ "serde_json",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "jni"
 version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1651,7 +1678,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kim"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "clap",
  "ctrlc",
@@ -1709,7 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "kim-manager"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "eframe",
  "egui_kittest",
@@ -1727,7 +1754,7 @@ dependencies = [
 
 [[package]]
 name = "kim-setup"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "kim",
  "kim-winres",

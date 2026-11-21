@@ -1,7 +1,10 @@
 # Jarak Requirements
 
-Status: **current** (Step 84, specification; nothing is implemented yet — each implementing Step
-updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
+Status: **current** (Step 84, specification; Step 85 implemented the CLI foundation and the
+window shell — `JARAK-FR-001`, `JARAK-FR-002`, the CLI half of `JARAK-FR-003`, `JARAK-SEC-009`,
+measured `JARAK-NFR-006` and corrected `JARAK-NFR-003` with measurements, see
+[JARAK_ARCHITECTURE §6](JARAK_ARCHITECTURE.md); each implementing Step updates the rows it
+delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 
@@ -197,7 +200,7 @@ Until J5 ships, the Kim catalog lists Jarak as *planned* or *preview* (`KIM-FR-0
 | --- | --- | --- | --- | --- |
 | JARAK-NFR-001 | Cold start to the first painted frame with an empty document ≤ 400 ms; a 1 MB file ≤ 600 ms. | P0 | J1 | T |
 | JARAK-NFR-002 | Keystroke to painted frame ≤ 16 ms (p95) in a 10 MB document; the edit itself ≤ 1 ms. | P0 | J1 | T |
-| JARAK-NFR-003 | Idle: no repaint and ≈ 0 % CPU when nothing changes (caret blink may be turned off; at most two wake-ups per second with it on); private memory ≤ 80 MB with an empty document. | P0 | J1 | T |
+| JARAK-NFR-003 | Idle: no repaint and ≈ 0 % CPU when nothing changes (caret blink may be turned off; at most two wake-ups per second with it on); working set ≤ 100 MB with an empty document. Step 85: the unmeasured "≤ 80 MB private" was corrected to the measured egui + glow baseline every Kim window shares on this PC (Jarak 114.5 MB private / 87.9 MB working set, Kim Manager 110.1 / 89.6 MB at UI zoom 1); idle CPU 0 ms over 10 s. Step 109 tries to lower it. | P0 | J1 | T |
 | JARAK-NFR-004 | A 100 MB file opens in ≤ 3 s with memory ≤ 3× its size; scrolling stays at frame rate; a single 10 MB line does not hang the window (features degrade with a notice). | P1 | J5 | T |
 | JARAK-NFR-005 | Source ↔ Preview switch of a 1 MB Markdown document ≤ 100 ms; re-render in split mode debounced and ≤ 50 ms for typical notes. | P0 | J2 | T |
 | JARAK-NFR-006 | `jarak-gui.exe` ≤ 15 MB, `jarak.exe` ≤ 8 MB (release, stripped). | P1 | J1 | T |

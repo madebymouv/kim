@@ -1,6 +1,6 @@
 //! Headless UI tests for Kim Manager's launcher (ADR 0090; egui_kittest: no window, no GPU). The
 //! UI is driven through its accessibility tree, like a screen-reader user would, against a
-//! sandboxed backend: three tiles (Subak, Noeul, Ddalgak), their right-click menus, the install
+//! sandboxed backend: four tiles (Subak, Noeul, Ddalgak, Jarak), their right-click menus, the install
 //! and uninstall confirmations, Information, and Settings behind the gear.
 #![cfg(windows)]
 
@@ -97,6 +97,7 @@ fn programs(id: &str) -> Vec<(&'static str, &'static str)> {
     match id {
         "subak" => vec![("subak.exe", CMD), ("subak-gui.exe", CMD)],
         "noeul" => vec![("noeul.exe", CMD), ("noeulw.exe", CMD)],
+        "jarak" => vec![("jarak.exe", CMD), ("jarak-gui.exe", CMD)],
         _ => vec![
             ("ddalgak.exe", CMD),
             ("ddalgak-gui.exe", CMD),
@@ -146,7 +147,7 @@ fn backend_with(sb: &Sandbox, released: &[(&str, &str, Vec<u8>)]) -> Backend {
 
 /// All three tools released at `version`.
 fn all_released(sb: &Sandbox, version: &str) -> Backend {
-    let r: Vec<(&str, &str, Vec<u8>)> = ["subak", "noeul", "ddalgak"]
+    let r: Vec<(&str, &str, Vec<u8>)> = ["subak", "noeul", "ddalgak", "jarak"]
         .iter()
         .map(|id| (*id, version, package(&programs(id))))
         .collect();
@@ -173,7 +174,7 @@ fn app(be: Backend) -> (KimManagerApp, Started) {
 }
 
 fn harness(app: KimManagerApp) -> Harness<'static, KimManagerApp> {
-    sized(app, 368.0, 224.0)
+    sized(app, kim_manager::BASE_SIZE[0], kim_manager::BASE_SIZE[1])
 }
 
 fn sized(app: KimManagerApp, w: f32, h: f32) -> Harness<'static, KimManagerApp> {
@@ -199,8 +200,8 @@ fn programs_entries(paths: &Paths) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// ADR 0090: the whole main view is three tiles in the order Subak, Noeul, Ddalgak from the
-/// upper-left corner and the gear in the lower-right corner (also after a resize); no sidebar,
+/// ADR 0090: the whole main view is the tiles in the order Subak, Noeul, Ddalgak, Jarak (ADR
+/// 0102) from the upper-left corner and the gear in the lower-right corner (also after a resize); no sidebar,
 /// toolbar, tabs, table or details pane. Opening Kim installs nothing (KIM-FR-002).
 #[test]
 fn the_launcher_is_three_tiles_in_order_and_a_gear() {
@@ -214,11 +215,17 @@ fn the_launcher_is_three_tiles_in_order_and_a_gear() {
         "Subak, not installed",
         "Noeul, not installed",
         "Ddalgak, not installed",
+        "Jarak, not installed",
     ]
     .iter()
     .map(|l| h.get_by_label(l).rect())
     .collect();
-    assert!(tiles[0].left() < tiles[1].left() && tiles[1].left() < tiles[2].left());
+    assert!(tiles.windows(2).all(|w| w[0].left() < w[1].left()));
+    assert!(
+        tiles[3].right() <= kim_manager::BASE_SIZE[0] - 24.0,
+        "the fourth tile fits with the margin: {:?}",
+        tiles[3]
+    );
     assert!(
         tiles.iter().all(|r| (r.top() - tiles[0].top()).abs() < 0.5),
         "one row"
@@ -503,7 +510,7 @@ fn right_click_menus_fit_the_state() {
     h.run();
     assert_eq!(
         h.ctx.content_rect().width(),
-        368.0,
+        kim_manager::BASE_SIZE[0],
         "back to the launcher's size"
     );
 }
@@ -535,7 +542,9 @@ fn uninstall_needs_confirmation_and_keeps_data() {
     for b in ["Keep installed", "Uninstall"] {
         let r = h.get_by_label(b).rect();
         assert!(
-            r.left() >= 0.0 && r.right() <= 368.0 && r.bottom() <= 224.0,
+            r.left() >= 0.0
+                && r.right() <= kim_manager::BASE_SIZE[0]
+                && r.bottom() <= kim_manager::BASE_SIZE[1],
             "{b}: {r:?}"
         );
     }
@@ -969,7 +978,11 @@ fn open_starts_each_tools_own_window_program() {
         kim_manager::launches("ddalgak")[0].also,
         ["ddalgak-gui.exe"]
     );
-    assert_eq!(kim_manager::LAUNCHER_TOOLS, ["subak", "noeul", "ddalgak"]);
+    assert_eq!(p("jarak"), ["jarak-gui.exe"]);
+    assert_eq!(
+        kim_manager::LAUNCHER_TOOLS,
+        ["subak", "noeul", "ddalgak", "jarak"]
+    );
 }
 
 /// ADR 0090: a tile that is not installed is grey (no colour left in the icon).
@@ -1002,7 +1015,7 @@ fn the_programs_carry_their_icons() {
         kim_winres::version_string(v, "FileDescription").as_deref(),
         Some("Kim Manager")
     );
-    for name in ["noeul", "ddalgak"] {
+    for name in ["noeul", "ddalgak", "jarak"] {
         let ico = std::fs::read(root.join(format!("assets/{name}/{name}.ico"))).unwrap();
         assert_eq!(
             kim_winres::parse_ico(&ico).unwrap().len(),
@@ -1020,7 +1033,10 @@ fn the_layout_holds_at_other_display_scales() {
         let sb = Sandbox::new(&format!("dpi-{scale}"));
         let (app, _) = app(all_released(&sb, "1.0.0"));
         let mut h = Harness::builder()
-            .with_size(egui::vec2(368.0, 224.0))
+            .with_size(egui::vec2(
+                kim_manager::BASE_SIZE[0],
+                kim_manager::BASE_SIZE[1],
+            ))
             .with_pixels_per_point(scale)
             .build_ui_state(|ui, app: &mut KimManagerApp| app.ui(ui), app);
         h.run();

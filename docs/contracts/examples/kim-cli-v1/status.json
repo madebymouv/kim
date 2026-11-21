@@ -2,7 +2,7 @@
   "command": "status",
   "data": {
     "catalog": {
-      "catalog_version": 10,
+      "catalog_version": 11,
       "expires_at": "2027-05-04T00:00:00Z",
       "generated_at": "2026-11-04T00:00:00Z",
       "publisher": "mouv",
@@ -17,7 +17,7 @@
       "build": "debug",
       "cli_contract": 1,
       "executable": "C:\\Users\\me\\bin\\kim.exe",
-      "version": "0.0.5"
+      "version": "0.0.6"
     },
     "paths": {
       "kim_data": "C:\\Users\\me\\AppData\\Local\\mouv\\kim",

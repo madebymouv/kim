@@ -61,7 +61,7 @@ COMMANDS:
                       measured geometry against the design contract and compare screenshots with
                       design/ui-baselines; writes target/ui-audit/report.txt
     local-mirror --key <file> [--out <dir>] [--skip-build]
-                      Package kim, subak, noeul, ddalgak into a signed local mirror (kim-local/) Kim Manager can install from (ADR 0089)
+                      Package kim, subak, noeul, ddalgak, jarak into a signed local mirror (kim-local/) Kim Manager can install from (ADR 0089)
     bench-noeul [--record|--check]   Noeul's budgets (NOEUL-NFR-001…006), release build, nothing visible
     bench-ddalgak [--record|--check] Ddalgak's budgets (DDALGAK-NFR-001…004), the test host, nothing visible
                       Build the Windows release zip (programs, capabilities.json, licenses,
@@ -334,6 +334,10 @@ fn run_e2e(root: &Path, force: bool, scheduled: bool) -> Result<(), String> {
             "ddalgak",
             "--package",
             "ddalgak-editor",
+            "--package",
+            "jarak",
+            "--package",
+            "jarak-gui",
             // step43 packs Kim Setup with kim-manager.exe next to kim.exe.
             "--package",
             "kim-manager",

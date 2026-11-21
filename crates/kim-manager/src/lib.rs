@@ -114,10 +114,19 @@ pub fn launches(tool: &str) -> &'static [Launch] {
             hint: "Ddalgak runs in the notification area; its engine stays off until you turn it on.",
         },
     ];
+    // ADR 0102: Jarak's window (a running window takes the start and comes to the front).
+    const JARAK: &[Launch] = &[Launch {
+        label: "Open Jarak",
+        program: "jarak-gui.exe",
+        args: &[],
+        also: &[],
+        hint: "",
+    }];
     match tool {
         "subak" => SUBAK,
         "noeul" => NOEUL,
         "ddalgak" => DDALGAK,
+        "jarak" => JARAK,
         _ => &[],
     }
 }
@@ -1174,7 +1183,7 @@ impl KimManagerApp {
         );
     }
 
-    /// The whole main view: three tiles from the upper-left corner, the gear in the
+    /// The whole main view: the tool tiles from the upper-left corner, the gear in the
     /// lower-right corner and, only while there is something to say, one quiet line of text.
     fn launcher(&mut self, ui: &mut egui::Ui) {
         let c = theme::Colors::get();
@@ -2458,7 +2467,7 @@ impl KimManagerApp {
 }
 
 /// ADR 0090: the launcher's tiles, in this order.
-pub const LAUNCHER_TOOLS: [&str; 3] = ["subak", "noeul", "ddalgak"];
+pub const LAUNCHER_TOOLS: [&str; 4] = ["subak", "noeul", "ddalgak", "jarak"];
 
 /// What a tile shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2578,9 +2587,10 @@ pub fn ui_prefs_path(settings: &Path) -> PathBuf {
 
 impl Prefs {}
 
-/// The launcher's size in points at 100 % (ADR 0090) and its minimum.
-pub const BASE_SIZE: [f32; 2] = [368.0, 224.0];
-pub const MIN_SIZE: [f32; 2] = [336.0, 196.0];
+/// The launcher's size in points at 100 % (ADR 0090) and its minimum; one tile (88 + 8) wider
+/// since Jarak became the fourth tool (ADR 0102).
+pub const BASE_SIZE: [f32; 2] = [464.0, 224.0];
+pub const MIN_SIZE: [f32; 2] = [432.0, 196.0];
 /// The sizes Settings → General offers besides Auto (percent): the UI zooms every Kim program
 /// shares (ADR 0099).
 pub const SCALES: [u16; 5] = kim_ui::design::scale::CHOICES;
@@ -2695,6 +2705,9 @@ fn configure(id: &str) -> Configure {
             also: &[],
             hint: "",
         }),
+        "jarak" => Configure::Note(
+            "Jarak's Settings window arrives with Step 105 (#124); there is nothing to set yet.",
+        ),
         _ => Configure::Note(
             "Subak keeps its settings in its config file: `subak config show`, `subak config set <key> <value>`",
         ),
@@ -2718,6 +2731,7 @@ fn icon_png(id: &str) -> Option<&'static [u8]> {
         "subak" => include_bytes!("../../../assets/subak/subak-256.png"),
         "noeul" => include_bytes!("../../../assets/noeul/noeul-256.png"),
         "ddalgak" => include_bytes!("../../../assets/ddalgak/ddalgak-256.png"),
+        "jarak" => include_bytes!("../../../assets/jarak/jarak-256.png"),
         "kim" => include_bytes!("../../../assets/icon/kim-128.png"),
         _ => return None,
     })

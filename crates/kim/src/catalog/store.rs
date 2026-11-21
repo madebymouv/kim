@@ -424,7 +424,7 @@ mod tests {
         };
         let c = super::super::parse(BUNDLED_CATALOG).unwrap();
         let ids: Vec<&str> = c.tools.iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(ids, ["kim", "subak", "noeul", "ddalgak"]);
+        assert_eq!(ids, ["kim", "subak", "noeul", "ddalgak", "jarak"]);
         assert!(c.catalog_version >= 3);
         for t in &c.tools {
             assert_eq!(Availability::of(t), Availability::Planned, "{}", t.id);
@@ -465,6 +465,20 @@ mod tests {
             let s = t.shortcuts.as_ref().expect("shortcut summary");
             assert!(KNOWN_BACKENDS.contains(&s.backend.as_str()));
         }
+        // Step 85 (ADR 0102): Jarak is a window program, planned, that only reads the clipboard
+        // when the user pastes; no hook, no hotkeys, no autostart.
+        let jarak = c.tool("jarak").unwrap();
+        assert_eq!(jarak.runs.as_deref(), Some("window"));
+        assert!(jarak.entry_points.iter().any(|e| e.kind == "cli"));
+        assert!(
+            jarak
+                .entry_points
+                .iter()
+                .all(|e| e.status == EntryStatus::Planned)
+        );
+        assert!(jarak.links.iter().any(|l| l.kind == "docs"));
+        let jp: Vec<&str> = jarak.permissions.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(jp, ["clipboard"]);
         let perms = |id: &str| -> Vec<(String, bool)> {
             c.tool(id)
                 .unwrap()

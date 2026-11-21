@@ -1,0 +1,17 @@
+[package]
+name = "jarak-core"
+version = "0.0.2"
+description = "Jarak's document model and editing engine: no GUI toolkit, no windowing, no clipboard (ADR 0102)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# ADR 0102: the core is shared by the headless CLI (`jarak.exe`) and the window (`jarak-gui.exe`)
+# and stays on the headless list of `cargo xtask deps-check`: it never links a GUI toolkit.
+[lints]
+workspace = true
+
+[dependencies]
