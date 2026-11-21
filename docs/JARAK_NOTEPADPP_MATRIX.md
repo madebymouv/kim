@@ -3,8 +3,8 @@
 Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` partial and
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
-Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported — the Step that implements a row updates
-it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported,
+`JRK-05` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -464,9 +464,9 @@ palette, the headless CLI) follow in §2.
 | --- | --- | --- | --- | --- | --- | --- |
 | JRK-01 | Markdown: GitHub-flavoured preview rendered natively | supported | `JARAK-FR-040` | 89 | T, M | Step 89: GFM render model (7 tests) drawn natively (UI audit `preview`, real screenshot) |
 | JRK-02 | Markdown: instant Source / Preview / Split toggle keeping caret and scroll | supported | `JARAK-FR-041` | 89 | T, M | Step 89: Ctrl+E / Esc / Ctrl+Shift+E keep caret, text and clean state and map the position (window tests; real desktop; 38 ms first switch of 1 MB) |
-| JRK-03 | Markdown: Ctrl+V image paste into portable assets with a relative reference | planned | `JARAK-FR-042` | 90 | T, M | — |
-| JRK-04 | Markdown: image paste into an untitled document (explicit behaviour) | planned | `JARAK-FR-043` | 90 | T, M | — |
-| JRK-05 | Markdown: inline image rendering, scaling, cache, placeholders | planned | `JARAK-FR-044` | 91 | T, M | — |
+| JRK-03 | Markdown: Ctrl+V image paste into portable assets with a relative reference | supported | `JARAK-FR-042` | 90 | T, M | Step 90: Ctrl+V of PNG / CF_DIBV5 / CF_DIB / copied image files into `assets/<doc>-<date>-<n>.png`, never overwriting, one undo step (window MVP test; e2e step90; real desktop with the real clipboard) |
+| JRK-04 | Markdown: image paste into an untitled document (explicit behaviour) | supported | `JARAK-FR-043` | 90 | T, M | Step 90: an untitled document asks to be saved first; a cancelled dialog pastes nothing (window test) |
+| JRK-05 | Markdown: inline image rendering, scaling, cache, placeholders | partial | `JARAK-FR-044` | 91 | T, M | Step 90: local PNG/JPEG/GIF/BMP drawn at pixel size within the column, inside paragraphs too, reloaded when changed, missing/remote labelled (window test, e2e, real desktop); off-thread decoding and WebP in Step 91 |
 | JRK-06 | Markdown: asset navigation, orphans, rename with reference update | planned | `JARAK-FR-045` | 91 | T | — |
 | JRK-07 | Vim: editing mode with a visible mode indicator | planned | `JARAK-FR-050` | 92 | T, M | — |
 | JRK-08 | Vim: motions, operators, text objects, counts, repeat, registers | planned | `JARAK-FR-051` | 92 | T | — |

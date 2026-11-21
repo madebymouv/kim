@@ -8,7 +8,12 @@
 //! - Switching keeps the reading position: the source's top line maps to the block that shows
 //!   it, and back.
 //! - Links open only with Ctrl+click (never a plain click or hover), and only web and mail
-//!   links; images are drawn as labelled placeholders until Step 91.
+//!   links.
+//! - Step 90: an image on a paragraph of its own is drawn from its local file (relative to the
+//!   document, never outside its folder, never from the network), at its pixel size and at most
+//!   the column's width; a missing or refused image shows a labelled frame. A paragraph with
+//!   text and images shows the text runs and the pictures in order (an image inside a link or
+//!   emphasis is still a labelled placeholder until Step 91).
 
 use eframe::egui::{
     self, Color32, CornerRadius, FontFamily, FontId, Galley, Pos2, Rect, Sense, Stroke, Vec2,
@@ -17,7 +22,32 @@ use eframe::egui::{
 use jarak_core::markdown::{self, Align, Block, Inline, Rendered};
 use kim_design::{font, radius, size, space};
 use kim_ui::Colors;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+/// A local image the preview loaded (or could not).
+#[derive(Clone)]
+pub enum ImgEntry {
+    Ready {
+        tex: egui::TextureHandle,
+        size: [u32; 2],
+        modified: Option<std::time::SystemTime>,
+    },
+    Failed(String, Option<std::time::SystemTime>),
+}
+
+impl std::fmt::Debug for ImgEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ImgEntry::Ready { size, .. } => write!(f, "Ready({}x{})", size[0], size[1]),
+            ImgEntry::Failed(why, _) => write!(f, "Failed({why})"),
+        }
+    }
+}
+
+/// Loaded images by file, shared by the frames of one document.
+pub type ImageCache = Arc<Mutex<HashMap<PathBuf, ImgEntry>>>;
 
 /// Opens a link the user Ctrl+clicked (the program asks Windows; tests record it).
 pub trait Opener: Send + Sync {
@@ -82,6 +112,8 @@ pub struct PreviewState {
     pub top_px: f32,
     /// Links on screen this frame (for Ctrl+click and the pointer).
     links: Vec<(Rect, String)>,
+    /// Images loaded for this document (Step 90).
+    pub images: ImageCache,
 }
 
 impl PreviewState {
@@ -109,12 +141,116 @@ impl PreviewState {
     }
 }
 
-/// Font sizes and colours of one frame.
+/// Font sizes and colours of one frame, and where images come from.
 struct Style {
     body: f32,
     zoom: f32,
     c: Colors,
     width: f32,
+    ctx: egui::Context,
+    doc: Option<PathBuf>,
+    images: ImageCache,
+}
+
+/// What an image reference shows.
+enum Img {
+    Ready(egui::TextureId, [u32; 2]),
+    /// Why it is not shown (missing, refused, remote).
+    Not(String),
+}
+
+impl Style {
+    /// The image `url` of the document: loaded once per file (and again when the file changes).
+    fn image(&self, url: &str) -> Img {
+        let lower = url.trim().to_ascii_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://") {
+            return Img::Not(format!("remote image not loaded: {url}"));
+        }
+        let Some(doc) = &self.doc else {
+            return Img::Not(format!("save the document to show {url}"));
+        };
+        let Some(path) = jarak_core::assets::resolve(doc, url) else {
+            return Img::Not(format!("image outside the document's folder: {url}"));
+        };
+        let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let Ok(mut cache) = self.images.lock() else {
+            return Img::Not(url.to_string());
+        };
+        let fresh = match cache.get(&path) {
+            Some(ImgEntry::Ready { modified: m, .. } | ImgEntry::Failed(_, m)) => *m == modified,
+            None => false,
+        };
+        if !fresh {
+            let entry = if modified.is_none() {
+                ImgEntry::Failed(format!("image not found: {url}"), None)
+            } else {
+                match crate::images::decode_file(&path) {
+                    Ok((w, h, rgba)) => {
+                        let img = egui::ColorImage::from_rgba_unmultiplied(
+                            [w as usize, h as usize],
+                            &rgba,
+                        );
+                        let tex = self.ctx.load_texture(
+                            format!("jarak-img:{}", path.display()),
+                            img,
+                            egui::TextureOptions::LINEAR,
+                        );
+                        ImgEntry::Ready {
+                            tex,
+                            size: [w, h],
+                            modified,
+                        }
+                    }
+                    Err(e) => ImgEntry::Failed(format!("{url}: {e}"), modified),
+                }
+            };
+            cache.insert(path.clone(), entry);
+        }
+        match cache.get(&path) {
+            Some(ImgEntry::Ready { tex, size, .. }) => Img::Ready(tex.id(), *size),
+            Some(ImgEntry::Failed(why, _)) => Img::Not(why.clone()),
+            None => Img::Not(url.to_string()),
+        }
+    }
+}
+
+/// A paragraph cut at its images: text runs and pictures in order.
+enum Seg<'a> {
+    Text(Vec<Inline>),
+    Image(&'a str, &'a str),
+}
+
+/// The paragraph's segments when it holds a top-level image (`None` for text only). Breaks and
+/// blank text next to an image are dropped, so `text ![](a.png)` is the text, then the picture.
+fn segments(v: &[Inline]) -> Option<Vec<Seg<'_>>> {
+    if !v.iter().any(|i| matches!(i, Inline::Image { .. })) {
+        return None;
+    }
+    let mut out = Vec::new();
+    let mut run: Vec<Inline> = Vec::new();
+    let flush = |run: &mut Vec<Inline>, out: &mut Vec<Seg<'_>>| {
+        while matches!(run.last(), Some(Inline::SoftBreak | Inline::HardBreak))
+            || matches!(run.last(), Some(Inline::Text(t)) if t.trim().is_empty())
+        {
+            run.pop();
+        }
+        if !run.is_empty() {
+            out.push(Seg::Text(std::mem::take(run)));
+        }
+    };
+    for i in v {
+        match i {
+            Inline::Image { url, alt } => {
+                flush(&mut run, &mut out);
+                out.push(Seg::Image(url.as_str(), alt.as_str()));
+            }
+            Inline::SoftBreak | Inline::HardBreak if run.is_empty() => {}
+            Inline::Text(t) if run.is_empty() && t.trim().is_empty() => {}
+            other => run.push(other.clone()),
+        }
+    }
+    flush(&mut run, &mut out);
+    Some(out)
 }
 
 impl Style {
@@ -136,6 +272,7 @@ enum Piece {
     Line(Pos2, Pos2, Color32),
     Box(Rect, Color32),
     Check(Rect, bool, Color32, Color32),
+    Image(Rect, egui::TextureId),
 }
 
 /// A laid-out block: what to paint and its height.
@@ -328,6 +465,67 @@ fn lay(ui: &egui::Ui, b: &Block, st: &Style, x: f32, width: f32, out: &mut Vec<P
                 ));
             }
             h + gap
+        }
+        Block::Paragraph(v) if segments(v).is_some() => {
+            let mut y = 0.0;
+            let ppp = st.ctx.pixels_per_point().max(0.5);
+            let between = space::S * st.zoom;
+            for seg in segments(v).unwrap_or_default() {
+                match seg {
+                    Seg::Text(t) => {
+                        let (p, h) = text_piece(
+                            ui,
+                            &t,
+                            st,
+                            Look {
+                                size: st.body,
+                                bold: false,
+                                color: c.text_primary,
+                            },
+                            Pos2::new(x, y),
+                            width,
+                        );
+                        out.push(p);
+                        y += h + between;
+                    }
+                    Seg::Image(url, alt) => match st.image(url) {
+                        Img::Ready(id, [w, h]) => {
+                            // Its pixel size on screen, at most the column's width.
+                            let natural = Vec2::new(w as f32, h as f32) / ppp;
+                            let scale = (width / natural.x).min(1.0);
+                            let size = natural * scale;
+                            out.push(Piece::Image(Rect::from_min_size(Pos2::new(x, y), size), id));
+                            y += size.y + between;
+                        }
+                        Img::Not(why) => {
+                            let label = if alt.is_empty() {
+                                why
+                            } else {
+                                format!("{alt} — {why}")
+                            };
+                            let j = LayoutJob::simple(
+                                label,
+                                st.prop(st.body * 0.9),
+                                c.text_muted,
+                                width - space::L * st.zoom,
+                            );
+                            let g = ui.fonts_mut(|f| f.layout_job(j));
+                            let h = g.rect.height() + space::L * st.zoom;
+                            out.push(Piece::Box(
+                                Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, h)),
+                                c.border_strong,
+                            ));
+                            out.push(Piece::Text(
+                                Pos2::new(x + space::S * st.zoom, y + space::S * st.zoom),
+                                g,
+                                Vec::new(),
+                            ));
+                            y += h + between;
+                        }
+                    },
+                }
+            }
+            y + gap - between
         }
         Block::Paragraph(v) => {
             let (p, h) = text_piece(
@@ -547,6 +745,7 @@ fn offset(p: Piece, dy: f32) -> Piece {
         Piece::Line(a, b, c) => Piece::Line(a + d, b + d, c),
         Piece::Box(r, c) => Piece::Box(r.translate(d), c),
         Piece::Check(r, on, a, b) => Piece::Check(r.translate(d), on, a, b),
+        Piece::Image(r, id) => Piece::Image(r.translate(d), id),
     }
 }
 
@@ -572,6 +771,7 @@ pub fn show(
     r: &Rendered,
     state: &mut PreviewState,
     zoom: f32,
+    doc: Option<&Path>,
 ) -> PreviewOutput {
     let c = Colors::get(ui.ctx());
     let painter = ui.painter_at(rect);
@@ -588,6 +788,9 @@ pub fn show(
         zoom,
         c,
         width,
+        ctx: ui.ctx().clone(),
+        doc: doc.map(Path::to_path_buf),
+        images: state.images.clone(),
     };
     // The wheel scrolls by block.
     let scroll = if resp.hovered() {
@@ -667,6 +870,28 @@ pub fn show(
                         Stroke::new(size::BORDER, *col),
                         egui::StrokeKind::Inside,
                     );
+                }
+                Piece::Image(r2, id) => {
+                    let r2 = r2.translate(Vec2::new(0.0, y));
+                    painter.image(
+                        *id,
+                        r2,
+                        Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                    if kim_ui::inspect::active() {
+                        kim_ui::inspect::record(
+                            ui,
+                            "preview:image",
+                            "image",
+                            r2,
+                            None,
+                            true,
+                            &[],
+                            None,
+                            None,
+                        );
+                    }
                 }
                 Piece::Check(r2, on, edge, fill) => {
                     let r2 = r2.translate(Vec2::new(0.0, y));

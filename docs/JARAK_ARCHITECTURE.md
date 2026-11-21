@@ -2,7 +2,7 @@
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
 integration; Step 86: the text model, §8; Step 87: files and encodings, §9; Step 88: the editor
-window, §10; Step 89: Markdown, §11) · Owner: mouv · Decision:
+window, §10; Step 89: Markdown, §11; Step 90: Ctrl+V images, §12) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -307,3 +307,53 @@ the source and re-parses; links open only through the opener and only for web/ma
 `step89_jarak_markdown_preview.rs` (first focused run PASS). Real desktop: Ctrl+E, typing in the
 preview, Down/PageDown, Esc, Ctrl+Shift+E twice on the fixture — the title never showed `*`, the
 file stayed byte-identical, the window closed with exit 0 (screenshot reviewed).
+
+## 12. Ctrl+V images and portable assets (Step 90, the MVP)
+
+- **What Ctrl+V does** (`JarakApp::paste_from_clipboard`): text when the clipboard has text (also
+  when it has an image too, as office programs put both); otherwise an image, but only into a
+  Markdown document (`.md`, `.markdown`, …; elsewhere the status bar says so). An untitled
+  document asks to be saved first (Save As; cancelling pastes nothing). A read-only document
+  refuses.
+- **Clipboard formats** (`clipboard.rs`, `images.rs`): the registered `PNG` format (checked and
+  kept as it is), `CF_DIBV5` and `CF_DIB` (24/32-bit, bottom-up or top-down, `BI_RGB` or
+  `BI_BITFIELDS`, including Windows' synthesized `CF_DIBV5` that repeats the masks after the
+  header; an all-zero fourth byte means opaque; converted to PNG), and image files copied in
+  Explorer (`CF_HDROP`, recognised by their first bytes: PNG, JPEG, GIF, BMP, WebP; copied as
+  they are, one reference each). Limits: 128 MiB, 16 384 pixels on a side, 40 million pixels
+  (`JARAK-SEC-004`).
+- **Assets** (`jarak-core::assets`, `JARAK-SEC-005`): `assets/` next to the document; the name is
+  the document's name made portable (letters of any script, digits, `-`, `_`), the local date and
+  the first free number — `ideas-20261122-001.png`; files are created with create-new semantics
+  (an existing file is never overwritten, also when two pastes race; a file that could not be
+  filled is removed, nothing else ever is). The document gets an image reference to `assets/…` at the caret
+  as one undo step; undo removes the reference and leaves the file (orphans are listed in Step
+  91). References are relative with forward slashes, so a note and its `assets` folder move
+  together.
+- **Preview images** (`preview.rs`): a reference resolves relative to the document and never
+  outside its folder (`..`, absolute and remote references are not loaded; remote images say
+  "remote image not loaded"); the file is decoded once (pure-Rust `image` decoders: PNG, JPEG,
+  GIF's first frame, BMP, with the same limits) into a texture cached per document and reloaded
+  when the file changes; drawn at its pixel size, at most the column's width. A paragraph with
+  text and images shows the text runs and the pictures in order; a missing or refused image
+  shows a labelled frame. Decoding is still on the UI thread (Step 91 moves it off).
+
+Tests: `assets` 3 (portable names, the next free number never overwriting, references resolving
+only inside the folder); `images` 7 (24-bit bottom-up and 32-bit top-down DIBs, alpha and the
+all-zero rule, `BI_BITFIELDS`, the synthesized `CF_DIBV5`, malformed and huge bitmaps refused,
+PNG round trip, signatures, copied files recognised by their bytes); window flows 3 new: the MVP
+journey (paste a bitmap into a saved note → the asset and the reference, undo keeps the file,
+save, preview shows it, a second paste gets `-002`, reopen in a new app shows both), an untitled
+document saved first (and nothing pasted when the dialog is cancelled), images only into
+Markdown and text winning when both are on the clipboard. UI audit `paste-image` (40 runs, 0
+failures — its first screenshot showed a reference glued to the previous paragraph drawn as a
+placeholder, which led to drawing images inside paragraphs); e2e `step90_jarak_image_paste.rs`
+(paste, save, close, reopen in a new process; the asset is a 320 × 180 PNG and both previews
+draw it; first focused run PASS).
+
+**Real desktop (the MVP journey, test-started windows, the maintainer's clipboard text kept and
+restored):** a new note typed and saved; a 360 × 180 picture put on the real clipboard (as a
+screenshot tool does); Ctrl+V → `assets/journey-20261122-001.png` and the reference; Ctrl+S,
+Ctrl+E → the picture in the preview; closed (exit 0); reopened in a new process → Ctrl+E shows
+it. The first run showed a 3-pixel strip at the picture's left edge — Windows' synthesized
+`CF_DIBV5` repeats the masks after the header — fixed and re-run (screenshot reviewed).

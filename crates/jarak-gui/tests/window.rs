@@ -421,6 +421,156 @@ fn links_open_only_on_ctrl_click_and_only_web_or_mail() {
     );
 }
 
+fn app_clip(
+    args: &[&str],
+    dialogs: Arc<Scripted>,
+) -> (
+    Harness<'static, JarakApp>,
+    Arc<jarak_gui::clipboard::MemoryClipboard>,
+) {
+    let clip = Arc::new(jarak_gui::clipboard::MemoryClipboard::default());
+    let (a, _) = app_with(args, dialogs);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(960.0, 640.0))
+        .build_ui_state(
+            |ui, app: &mut JarakApp| app.ui(ui),
+            a.with_clipboard(clip.clone()),
+        );
+    h.run();
+    (h, clip)
+}
+
+fn assets_of(dir: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir.join("assets"))
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+#[test]
+fn the_mvp_journey_paste_a_screenshot_save_preview_and_reopen() {
+    use jarak_gui::images::{ClipImage, sample_dib};
+    let d = temp("mvp");
+    let doc = d.join("ideas.md");
+    std::fs::write(&doc, "# Ideas\n\n").unwrap();
+    let (mut h, clip) = app_clip(&[doc.to_str().unwrap()], Arc::default());
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    clip.set_image(ClipImage::Dib(sample_dib(64, 48)));
+    key(&mut h, egui::Key::V, egui::Modifiers::CTRL);
+    let (y, m, dd) = jarak_gui::today();
+    let name = format!("ideas-{y:04}{m:02}{dd:02}-001.png");
+    assert_eq!(assets_of(&d), vec![name.clone()]);
+    assert_eq!(doc_text(&h), format!("# Ideas\n\n![image](assets/{name})"));
+    assert!(h.query_by_label_contains("Pasted image").is_some());
+    // The asset is a real 64 × 48 PNG.
+    let png = std::fs::read(d.join("assets").join(&name)).unwrap();
+    assert_eq!(jarak_gui::images::png_size(&png).unwrap(), (64, 48));
+    // Undo removes the reference, never the file.
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "# Ideas\n\n");
+    assert!(d.join("assets").join(&name).exists());
+    key(&mut h, egui::Key::Y, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    // The preview shows the image.
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    h.run();
+    let ready = |h: &Harness<'static, JarakApp>| {
+        h.state()
+            .tab()
+            .preview
+            .images
+            .lock()
+            .unwrap()
+            .values()
+            .any(|e| {
+                matches!(
+                    e,
+                    jarak_gui::preview::ImgEntry::Ready { size: [64, 48], .. }
+                )
+            })
+    };
+    assert!(
+        ready(&h),
+        "{:?}",
+        h.state().tab().preview.images.lock().unwrap()
+    );
+    // A second paste gets the next number; nothing is overwritten.
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::V, egui::Modifiers::CTRL);
+    assert_eq!(assets_of(&d).len(), 2);
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    drop(h);
+    // Reopen: the document and both images are intact.
+    let (mut h2, _) = app_clip(&[doc.to_str().unwrap()], Arc::default());
+    key(&mut h2, egui::Key::E, egui::Modifiers::CTRL);
+    h2.run();
+    assert!(ready(&h2));
+    assert_eq!(h2.state().tab().preview.images.lock().unwrap().len(), 2);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn pasting_an_image_into_an_untitled_document_saves_it_first() {
+    use jarak_gui::images::{ClipImage, sample_dib};
+    let d = temp("untitled-img");
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.save.lock().unwrap().push(d.join("new note.md"));
+    let (mut h, clip) = app_clip(&[], dialogs);
+    text(&mut h, "Shot: ");
+    clip.set_image(ClipImage::Dib(sample_dib(8, 8)));
+    key(&mut h, egui::Key::V, egui::Modifiers::CTRL);
+    let assets = assets_of(&d);
+    assert_eq!(assets.len(), 1, "{assets:?}");
+    assert!(
+        assets[0].starts_with("new-note-"),
+        "a portable name: {}",
+        assets[0]
+    );
+    assert!(doc_text(&h).starts_with("Shot: ![image](assets/new-note-"));
+    assert_eq!(h.state().tab().file.title(), "new note.md");
+    // Cancelling the Save As dialog pastes nothing.
+    let (mut h, clip) = app_clip(&[], Arc::default());
+    clip.set_image(ClipImage::Dib(sample_dib(8, 8)));
+    key(&mut h, egui::Key::V, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "");
+    assert!(
+        h.query_by_label_contains("Save the document first")
+            .is_some()
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn images_paste_only_into_markdown_and_text_wins_when_both_are_there() {
+    use jarak_gui::clipboard::Clipboard as _;
+    use jarak_gui::images::{ClipImage, sample_dib};
+    let d = temp("img-rules");
+    let txt = d.join("plain.txt");
+    std::fs::write(&txt, "").unwrap();
+    let (mut h, clip) = app_clip(&[txt.to_str().unwrap()], Arc::default());
+    clip.set_image(ClipImage::Dib(sample_dib(8, 8)));
+    key(&mut h, egui::Key::V, egui::Modifiers::CTRL);
+    assert!(assets_of(&d).is_empty());
+    assert!(h.query_by_label_contains("Markdown documents").is_some());
+    // Text and an image (as office programs copy): the text is pasted.
+    let md = d.join("both.md");
+    std::fs::write(&md, "").unwrap();
+    let (mut h, clip) = app_clip(&[md.to_str().unwrap()], Arc::default());
+    clip.set_image(ClipImage::Dib(sample_dib(8, 8)));
+    clip.set_text("the text");
+    key(&mut h, egui::Key::V, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "the text");
+    assert!(assets_of(&d).is_empty());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn the_gear_says_honestly_that_settings_come_later() {
     let (a, _) = app_with(&[], Arc::default());

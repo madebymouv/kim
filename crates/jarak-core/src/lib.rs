@@ -11,7 +11,9 @@
 //!   the [`file::FileDocument`] that ties a document to its path and format.
 //! - Step 89: the Markdown render model ([`markdown`]): blocks and inlines with their source
 //!   lines, drawn natively by the window.
+//! - Step 90: pasted images as portable assets next to the document ([`assets`]).
 
+pub mod assets;
 pub mod command;
 pub mod document;
 pub mod file;

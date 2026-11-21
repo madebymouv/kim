@@ -3,25 +3,49 @@
 //! Step 90) and needs no extra crate. eframe's own clipboard shortcuts are off
 //! (`NativeOptions::clipboard_shortcuts`), so Ctrl+C/X/V reach Jarak as ordinary keys.
 
+use crate::images::ClipImage;
+
 /// Where Copy, Cut and Paste go (the Windows clipboard in the program, a fake in tests).
 pub trait Clipboard: Send + Sync {
     fn get_text(&self) -> Option<String>;
     fn set_text(&self, text: &str) -> bool;
+    /// An image on the clipboard (Step 90): PNG, a bitmap, or copied image files.
+    fn get_image(&self) -> Option<ClipImage> {
+        None
+    }
 }
 
 /// An in-memory clipboard (tests, and no system clipboard).
 #[derive(Debug, Default)]
-pub struct MemoryClipboard(pub std::sync::Mutex<Option<String>>);
+pub struct MemoryClipboard {
+    pub text: std::sync::Mutex<Option<String>>,
+    pub image: std::sync::Mutex<Option<ClipImage>>,
+}
+
+impl MemoryClipboard {
+    /// Puts an image on it (and takes any text away, as a screenshot tool does).
+    pub fn set_image(&self, img: ClipImage) {
+        if let Ok(mut t) = self.text.lock() {
+            *t = None;
+        }
+        if let Ok(mut i) = self.image.lock() {
+            *i = Some(img);
+        }
+    }
+}
 
 impl Clipboard for MemoryClipboard {
     fn get_text(&self) -> Option<String> {
-        self.0.lock().ok()?.clone()
+        self.text.lock().ok()?.clone()
     }
     fn set_text(&self, text: &str) -> bool {
-        self.0
+        self.text
             .lock()
             .map(|mut c| *c = Some(text.to_string()))
             .is_ok()
+    }
+    fn get_image(&self) -> Option<ClipImage> {
+        self.image.lock().ok()?.clone()
     }
 }
 
@@ -42,6 +66,93 @@ mod win {
     };
 
     const CF_UNICODETEXT: u32 = 13;
+    const CF_DIB: u32 = 8;
+    const CF_DIBV5: u32 = 17;
+    const CF_HDROP: u32 = 15;
+
+    /// The bytes of clipboard format `format` (the clipboard must be open).
+    unsafe fn bytes_of(format: u32) -> Option<Vec<u8>> {
+        // SAFETY: the caller opened the clipboard; the handle stays owned by the clipboard; the
+        // locked memory has `GlobalSize` bytes.
+        unsafe {
+            let h = GetClipboardData(format);
+            if h.is_null() {
+                return None;
+            }
+            let size = windows_sys::Win32::System::Memory::GlobalSize(h as _);
+            if size == 0 || size > crate::images::MAX_BYTES {
+                return None;
+            }
+            let p = GlobalLock(h as _) as *const u8;
+            if p.is_null() {
+                return None;
+            }
+            let v = std::slice::from_raw_parts(p, size).to_vec();
+            GlobalUnlock(h as _);
+            Some(v)
+        }
+    }
+
+    pub fn get_image() -> Option<crate::images::ClipImage> {
+        use crate::images::ClipImage;
+        use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
+        let name: Vec<u16> = "PNG".encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: a NUL-terminated name.
+        let png = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
+        // SAFETY: plain queries.
+        let has = |f: u32| f != 0 && unsafe { IsClipboardFormatAvailable(f) } != 0;
+        if !(has(png) || has(CF_DIBV5) || has(CF_DIB) || has(CF_HDROP)) || !open() {
+            return None;
+        }
+        // SAFETY: the clipboard is open for the reads below and closed after.
+        let img = unsafe {
+            if has(png)
+                && let Some(b) = bytes_of(png)
+            {
+                Some(ClipImage::Png(b))
+            } else if has(CF_DIBV5)
+                && let Some(b) = bytes_of(CF_DIBV5)
+            {
+                Some(ClipImage::Dib(b))
+            } else if has(CF_DIB)
+                && let Some(b) = bytes_of(CF_DIB)
+            {
+                Some(ClipImage::Dib(b))
+            } else if has(CF_HDROP) {
+                use windows_sys::Win32::UI::Shell::{DragQueryFileW, HDROP};
+                let h = GetClipboardData(CF_HDROP) as HDROP;
+                if h.is_null() {
+                    None
+                } else {
+                    let n = DragQueryFileW(h, u32::MAX, std::ptr::null_mut(), 0);
+                    let mut files = Vec::new();
+                    for i in 0..n.min(32) {
+                        let len = DragQueryFileW(h, i, std::ptr::null_mut(), 0) as usize;
+                        let mut buf = vec![0u16; len + 1];
+                        DragQueryFileW(h, i, buf.as_mut_ptr(), buf.len() as u32);
+                        buf.truncate(len);
+                        files.push(std::path::PathBuf::from(String::from_utf16_lossy(&buf)));
+                    }
+                    // Only files whose bytes say they are images.
+                    files.retain(|f| {
+                        std::fs::File::open(f)
+                            .and_then(|mut file| {
+                                let mut head = [0u8; 16];
+                                use std::io::Read;
+                                let n = file.read(&mut head)?;
+                                Ok(crate::images::sniff(&head[..n]).is_some())
+                            })
+                            .unwrap_or(false)
+                    });
+                    (!files.is_empty()).then_some(ClipImage::Files(files))
+                }
+            } else {
+                None
+            }
+        };
+        close();
+        img
+    }
 
     /// Opens the clipboard, retrying briefly while another program holds it.
     fn open() -> bool {
@@ -129,6 +240,12 @@ mod win {
 }
 
 impl Clipboard for WinClipboard {
+    fn get_image(&self) -> Option<ClipImage> {
+        #[cfg(windows)]
+        {
+            win::get_image()
+        }
+    }
     fn get_text(&self) -> Option<String> {
         #[cfg(windows)]
         {

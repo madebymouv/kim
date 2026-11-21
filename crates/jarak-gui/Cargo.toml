@@ -1,6 +1,6 @@
 [package]
 name = "jarak-gui"
-version = "0.0.6"
+version = "0.0.7"
 description = "Jarak (자락): the editor window (egui + glow through kim-ui); one process per user session"
 edition.workspace = true
 rust-version.workspace = true
@@ -18,13 +18,17 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-jarak-core = { version = "0.0.6", path = "../jarak-core" }
+jarak-core = { version = "0.0.7", path = "../jarak-core" }
 kim-ui = { version = "0.0.4", path = "../kim-ui" }
 kim-design = { version = "0.0.3", path = "../kim-design" }
 # ADR 0014: egui + glow for GUI chrome, AccessKit for UI Automation, the same pin as the other
 # Kim windows.
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
 serde_json = "1.0.154"
+# Step 90: pasted bitmaps become PNG; the preview decodes local images (pure-Rust decoders, the
+# same versions and features as Noeul's, so no new crate enters the workspace).
+png = { version = "0.18.1", default-features = false }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
 
 [target."cfg(windows)".dependencies]
 # One window per user session (JARAK-FR-002): a named mutex marks the owner, a named event tells
@@ -35,6 +39,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Security",
     "Win32_System_DataExchange",
     "Win32_System_Memory",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_UI_Controls_Dialogs",
     "Win32_UI_Shell",

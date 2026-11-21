@@ -13,8 +13,12 @@ in Step 88; Step 87 implemented files and encodings in `jarak-core` and `jarak i
 `JARAK-FR-024`, `JARAK-FR-030…035` (033 checked with the real Korean IME), the window half of
 `JARAK-FR-020`, and measured `JARAK-NFR-001…003` ([JARAK_ARCHITECTURE §10](JARAK_ARCHITECTURE.md));
 Step 89 implemented `JARAK-FR-040`, `JARAK-FR-041` and `JARAK-FR-046` and measured
-`JARAK-NFR-005` ([JARAK_ARCHITECTURE §11](JARAK_ARCHITECTURE.md)); each implementing Step
-updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
+`JARAK-NFR-005` ([JARAK_ARCHITECTURE §11](JARAK_ARCHITECTURE.md)); Step 90 implemented
+`JARAK-FR-042`, `JARAK-FR-043`, `JARAK-SEC-004`, `JARAK-SEC-005` and the first half of
+`JARAK-FR-044` (local images in the preview; off-thread decoding, WebP and placeholders polish
+in Step 91) — the MVP journey of §5 passes on the real desktop
+([JARAK_ARCHITECTURE §12](JARAK_ARCHITECTURE.md)); each implementing Step updates the rows it
+delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 
@@ -39,7 +43,7 @@ Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 | Milestone | Goal | Steps | Done when |
 | --- | --- | --- | --- |
 | **J1 – Foundation** | Philosophy, requirements, matrix; the crates, CLI and window shell; the text model; files and encodings; the editor window | 84–88 | Text can be typed, edited and saved safely in the real window; budgets of §3 measured |
-| **J2 – First usable release (MVP)** | Markdown preview and toggle, Ctrl+V image paste with portable assets, image rendering, Vim mode | 89–92 | The MVP journey of §4 passes on real Windows (Step 90), refined by 91 and 92 |
+| **J2 – First usable release (MVP)** | Markdown preview and toggle, Ctrl+V image paste with portable assets, image rendering, Vim mode | 89–92 | The MVP journey of §5 passes on real Windows (Step 90), refined by 91 and 92 |
 | **J3 – Notepad++ editing parity** | Tabs, views, sessions; search, find in files; multiple carets and columns; line operations; syntax, folding, function list, completion; bookmarks and map; macros; encodings; monitoring and recovery | 93–104 | Each matrix row of these Steps passes its own test or real-window check |
 | **J4 – Settings, integrations, extensions** | Settings window, localization, themes, keys; print and export; headless CLI and Kim interop; safe extensions and the plugin audit | 105–108 | Per row |
 | **J5 – Hardening, parity and delivery** | Large files, performance, security, accessibility; closing parity gaps; packaging and delivery through Kim | 109–111 | Budgets met, parity report final, Jarak installable from Kim |
@@ -238,3 +242,22 @@ Until J5 ships, the Kim catalog lists Jarak as *planned* or *preview* (`KIM-FR-0
 1. Start Jarak. 2. Create a Markdown document. 3. Type and edit text (English and Korean).
 4. Save it. 5. Switch to the preview instantly. 6. Copy an image or screenshot. 7. Paste it with
 Ctrl+V. 8. See the image in the preview. 9. Close and reopen the document: text and image intact.
+
+**Verified 2026-11-22 (Step 90, release `jarak-gui` 0.0.7, real desktop, test-started windows,
+sandboxed profile, the maintainer's clipboard text kept and restored):**
+
+- [x] 1–2. Started with a new `journey.md` in an empty test folder.
+- [x] 3. Typed `# Journey`, a Korean line (`한글 메모: 자락으로 쓴다`, as Unicode key events; IME
+  composition is covered by Step 88's window test) and an English line.
+- [x] 4. Ctrl+S saved it (CRLF, the system default for a new file).
+- [x] 5. Ctrl+E switched to the preview (1 MB document: 38.4 ms, §11 of the architecture).
+- [x] 6. A 360 × 180 picture was put on the real clipboard (`Clipboard.SetImage`, as a
+  screenshot tool does).
+- [x] 7. Ctrl+V wrote `assets/journey-20261122-001.png` and inserted an image reference to it
+  at the caret.
+- [x] 8. Ctrl+S, Ctrl+E: the picture in the preview (screenshot reviewed).
+- [x] 9. Closed (exit 0) and reopened in a new process: the file holds the text and the
+  reference, the asset is a 360 × 180 PNG, Ctrl+E shows it (screenshot reviewed).
+
+Automated: the window test `the_mvp_journey_paste_a_screenshot_save_preview_and_reopen` and the
+e2e `step90_jarak_image_paste.rs` ([JARAK_ARCHITECTURE §12](JARAK_ARCHITECTURE.md)).

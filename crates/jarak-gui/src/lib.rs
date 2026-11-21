@@ -7,9 +7,13 @@
 //!   shown at a time; Ctrl+Tab switches between open documents until Step 93 adds tabs.
 //! - Step 89: the Markdown preview ([`preview`]) — Ctrl+E switches between the source and the
 //!   rendered preview, Ctrl+Shift+E shows both side by side; the reading position carries over.
+//! - Step 90: Ctrl+V of an image in a Markdown document saves it next to the document
+//!   (`assets/<name>-<date>-<n>.png`) and inserts a relative reference ([`images`]); the preview
+//!   shows local images.
 
 pub mod clipboard;
 pub mod handoff;
+pub mod images;
 pub mod keys;
 pub mod preview;
 pub mod view;
@@ -294,7 +298,8 @@ impl JarakApp {
     }
 
     /// Sets up a UI audit's view (ADR 0099): `editor`, `editor-empty`, `editor-selection`,
-    /// `editor-wrap`, `question`, `preview`, `split`. Only used while `KIM_UI_INSPECT` is set.
+    /// `editor-wrap`, `question`, `preview`, `split`, `paste-image` (pastes a sample bitmap and
+    /// saves: the UI audit runs on a copy). Only used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -308,6 +313,18 @@ impl JarakApp {
             }
             "editor-wrap" => self.act(Action::ToggleWrap),
             "preview" => self.tab_mut().set_mode(Mode::Preview),
+            // Step 90: the MVP journey's middle — paste a bitmap, save, show the preview.
+            "paste-image" => {
+                let t = self.tab_mut();
+                t.file.doc.doc_end(false);
+                self.paste_image(&images::ClipImage::Dib(images::sample_dib(320, 180)));
+                self.save(self.active);
+                // Show the pasted picture: the preview starts at the caret's paragraph.
+                let t = self.tab_mut();
+                let head = t.file.doc.selection().primary().head;
+                t.view.top_line = t.file.doc.text().char_to_line(head);
+                t.set_mode(Mode::Preview);
+            }
             "split" => self.tab_mut().set_mode(Mode::Split),
             "question" => {
                 self.type_text("!");
@@ -491,11 +508,7 @@ impl JarakApp {
                 let s = self.cut();
                 self.clipboard.set_text(&s);
             }
-            Action::Paste => {
-                if let Some(s) = self.clipboard.get_text() {
-                    self.paste(&s);
-                }
-            }
+            Action::Paste => self.paste_from_clipboard(),
             Action::NextDocument => {
                 self.active = (self.active + 1) % self.tabs.len();
             }
@@ -536,6 +549,93 @@ impl JarakApp {
             t.file.doc.type_text(s);
         }
         t.view.after_edit();
+    }
+
+    /// Ctrl+V: text when the clipboard has text (also when it has an image too, as office
+    /// programs put both), otherwise an image into a Markdown document.
+    pub fn paste_from_clipboard(&mut self) {
+        if let Some(s) = self.clipboard.get_text() {
+            self.paste(&s);
+            return;
+        }
+        let Some(img) = self.clipboard.get_image() else {
+            return;
+        };
+        self.paste_image(&img);
+    }
+
+    /// Saves `img` as asset(s) next to the document and inserts the reference(s) as one undo step
+    /// (`JARAK-FR-042`, `JARAK-FR-043`). An untitled document is saved first (Save As); only
+    /// Markdown documents take images; nothing is overwritten, and undo leaves the files.
+    pub fn paste_image(&mut self, img: &images::ClipImage) {
+        if self.tab().file.read_only {
+            self.refuse_read_only();
+            return;
+        }
+        if self.tab().file.path.is_none() {
+            self.message = Some(
+                self.t(
+                    "Save the document first: a pasted image is stored next to it.",
+                    "먼저 문서를 저장하세요. 붙여넣은 이미지는 문서 옆에 저장됩니다.",
+                )
+                .to_string(),
+            );
+            if !self.save_as(self.active) {
+                return;
+            }
+        }
+        if self.tab().language() != "Markdown" {
+            self.message = Some(
+                self.t(
+                    "Images paste into Markdown documents (.md).",
+                    "이미지는 Markdown 문서(.md)에 붙여넣을 수 있습니다.",
+                )
+                .to_string(),
+            );
+            return;
+        }
+        let doc_path = self.tab().file.path.clone().unwrap_or_default();
+        let list = match images::asset_bytes(img) {
+            Ok(l) => l,
+            Err(e) => {
+                self.message = Some(format!(
+                    "{} {e}",
+                    self.t("Not pasted:", "붙여넣지 못했습니다:")
+                ));
+                return;
+            }
+        };
+        let date = today();
+        let mut refs = Vec::new();
+        let mut names = Vec::new();
+        for (ext, bytes) in &list {
+            match jarak_core::assets::write_new(&doc_path, ext, date, bytes) {
+                Ok(a) => {
+                    refs.push(a.markdown("image"));
+                    names.push(a.reference);
+                }
+                Err(e) => {
+                    self.message = Some(format!(
+                        "{} {e}",
+                        self.t("Not pasted:", "붙여넣지 못했습니다:")
+                    ));
+                    break;
+                }
+            }
+        }
+        if refs.is_empty() {
+            return;
+        }
+        let eol = self.tab().file.doc.eol.as_str();
+        let text = refs.join(eol);
+        let t = self.tab_mut();
+        t.file.doc.paste(&text);
+        t.view.after_edit();
+        self.message = Some(format!(
+            "{} {}",
+            self.t("Pasted image:", "이미지를 붙여넣었습니다:"),
+            names.join(", ")
+        ));
     }
 
     /// Pastes text as one undo step, its line endings changed to the document's.
@@ -755,7 +855,15 @@ impl JarakApp {
                     ),
                     Mode::Preview => {
                         let r = t.rendered();
-                        let out = preview::show(ui, rect, &r, &mut t.preview, t.view.zoom);
+                        let doc = t.file.path.clone();
+                        let out = preview::show(
+                            ui,
+                            rect,
+                            &r,
+                            &mut t.preview,
+                            t.view.zoom,
+                            doc.as_deref(),
+                        );
                         (false, out)
                     }
                     Mode::Split => {
@@ -767,7 +875,15 @@ impl JarakApp {
                         // The preview follows the source's top line.
                         let r = t.rendered();
                         t.preview.scroll_to_line(&r, t.view.top_line);
-                        let out = preview::show(ui, right, &r, &mut t.preview, t.view.zoom);
+                        let doc = t.file.path.clone();
+                        let out = preview::show(
+                            ui,
+                            right,
+                            &r,
+                            &mut t.preview,
+                            t.view.zoom,
+                            doc.as_deref(),
+                        );
                         ui.painter().vline(
                             mid + 0.5,
                             rect.y_range(),
@@ -1113,6 +1229,21 @@ impl JarakApp {
 impl eframe::App for JarakApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         JarakApp::ui(self, ui);
+    }
+}
+
+/// Today's local date for asset names (year, month, day).
+pub fn today() -> (i32, u32, u32) {
+    #[cfg(windows)]
+    #[allow(unsafe_code)]
+    {
+        // SAFETY: GetLocalTime fills the structure it is given.
+        let t = unsafe {
+            let mut t: windows_sys::Win32::Foundation::SYSTEMTIME = std::mem::zeroed();
+            windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut t);
+            t
+        };
+        (i32::from(t.wYear), u32::from(t.wMonth), u32::from(t.wDay))
     }
 }
 

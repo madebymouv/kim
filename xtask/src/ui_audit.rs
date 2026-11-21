@@ -119,6 +119,8 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 89: the Markdown preview alone and side by side with the source.
                 "preview",
                 "split",
+                // Step 90: a pasted bitmap saved as an asset and shown in the preview.
+                "paste-image",
             ],
         ),
     ];
