@@ -1,7 +1,8 @@
 # Jarak–Notepad++ Feature Parity Matrix
 
 Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` partial and
-`HELP-06` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+`HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial — the Step that implements a row
+updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -79,9 +80,9 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| EDIT-01 | Undo / Redo (Ctrl+Z, Ctrl+Y) | planned | `JARAK-FR-013` | 86 | T | — |
+| EDIT-01 | Undo / Redo (Ctrl+Z, Ctrl+Y) | partial | `JARAK-FR-013` | 86 | T | Step 86: transactions, grouping, save point and selection restore in `jarak-core` (`document::tests`, 40-seed random test); the keys arrive with the text view (Step 88) |
 | EDIT-02 | Cut / Copy / Paste / Delete | planned | `JARAK-FR-031` | 88 | T, M | — |
-| EDIT-03 | Select All | planned | `JARAK-FR-012` | 86 | T | — |
+| EDIT-03 | Select All | partial | `JARAK-FR-012` | 86 | T | Step 86: `select.all` command (`command::tests`, `document::tests`); the key arrives with the text view (Step 88) |
 | EDIT-04 | Begin/End Select (stream) for keyboard-free range selection | planned | `JARAK-FR-012` | 96 | T | — |
 | EDIT-05 | Begin/End Select in column mode | planned | `JARAK-FR-081` | 96 | T | — |
 | EDIT-06 | Copy the current line when nothing is selected (setting) | planned | `JARAK-FR-031` | 97 | T | — |

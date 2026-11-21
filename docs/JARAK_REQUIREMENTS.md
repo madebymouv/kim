@@ -3,8 +3,10 @@
 Status: **current** (Step 84, specification; Step 85 implemented the CLI foundation and the
 window shell — `JARAK-FR-001`, `JARAK-FR-002`, the CLI half of `JARAK-FR-003`, `JARAK-SEC-009`,
 measured `JARAK-NFR-006` and corrected `JARAK-NFR-003` with measurements, see
-[JARAK_ARCHITECTURE §6](JARAK_ARCHITECTURE.md); each implementing Step updates the rows it
-delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
+[JARAK_ARCHITECTURE §6](JARAK_ARCHITECTURE.md); Step 86 implemented the text model —
+`JARAK-FR-010…014` and `JARAK-NFR-008` in `jarak-core`, the edit half of `JARAK-NFR-002`
+measured (max 79 µs on 100 MB), [JARAK_ARCHITECTURE §8](JARAK_ARCHITECTURE.md); the keys reach it
+in Step 88; each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 

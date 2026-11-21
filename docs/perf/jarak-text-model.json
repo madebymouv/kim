@@ -1,0 +1,12 @@
+{
+  "budgets": [
+    { "limit": 1000.0, "path": "/edit_us/max", "requirement": "JARAK-NFR-002 (the edit itself <= 1 ms)" }
+  ],
+  "document_mib": 100,
+  "lines": 1497967,
+  "load_ms": 62,
+  "edit_us": { "p50": 2.7, "p95": 3.9, "p99": 7.4, "max": 79.3 },
+  "undo_us_per_step": 0.7,
+  "line_lookup_us": { "p50": 1.00, "max": 43.1 },
+  "command": "cargo run --release -p jarak-core --example text_bench -- --record docs/perf/jarak-text-model.json"
+}

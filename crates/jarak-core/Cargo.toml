@@ -1,6 +1,6 @@
 [package]
 name = "jarak-core"
-version = "0.0.2"
+version = "0.0.3"
 description = "Jarak's document model and editing engine: no GUI toolkit, no windowing, no clipboard (ADR 0102)"
 edition.workspace = true
 rust-version.workspace = true
@@ -15,3 +15,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# The rope (MIT): logarithmic edits and line lookups. Only LF, CR and CRLF break lines, like
+# Notepad++ (no `unicode_lines`: U+2028, U+0085 and form feed are ordinary characters).
+ropey = { version = "1.6.1", default-features = false, features = ["simd", "cr_lines"] }
+# Grapheme clusters for caret movement and deletion (already in the workspace).
+unicode-segmentation = "1.13.3"
+# East Asian wide characters count two display columns.
+unicode-width = "0.2.2"

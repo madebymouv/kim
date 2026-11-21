@@ -1,7 +1,7 @@
 # Jarak Architecture
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
-integration; the text model arrives in Step 86) · Owner: mouv · Decision:
+integration; Step 86: the text model, §8) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -9,7 +9,7 @@ integration; the text model arrives in Step 86) · Owner: mouv · Decision:
 
 | Crate | Program | Contents now | Never links |
 | --- | --- | --- | --- |
-| `jarak-core` | — (library) | `paths` (per-user folders), `target` (`file[:line[:column]]` open targets) | a GUI toolkit, windowing, the clipboard (`cargo xtask deps-check`) |
+| `jarak-core` | — (library) | `paths` (per-user folders), `target` (`file[:line[:column]]` open targets), the text model (`text`, `selection`, `history`, `document`, `command`; §8) | a GUI toolkit, windowing, the clipboard (`cargo xtask deps-check`) |
 | `jarak` | `jarak.exe` | The headless CLI: `version`, `capabilities`, `paths`, `open` | a GUI toolkit (`deps-check`) |
 | `jarak-gui` | `jarak-gui.exe` | The window shell on `kim-ui` (egui + glow), the single-instance hand-off | — |
 
@@ -102,3 +102,51 @@ document); Step 109 tries to lower it for every Kim window.
   closed cleanly.
 - e2e `step85_jarak_foundation.rs` (Daily): Kim installs Jarak from a test-signed package, the
   CLI's contract, `paths` in the sandbox, `open --dry-run`, usage errors, uninstall.
+
+## 8. The text model (Step 86, `jarak-core`)
+
+- **Rope** (`ropey` 1.6, MIT): logarithmic inserts, deletes and line lookups. Only LF, CR and
+  CRLF break lines (ropey's `cr_lines` without `unicode_lines`), as in Notepad++.
+- **Positions** are char indices. `text` moves by grapheme cluster (`unicode-segmentation`,
+  across rope chunks): a jamo-written Hangul syllable, a letter with combining marks, an emoji
+  ZWJ sequence, a flag and CRLF are each one step for the caret, Backspace and Delete. A
+  position set from outside (a click, a search hit) snaps to its cluster's start. Words for
+  Ctrl+arrows and double-click are runs of letters/digits/`_` (any script), punctuation or
+  spaces; a line break is a stop of its own. Display columns count wide characters as two
+  (`unicode-width`) and tabs to the next stop; vertical moves keep a goal column.
+- **Selections**: a range has an anchor and a head (a caret when equal); a selection holds one or
+  more ranges, sorted, merged when they overlap, with one primary range (ready for Step 96's
+  multiple carets).
+- **Transactions**: an edit replaces text at a position; a transaction is a list of edits applied
+  in order (several carets edit from the last to the first so earlier positions stay valid),
+  recorded with the selections before and after. Undo applies the inverses in reverse order and
+  restores the selection before; redo re-applies and restores the selection after.
+- **Grouping**: typed characters merge into one undo step while typing continues in place, with a
+  break after whitespace (each word is a step); Backspace/Delete runs merge likewise; a caret
+  move, a save or anything else (paste, Enter, word delete) starts a new step.
+- **Save point**: each undo entry has a state id; the document is dirty when the newest entry's
+  id differs from the id at the last save (undo back to the saved text is clean again; a merged
+  entry gets a new id).
+- **Enter** inserts the document's line ending (detected from the text, CRLF when there is
+  none) plus the indentation before the caret.
+- **Commands** (`command`): 32 registered commands with stable ids (`edit.undo`,
+  `cursor.word-left`, `select.page-down`, …) and English/Korean titles; `Document::execute` runs
+  them. Typing text is `type_text` (one grapheme is typing, longer text is a paste-like step).
+
+| Measurement (release, 100 MB document of mixed ASCII/Hangul lines, `examples/text_bench.rs`, `docs/perf/jarak-text-model.json`) | Result | Budget |
+| --- | --- | --- |
+| Load from memory | 62 ms (1 497 967 lines) | — (file loading is Step 87) |
+| Edit at a random place (set caret + type/Backspace/Enter), 4 000 edits | p50 2.7 µs, p95 3.9 µs, p99 7.4 µs, max 79.3 µs | ≤ 1 ms (`JARAK-NFR-002`) |
+| Undo, per step | 0.7 µs | — |
+| Line lookup + line/column | p50 1.0 µs, max 43.1 µs | — |
+
+Tests (26): grapheme steps both ways for Hangul (precomposed and jamo), combining marks, ZWJ
+emoji, flags and CRLF, also across rope chunks; word steps and double-click words with Hangul;
+display columns with wide characters and tabs; line breaks; selections (sorting, merging,
+primary); typing runs, word-wise undo groups, Backspace runs, word deletes; Enter with
+indentation and line endings; three carets typing, deleting and undoing together; moves by
+grapheme, word, line (goal column across wide characters), smart Home, document; select word,
+line, all and the copied text; the save point through undo/redo; the command registry; and a
+seeded random test (40 seeds × 300 operations: typing, pasting, deleting, Enter, selections,
+undo, redo) checking that every caret stays on a grapheme boundary, that a history state id
+always means the same text, and that undo-all/redo-all return the original and final text.
