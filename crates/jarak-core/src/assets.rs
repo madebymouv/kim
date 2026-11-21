@@ -510,6 +510,8 @@ pub struct RenamePlan {
     /// The lines (0-based) whose references change.
     pub lines: Vec<usize>,
     pub text: String,
+    /// The replacements in bytes of the original text, ascending (for an open document).
+    pub edits: Vec<(Range<usize>, String)>,
 }
 
 /// Plans renaming the asset `old` (a reference as written in the document, or a file name in
@@ -590,6 +592,7 @@ pub fn plan_rename(
     for (r, s) in &edits {
         out.replace_range(r.clone(), s);
     }
+    edits.reverse();
     lines.sort_unstable();
     lines.dedup();
     Ok(RenamePlan {
@@ -598,6 +601,7 @@ pub fn plan_rename(
         reference,
         lines,
         text: out,
+        edits,
     })
 }
 

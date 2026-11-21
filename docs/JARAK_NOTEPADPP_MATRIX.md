@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -456,7 +456,7 @@ palette, the headless CLI) follow in §2.
 | UI-07 | Clickable links (Ctrl+click) | supported | `JARAK-FR-046` | 89 | T | Step 89: links in the preview open with Ctrl+click only, web and mail only (window tests); a plain click explains |
 | UI-08 | Context menu in the text | planned | `JARAK-FR-031` | 110 | M | — |
 | UI-09 | Toolbar with icons | not intended | — | 88 | D | — |
-| UI-10 | Menu bar (Jarak: hidden by default, shown with Alt or from the palette) | planned | `JARAK-FR-054` | 92 | T | — |
+| UI-10 | Menu bar (Jarak: hidden by default, shown with Alt or from the palette) | supported | `JARAK-FR-054` | 92 | T | Step 92: hidden by default, Alt alone (traced events) or the palette shows it; six menus with the keys (window test, e2e step92, real desktop) |
 
 ## 2. Jarak additions (not Notepad++ features)
 
@@ -468,11 +468,11 @@ palette, the headless CLI) follow in §2.
 | JRK-04 | Markdown: image paste into an untitled document (explicit behaviour) | supported | `JARAK-FR-043` | 90 | T, M | Step 90: an untitled document asks to be saved first; a cancelled dialog pastes nothing (window test) |
 | JRK-05 | Markdown: inline image rendering, scaling, cache, placeholders | supported | `JARAK-FR-044` | 91 | T, M | Step 91: PNG/JPEG/GIF/BMP/WebP decoded on a worker into a 128 MB cache, at pixel size within the column, placeholders with the path, remote never fetched; 50 × 1080p measured (window tests, media tests, e2e step91, real desktop 100 %/150 % UI scale); thumbnails in the source are not offered |
 | JRK-06 | Markdown: asset navigation, orphans, rename with reference update | supported | `JARAK-FR-045` | 91 | T | Step 91: Ctrl+click reveals a picture in Explorer (preview and source), `jarak assets list` (orphans), `jarak assets rename` (never replaces, rewrites references), Save As offers to copy (window tests, CLI tests, e2e step91, real desktop); GUI entries for list/rename with the palette (Step 92) |
-| JRK-07 | Vim: editing mode with a visible mode indicator | planned | `JARAK-FR-050` | 92 | T, M | — |
-| JRK-08 | Vim: motions, operators, text objects, counts, repeat, registers | planned | `JARAK-FR-051` | 92 | T | — |
-| JRK-09 | Vim: visual, visual-line, visual-block | planned | `JARAK-FR-052` | 92 | T | — |
-| JRK-10 | Vim: : command line | planned | `JARAK-FR-053` | 92 | T | — |
-| JRK-11 | Command palette listing every command with its keys | planned | `JARAK-FR-054` | 92 | T, M | — |
+| JRK-07 | Vim: editing mode with a visible mode indicator | supported | `JARAK-FR-050` | 92 | T, M | Step 92: Editing mode Standard/Vim (palette, menu, remembered in settings.toml); the mode and pending keys lead the status bar; click returns to Standard (window tests, real desktop) |
+| JRK-08 | Vim: motions, operators, text objects, counts, repeat, registers | supported | `JARAK-FR-051` | 92 | T | Step 92: motions, operators d c y > < g~ gu gU, text objects, counts, `.`, registers incl. `+` (18 engine tests, window session, real desktop); macros and marks not yet |
+| JRK-09 | Vim: visual, visual-line, visual-block | supported | `JARAK-FR-052` | 92 | T | Step 92: v, V, Ctrl+V; a block is one range per line by display columns, I/A/c type on every line (engine tests, real desktop V-LINE); full column mode is Step 96 |
+| JRK-10 | Vim: : command line | supported | `JARAK-FR-053` | 92 | T | Step 92: :w :q :q! :wq :x :e :e! :s with ranges and flags, :noh, :set, :N, / ? (engine tests, window test, e2e step92 writes with :w, real desktop :wq) |
+| JRK-11 | Command palette listing every command with its keys | supported | `JARAK-FR-054` | 92 | T, M | Step 92: Ctrl+Shift+P lists every window action and registry command with its keys (labels checked against the bindings), filter in English/Korean/id/keys (window test, e2e, UI audit) |
 | JRK-12 | Snippets with tab stops | planned | `JARAK-FR-095` | 100 | T | — |
 | JRK-13 | Quick open of files (Ctrl+P) and navigation history | planned | `JARAK-FR-103` | 101 | T | — |
 | JRK-14 | Headless CLI with --json (info, find, replace --dry-run, convert, export) | planned | `JARAK-FR-150` | 107 | T | — |

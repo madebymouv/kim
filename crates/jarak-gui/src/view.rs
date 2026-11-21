@@ -41,6 +41,14 @@ pub struct ViewState {
     pub follow: bool,
     /// The lines that fitted in the last frame (Page Up/Down).
     pub page_lines: usize,
+    /// Step 92: Vim's Normal and Visual modes draw the caret as a block over the character.
+    pub block_caret: bool,
+    /// The IME may compose (off in Vim's Normal mode, so keys stay keys with Hangul on).
+    pub ime: bool,
+    /// Ranges to mark behind the text (Vim's search highlight), in document positions.
+    pub marks: Vec<(usize, usize)>,
+    /// The view keeps the focus on Esc (Vim editing: Esc is a key of its own).
+    pub keep_escape: bool,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -65,6 +73,10 @@ impl Default for ViewState {
             preedit: String::new(),
             follow: true,
             page_lines: 20,
+            block_caret: false,
+            ime: true,
+            marks: Vec::new(),
+            keep_escape: false,
             drag: None,
             clicks: None,
         }
@@ -207,7 +219,7 @@ pub fn show(
                     tab: true,
                     horizontal_arrows: true,
                     vertical_arrows: true,
-                    escape: false,
+                    escape: state.keep_escape,
                 },
             );
         });
@@ -318,6 +330,9 @@ pub fn show(
         if l.line == caret_line && sel.len() == 1 && sel.primary().is_empty() {
             painter.rect_filled(row_rect, CornerRadius::ZERO, c.bg_raised);
         }
+        for (a, b) in &state.marks {
+            paint_selection(&painter, l, &Range::new(*a, *b), doc, &m, c.accent_soft);
+        }
         for r in sel.ranges() {
             paint_selection(&painter, l, r, doc, &m, c.bg_selected);
         }
@@ -365,7 +380,16 @@ pub fn show(
             let off = r.head - l.start;
             let p = l.galley.pos_from_cursor(CCursor::new(l.vis.map[off]));
             let x = l.origin.x + p.left();
-            let w = if state.overwrite {
+            let w = if state.block_caret {
+                // The width of the character under the caret (two cells for a wide one).
+                let next = l
+                    .vis
+                    .map
+                    .get(off + 1)
+                    .map(|n| l.galley.pos_from_cursor(CCursor::new(*n)));
+                next.filter(|q| (q.top() - p.top()).abs() < 0.5 && q.left() > p.left())
+                    .map_or(m.char_w, |q| q.left() - p.left())
+            } else if state.overwrite {
                 m.char_w
             } else {
                 size::FOCUS_RING
@@ -374,7 +398,9 @@ pub fn show(
                 Rect::from_min_size(egui::pos2(x, l.origin.y + p.top()), Vec2::new(w, m.row));
             if text_rect.intersects(caret_rect) {
                 let col = if focused { c.accent } else { c.text_muted };
-                if state.overwrite {
+                if state.block_caret {
+                    painter.rect_filled(caret_rect, CornerRadius::ZERO, col.gamma_multiply(0.55));
+                } else if state.overwrite {
                     painter.rect_stroke(
                         caret_rect,
                         CornerRadius::ZERO,
@@ -399,7 +425,10 @@ pub fn show(
             egui::StrokeKind::Inside,
         );
     }
-    if focused && let Some(cr) = ime_rect {
+    if focused
+        && state.ime
+        && let Some(cr) = ime_rect
+    {
         let to_global = ui
             .ctx()
             .layer_transform_to_global(ui.layer_id())

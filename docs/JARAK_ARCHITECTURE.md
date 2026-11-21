@@ -2,7 +2,7 @@
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
 integration; Step 86: the text model, §8; Step 87: files and encodings, §9; Step 88: the editor
-window, §10; Step 89: Markdown, §11; Step 90: Ctrl+V images, §12; Step 91: pictures and assets, §13) · Owner: mouv · Decision:
+window, §10; Step 89: Markdown, §11; Step 90: Ctrl+V images, §12; Step 91: pictures and assets, §13; Step 92: Vim, the palette and the menu bar, §14) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -435,3 +435,71 @@ end and the hover text placed at the bottom of the whole preview (now at the poi
 display scaling itself was not changed (it would rescale the maintainer's open windows): the
 150 % checks use Jarak's own UI scale, which is the same pixels-per-point path — a real 150 %
 display is **not tested**.
+
+## 14. Vim editing, the command palette and the menu bar (Step 92)
+
+- **One engine, two editing modes** (`jarak-core::vim`, `JARAK-FR-050`…`JARAK-FR-053`): the Vim
+  layer reads keys and edits the `Document` through its own primitives (`replace`, `type_text`,
+  `newline`, `delete_*`, `overwrite_text`, `undo`/`redo`, `set_caret`), so the save point, the
+  preview cache, pasted images and every later feature see ordinary edits. `History` gained
+  groups: a Vim change (`dw`; `cw`, the typed text and Esc; a block insert) is one undo step,
+  Standard editing is unchanged (a test checks typing still merges).
+- **State:** the mode, the keys of an unfinished command (shown in the status bar), registers
+  (unnamed, `0`, `a`–`z` with append, `_`, `+`/`*` through the window's clipboard), the last
+  change for `.` (its keys and the text typed in Insert mode, replayed), `f`/`t` for `; ,`, the
+  last search and its highlight, the last visual lines for `'<,'>`. Visual block is a selection
+  of one range per line by display columns (wide characters and tabs counted); `I`/`A`/`c` type
+  at every caret.
+- **The command line** returns what only the window can do as `Ex` values (write, quit,
+  write-quit, edit, wrap); `:s`, `:set`, `:noh`, `:N` and searches run in the engine. Patterns are
+  Vim's "magic" syntax translated to the `regex` crate (already in the workspace; Unicode
+  classes, no backtracking, so no back references inside a pattern).
+- **The window** (`jarak-gui`): keys go to Vim first; what Vim does not take (Ctrl+S, Ctrl+E,
+  Ctrl+Shift+P, Ctrl+O, …) works as in Standard editing, Ctrl+V pastes in Insert mode. Normal and
+  Visual mode draw a block caret and keep Esc (egui otherwise drops the focus on Esc — found by a
+  window test); the IME is allowed only in Insert/Replace mode, so with Hangul on `j` is still a
+  motion (no IME output → the window's input context is off). Search matches on screen are
+  marked behind the text. A read-only document is never changed: an edit is taken back with a
+  message. The editing mode is the first key of the settings file
+  (`%APPDATA%\mouv\jarak\settings.toml`, `editing_mode = "vim"`, other lines kept, atomic
+  write); the UI audit sets the mode without writing it.
+- **The command palette** (`palette.rs`, Ctrl+Shift+P, `JARAK-FR-054`): one list of every window
+  action and every registry command with its keys, filtered by words in English, Korean, the
+  command id or the keys; Up/Down/Enter or a click runs one. The key labels come from
+  `keys::key_label`, and a test parses every label and checks `keys::action_for` gives the same
+  action — the list cannot drift from the bindings.
+- **The menu bar** (UI-10): hidden by default; Alt pressed and released alone shows or hides it
+  (egui reports the Alt key itself as a key event — traced on the desktop, the first build
+  ignored it), and the palette has *Menu bar*. Six menus (File, Edit, Selection, Go, View,
+  Markdown) from the same list, kim-ui ghost buttons and popover menu items with the keys.
+- **Assets in the window** (*Images and orphaned assets…* in the palette and the Markdown menu):
+  the document's references with their state, the folder's orphans (the open document's unsaved
+  references count), Show (Explorer) and Rename (saved documents only: the file moves without
+  replacing anything, the references change in the buffer, the document is saved; a failed save
+  puts both back).
+
+Tests: `vim` 18 against buffers (motions, paragraph/screen motions, operators with motions, text
+objects and counts, line operators and case/indent, change and insert as one undo step, `.` with
+counts, registers incl. append and the clipboard, paste, visual, visual block, search and `*`,
+`:s` with ranges/flags/Vim patterns, ex commands, pending keys, Korean and wide characters,
+insert-mode text and arrows, Standard editing unchanged, pattern translation); `keys` + the
+label/binding check; `palette` 2; window flows 7 new (a Vim session: motions, counts shown,
+Insert with the IME on, undo/redo, Visual line, `:%s` on the command line, Ctrl+S, `:q` refused,
+`:wq`; search highlight and `:noh`, back to Standard; a read-only document stays unchanged; the
+mode remembered in the settings file; the palette lists, filters, runs by Enter and click; Alt
+alone with the traced events shows the menu bar, a menu runs a command, Alt+Z is not Alt; the
+assets dialog lists and renames, a dirty document is not renamed). UI audit views `vim`,
+`vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (75 runs, 0 failures; screenshots
+reviewed: the palette's selection drawn over its text and the assets dialog listing the open
+document's own pictures as orphans were fixed). e2e `step92_jarak_vim_palette.rs` (a Vim session
+in the release window that writes the file with `:w`, the palette's items, the menu bar's
+menus; first focused run PASS). Measured (release, headless): Vim keys in a 10 MB document p50
+0.11 ms, p95 4.82 ms.
+
+**Real desktop** (test-started window, sandboxed profile): Ctrl+Shift+P, "editing vim", Enter →
+`NORMAL`, the settings file says `editing_mode = "vim"`; `w d w` (real key presses); `i`, the
+Hangul key, `g k s r m f Space` → 한글 composed and committed in Insert mode; Esc; `j d d` with
+Hangul still toggled → a motion and a line delete (not jamo); `Shift+V` → `V-LINE`; `:wq` →
+`COMMAND`, saved and closed (exit 0); the file is `one 한글 three⏎six⏎` with its CRLF
+(screenshots reviewed). Alt alone showed the menu bar (after the fix above), the Edit menu listed
+its commands with their keys, Esc closed it, Alt hid the bar, typing and Ctrl+S kept working.

@@ -16,6 +16,7 @@ pub mod handoff;
 pub mod images;
 pub mod keys;
 pub mod media;
+pub mod palette;
 pub mod preview;
 pub mod view;
 
@@ -184,6 +185,110 @@ impl Tab {
     }
 }
 
+/// The editing mode (`JARAK-FR-050`): Standard (the default) or Vim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Editing {
+    Standard,
+    Vim,
+}
+
+/// The `+` register is the window's clipboard.
+struct ClipHost<'a>(&'a dyn clipboard::Clipboard);
+
+impl jarak_core::vim::Host for ClipHost<'_> {
+    fn clipboard(&self) -> Option<String> {
+        self.0.get_text()
+    }
+    fn set_clipboard(&self, s: &str) {
+        self.0.set_text(s);
+    }
+}
+
+/// The key Vim gets for `key` with `m` held (`None`: the window's own key).
+fn vim_key(key: egui::Key, m: egui::Modifiers) -> Option<jarak_core::vim::Key> {
+    use egui::Key as K;
+    use jarak_core::vim::Key as V;
+    let ctrl = m.ctrl || m.command;
+    if m.alt {
+        return None;
+    }
+    if ctrl {
+        if m.shift {
+            return None;
+        }
+        return Some(V::Ctrl(match key {
+            K::R => 'r',
+            K::V => 'v',
+            K::D => 'd',
+            K::U => 'u',
+            K::F => 'f',
+            K::B => 'b',
+            K::W => 'w',
+            K::OpenBracket => '[',
+            _ => return None,
+        }));
+    }
+    Some(match key {
+        K::Escape => V::Esc,
+        K::Enter => V::Enter,
+        K::Backspace => V::Backspace,
+        K::Delete => V::Delete,
+        K::Tab if !m.shift => V::Tab,
+        K::ArrowLeft if !m.shift => V::Left,
+        K::ArrowRight if !m.shift => V::Right,
+        K::ArrowUp if !m.shift => V::Up,
+        K::ArrowDown if !m.shift => V::Down,
+        K::Home if !m.shift => V::Home,
+        K::End if !m.shift => V::End,
+        K::PageUp if !m.shift => V::PageUp,
+        K::PageDown if !m.shift => V::PageDown,
+        _ => return None,
+    })
+}
+
+/// The editing mode in the settings file (`editing_mode = "vim"`; Step 105 brings the whole
+/// settings model, this is its first key).
+pub fn read_editing(path: &Path) -> Option<Editing> {
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines().find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        (k.trim() == "editing_mode").then(|| match v.trim().trim_matches('"') {
+            "vim" => Editing::Vim,
+            _ => Editing::Standard,
+        })
+    })
+}
+
+/// Writes the editing mode into the settings file, keeping its other lines.
+pub fn write_editing(path: &Path, e: Editing) -> std::io::Result<()> {
+    let value = format!(
+        "editing_mode = \"{}\"",
+        if e == Editing::Vim { "vim" } else { "standard" }
+    );
+    let old = std::fs::read_to_string(path).unwrap_or_default();
+    let mut found = false;
+    let mut lines: Vec<String> = old
+        .lines()
+        .map(|l| {
+            if l.split_once('=')
+                .is_some_and(|(k, _)| k.trim() == "editing_mode")
+            {
+                found = true;
+                value.clone()
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    if !found {
+        lines.push(value);
+    }
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    file::save_atomic(path, format!("{}\n", lines.join("\n")).as_bytes())
+}
+
 /// What a pending question is about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pending {
@@ -219,6 +324,29 @@ pub struct JarakApp {
     quitting: bool,
     /// The UI audit's view (`KIM_UI_SCREEN`), named in the geometry report.
     audit_screen: String,
+    /// Step 92: Standard or Vim editing, and Vim's state (for the active document).
+    pub editing: Editing,
+    pub vim: jarak_core::vim::Vim,
+    /// The document Vim's state belongs to.
+    vim_tab: usize,
+    /// Where the editing mode is kept (`None` in tests: nothing is written).
+    settings: Option<PathBuf>,
+    /// Step 92: the command palette while it is open, the menu bar, Alt pressed alone.
+    pub palette: Option<palette::PaletteState>,
+    pub menu_bar: bool,
+    alt_armed: bool,
+    /// Step 92: the document's images and the folder's orphans (`markdown.assets`).
+    pub assets_view: Option<AssetsView>,
+}
+
+/// The assets dialog's content.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AssetsView {
+    /// Each image reference: as written, its local file (when it has one) and what it is.
+    pub refs: Vec<(String, Option<PathBuf>, String)>,
+    pub orphans: Vec<PathBuf>,
+    /// A rename being typed: the reference and the new name.
+    pub rename: Option<(String, String)>,
 }
 
 impl std::fmt::Debug for JarakApp {
@@ -246,6 +374,667 @@ impl JarakApp {
     pub fn with_clipboard(mut self, c: Arc<dyn clipboard::Clipboard>) -> JarakApp {
         self.clipboard = c;
         self
+    }
+
+    /// Reads and keeps the editing mode in `path` (the program passes the settings file).
+    pub fn with_settings(mut self, path: PathBuf) -> JarakApp {
+        if let Some(e) = read_editing(&path) {
+            self.editing = e;
+        }
+        self.settings = Some(path);
+        self
+    }
+
+    /// Switches between Standard and Vim editing (and remembers it).
+    pub fn set_editing(&mut self, e: Editing) {
+        self.editing = e;
+        let i = self.active;
+        self.vim.reset(&mut self.tabs[i].file.doc);
+        self.vim_tab = i;
+        self.message = Some(match e {
+            Editing::Vim => self
+                .t(
+                    "Vim editing: Esc for Normal mode, i to type; Ctrl+Shift+P → Standard editing to switch back.",
+                    "Vim 편집: Esc는 Normal 모드, i는 입력. 되돌리려면 Ctrl+Shift+P → 표준 편집.",
+                )
+                .to_string(),
+            Editing::Standard => self.t("Standard editing.", "표준 편집.").to_string(),
+        });
+        if let Some(p) = &self.settings
+            && let Err(e) = write_editing(p, e)
+        {
+            self.message = Some(format!(
+                "{} {e}",
+                self.t(
+                    "The editing mode was not saved:",
+                    "편집 모드를 저장하지 못했습니다:"
+                )
+            ));
+        }
+    }
+
+    /// Vim's view of the window: the lines on screen.
+    fn vim_view(&self) -> jarak_core::vim::View {
+        let v = &self.tab().view;
+        jarak_core::vim::View {
+            top: v.top_line,
+            rows: v.page_lines.max(1),
+        }
+    }
+
+    /// Runs one Vim key or text and carries out what it asks of the window. `false` when the
+    /// key was not Vim's.
+    fn vim_input(&mut self, input: Result<jarak_core::vim::Key, String>) -> bool {
+        let view = self.vim_view();
+        let i = self.active;
+        let read_only = self.tabs[i].file.read_only;
+        let before = self.tabs[i].file.doc.history().state();
+        let clip = self.clipboard.clone();
+        let host = ClipHost(clip.as_ref());
+        let doc = &mut self.tabs[i].file.doc;
+        let out = match input {
+            Ok(k) => self.vim.key(doc, k, &host, view),
+            Err(s) => self.vim.text(doc, &s, &host, view),
+        };
+        if read_only && self.tabs[i].file.doc.history().state() != before {
+            // A read-only document never changes: the edit is taken back.
+            self.tabs[i].file.doc.undo();
+            self.vim.reset(&mut self.tabs[i].file.doc);
+            self.refuse_read_only();
+            return true;
+        }
+        if read_only && self.vim.mode.is_insert() {
+            self.vim.reset(&mut self.tabs[i].file.doc);
+            self.refuse_read_only();
+            return true;
+        }
+        if !out.handled {
+            return false;
+        }
+        self.tabs[i].view.after_edit();
+        if let Some(m) = out.message {
+            self.message = Some(m);
+        }
+        for e in out.ex {
+            self.vim_ex(e);
+        }
+        true
+    }
+
+    /// A command line's request (`:w`, `:q`, `:e`, `:set wrap`).
+    fn vim_ex(&mut self, e: jarak_core::vim::Ex) {
+        use jarak_core::vim::Ex;
+        let i = self.active;
+        let dirty = self.tabs[i].file.doc.is_dirty();
+        let not_saved = || "E37: No write since last change (add ! to override)".to_string();
+        let resolve = |s: &str, doc: Option<&Path>| -> PathBuf {
+            let p = PathBuf::from(s);
+            if p.is_absolute() {
+                p
+            } else {
+                doc.and_then(Path::parent).map_or_else(
+                    || std::path::absolute(&p).unwrap_or(p.clone()),
+                    |d| d.join(&p),
+                )
+            }
+        };
+        match e {
+            Ex::Write { path: None, .. } => {
+                self.save(i);
+            }
+            Ex::Write { path: Some(s), .. } => {
+                let target = resolve(&s, self.tabs[i].file.path.as_deref());
+                if self.tabs[i].file.path.is_none() {
+                    let r = self.tabs[i].file.save_as(&target);
+                    self.report_save(i, r);
+                } else {
+                    let r = self.tabs[i].file.save_copy(&target);
+                    self.message = Some(match r {
+                        Ok(()) => format!("{} {}", self.t("Written:", "저장함:"), target.display()),
+                        Err(e) => format!("{} {e}", self.t("Not written:", "저장하지 못함:")),
+                    });
+                }
+            }
+            Ex::Quit { force } => {
+                if dirty && !force {
+                    self.message = Some(not_saved());
+                } else {
+                    self.close_or_quit(i);
+                }
+            }
+            Ex::WriteQuit { .. } => {
+                if (!dirty && self.tabs[i].file.path.is_some()) || self.save(i) {
+                    self.close_or_quit(i);
+                }
+            }
+            Ex::Edit { path: None, force } => {
+                if dirty && !force {
+                    self.message = Some(not_saved());
+                } else if self.tabs[i].file.path.is_some() {
+                    let fallback = self.fallback;
+                    let r = self.tabs[i].file.reload(fallback, file::DEFAULT_SIZE_LIMIT);
+                    self.message = Some(match r {
+                        Ok(()) => format!(
+                            "{} {}",
+                            self.t("Reloaded", "다시 읽음:"),
+                            self.tabs[i].file.title()
+                        ),
+                        Err(e) => format!("{} {e}", self.t("Not reloaded:", "다시 읽지 못함:")),
+                    });
+                    self.vim.reset(&mut self.tabs[i].file.doc);
+                }
+            }
+            Ex::Edit { path: Some(s), .. } => {
+                let target = resolve(&s, self.tabs[i].file.path.as_deref());
+                self.open_target(&OpenTarget {
+                    path: target,
+                    line: None,
+                    column: None,
+                });
+            }
+            Ex::Wrap(on) => {
+                let v = &mut self.tabs[i].view;
+                v.wrap = on;
+                v.scroll_x = 0.0;
+                v.after_edit();
+            }
+        }
+    }
+
+    /// Before drawing: Vim's state follows the active document, and the view shows Vim's caret,
+    /// IME switch and search marks.
+    fn vim_frame(&mut self) {
+        let i = self.active;
+        if self.editing != Editing::Vim {
+            let v = &mut self.tabs[i].view;
+            v.block_caret = false;
+            v.ime = true;
+            v.marks.clear();
+            v.keep_escape = false;
+            return;
+        }
+        if self.vim_tab != i || self.vim_tab >= self.tabs.len() {
+            self.vim.reset(&mut self.tabs[i].file.doc);
+            self.vim_tab = i;
+        }
+        let mode = self.vim.mode;
+        let prompt = self.vim.prompt.is_some();
+        let marks = self.vim.highlight_regex().map(|re| {
+            let t = &self.tabs[i];
+            let r = t.file.doc.text();
+            let first = t.view.top_line.min(r.len_lines().saturating_sub(1));
+            let last = (first + t.view.page_lines + 2).min(r.len_lines());
+            let a = r.line_to_char(first);
+            let b = if last < r.len_lines() {
+                r.line_to_char(last)
+            } else {
+                r.len_chars()
+            };
+            let s = r.slice(a..b).to_string();
+            re.find_iter(&s)
+                .filter(|m| m.end() > m.start())
+                .map(|m| {
+                    (
+                        a + s[..m.start()].chars().count(),
+                        a + s[..m.end()].chars().count(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        });
+        let v = &mut self.tabs[i].view;
+        v.block_caret = !mode.is_insert() || prompt;
+        v.ime = mode.is_insert() && !prompt;
+        v.overwrite = false;
+        v.keep_escape = true;
+        v.marks = marks.unwrap_or_default();
+    }
+
+    /// Runs a palette or menu entry.
+    pub fn run_entry(&mut self, r: palette::Run) {
+        match r {
+            palette::Run::Act(a) => self.act(a),
+            palette::Run::Editing(e) => self.set_editing(e),
+            palette::Run::MenuBar => self.menu_bar = !self.menu_bar,
+            palette::Run::Assets => self.open_assets(),
+        }
+    }
+
+    /// Opens the assets dialog for the document (a saved Markdown document).
+    pub fn open_assets(&mut self) {
+        let t = self.tab();
+        let Some(path) = t.file.path.clone().filter(|_| t.language() == "Markdown") else {
+            self.message = Some(
+                self.t(
+                    "Images and assets belong to a saved Markdown document.",
+                    "이미지와 asset은 저장된 Markdown 문서에 있습니다.",
+                )
+                .to_string(),
+            );
+            return;
+        };
+        let text = t.file.doc.text().to_string();
+        let mut refs = Vec::new();
+        for r in jarak_core::assets::references(&text) {
+            let lower = r.url.trim().to_ascii_lowercase();
+            let local = jarak_core::assets::resolve(&path, &r.url);
+            let what = if lower.contains("://") || lower.starts_with("data:") {
+                self.t("remote, never loaded", "원격, 불러오지 않음")
+                    .to_string()
+            } else if let Some(p) = local.as_deref().filter(|p| p.is_file()) {
+                let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+                let fmt = jarak_core::assets::image_format(&jarak_core::assets::file_head(p))
+                    .unwrap_or("?");
+                format!("{fmt}, {} KB", size.div_ceil(1024))
+            } else if local.is_some() {
+                self.t("missing", "없음").to_string()
+            } else {
+                self.t("outside the document's folder", "문서 폴더 밖")
+                    .to_string()
+            };
+            refs.push((r.url, local, what));
+        }
+        // The open document's references count as they are now (saved or not).
+        let mine: Vec<String> = refs
+            .iter()
+            .filter_map(|(_, p, _)| p.as_ref())
+            .map(|p| p.to_string_lossy().to_lowercase())
+            .collect();
+        let orphans = jarak_core::assets::orphans(&path)
+            .into_iter()
+            .filter(|o| !mine.contains(&o.to_string_lossy().to_lowercase()))
+            .collect();
+        self.assets_view = Some(AssetsView {
+            refs,
+            orphans,
+            rename: None,
+        });
+    }
+
+    /// Renames an asset of the open document (saved first) and its references, then saves.
+    pub fn rename_asset(&mut self, reference: &str, new: &str) {
+        let i = self.active;
+        let Some(path) = self.tabs[i].file.path.clone() else {
+            return;
+        };
+        if self.tabs[i].file.doc.is_dirty() {
+            self.message = Some(
+                self.t(
+                    "Save the document first: the rename saves it with the new references.",
+                    "먼저 문서를 저장하세요. 이름을 바꾸면 새 참조로 저장합니다.",
+                )
+                .to_string(),
+            );
+            return;
+        }
+        if self.tabs[i].file.read_only {
+            self.refuse_read_only();
+            return;
+        }
+        let text = self.tabs[i].file.doc.text().to_string();
+        let plan = match jarak_core::assets::plan_rename(&path, &text, reference, new) {
+            Ok(p) => p,
+            Err(e) => {
+                self.message = Some(format!(
+                    "{} {e}",
+                    self.t("Not renamed:", "이름을 바꾸지 않음:")
+                ));
+                return;
+            }
+        };
+        if let Err(e) = jarak_core::assets::move_no_replace(&plan.from, &plan.to) {
+            self.message = Some(format!(
+                "{} {e}",
+                self.t("Not renamed:", "이름을 바꾸지 않음:")
+            ));
+            return;
+        }
+        let parts: Vec<(usize, usize, String)> = {
+            let r = self.tabs[i].file.doc.text();
+            plan.edits
+                .iter()
+                .map(|(b, s)| (r.byte_to_char(b.start), r.byte_to_char(b.end), s.clone()))
+                .collect()
+        };
+        self.tabs[i].file.doc.replace(parts, None);
+        match self.tabs[i].file.save() {
+            Ok(()) => {
+                self.message = Some(format!(
+                    "{} {} → {}",
+                    self.t("Renamed:", "이름 바꿈:"),
+                    plan.from
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default(),
+                    plan.to
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default()
+                ));
+            }
+            Err(e) => {
+                // Back to the old name and text: the file on disk still refers to it.
+                self.tabs[i].file.doc.undo();
+                let _ = jarak_core::assets::move_no_replace(&plan.to, &plan.from);
+                self.message = Some(format!(
+                    "{} {e}",
+                    self.t("Not renamed:", "이름을 바꾸지 않음:")
+                ));
+            }
+        }
+        self.open_assets();
+    }
+
+    /// Alt pressed and released alone shows or hides the menu bar (UI-10).
+    fn alt_toggle(&mut self, ctx: &egui::Context) {
+        let events = ctx.input(|i| i.events.clone());
+
+        for e in events {
+            match e {
+                egui::Event::ModifiersChanged(m) => {
+                    let alone = m.alt && !m.ctrl && !m.shift && !m.command && !m.mac_cmd;
+                    if alone {
+                        self.alt_armed = true;
+                    } else if !m.alt && self.alt_armed && !m.any() {
+                        self.alt_armed = false;
+                        self.menu_bar = !self.menu_bar;
+                    } else {
+                        self.alt_armed = false;
+                    }
+                }
+                // egui also reports the Alt key itself (AltLeft / AltRight): not another key.
+                egui::Event::Key {
+                    key: egui::Key::AltLeft | egui::Key::AltRight,
+                    ..
+                } => {}
+                egui::Event::Key { .. }
+                | egui::Event::Text(_)
+                | egui::Event::PointerButton { .. }
+                | egui::Event::MouseWheel { .. } => self.alt_armed = false,
+                _ => {}
+            }
+        }
+    }
+
+    /// The command palette (kim-ui dialog, search field, menu items with their keys).
+    fn palette_ui(&mut self, ctx: &egui::Context, c: &Colors) {
+        let Some(mut st) = self.palette.take() else {
+            return;
+        };
+        let entries = palette::entries();
+        let found = palette::filter(&entries, &st.query);
+        st.selected = st.selected.min(found.len().saturating_sub(1));
+        let (up, down, enter) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::ArrowUp),
+                i.key_pressed(egui::Key::ArrowDown),
+                i.key_pressed(egui::Key::Enter),
+            )
+        });
+        if up {
+            st.selected = st.selected.saturating_sub(1);
+        }
+        if down && st.selected + 1 < found.len() {
+            st.selected += 1;
+        }
+        let lang = self.lang;
+        let editing = self.editing;
+        let mut run = None;
+        let title = self.t("Commands", "명령").to_string();
+        let label = self.t("Search commands", "명령 검색").to_string();
+        let hint = self
+            .t(
+                "Type to filter: save, vim, ctrl+e…",
+                "입력해 거르기: 저장, vim, ctrl+e…",
+            )
+            .to_string();
+        let resp = kim_ui::dialog_sized(ctx, "jarak-palette", &title, 560.0, |ui| {
+            let w = ui.available_width();
+            let r = kim_ui::search_field(ui, &mut st.query, &label, &hint, w);
+            if st.focus {
+                r.request_focus();
+                st.focus = false;
+            }
+            if r.changed() {
+                st.selected = 0;
+            }
+            ui.add_space(space::S);
+            egui::ScrollArea::vertical()
+                .max_height(360.0)
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    for (row, &k) in found.iter().enumerate() {
+                        let e = &entries[k];
+                        let current = matches!(e.run, palette::Run::Editing(m) if m == editing);
+                        let name = format!(
+                            "{}{}",
+                            lang.pick(e.en, e.ko),
+                            if current { "  ✓" } else { "" }
+                        );
+                        // The selection goes under the item's text (a shape reserved before it).
+                        let under = ui.painter().add(egui::Shape::Noop);
+                        let resp = kim_ui::menu_item(ui, &name, false);
+                        if row == st.selected {
+                            ui.painter().set(
+                                under,
+                                egui::epaint::RectShape::filled(
+                                    resp.rect,
+                                    egui::CornerRadius::same(kim_design::radius::S as u8),
+                                    c.bg_selected,
+                                ),
+                            );
+                            if up || down {
+                                resp.scroll_to_me(None);
+                            }
+                        }
+                        if let Some(keys) = e.keys {
+                            ui.painter().text(
+                                egui::pos2(resp.rect.right() - space::S, resp.rect.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                keys,
+                                egui::FontId::proportional(font::CAPTION),
+                                c.text_muted,
+                            );
+                        }
+                        if resp.clicked() {
+                            run = Some(e.run);
+                        }
+                    }
+                    if found.is_empty() {
+                        ui.label(
+                            RichText::new(
+                                lang.pick("No command matches.", "맞는 명령이 없습니다."),
+                            )
+                            .size(font::BODY)
+                            .color(c.text_muted),
+                        );
+                    }
+                });
+        });
+        if enter && run.is_none() {
+            run = found.get(st.selected).map(|k| entries[*k].run);
+        }
+        if let Some(r) = run {
+            // The palette closes before the command runs (a command may open a dialog).
+            if r != palette::Run::Act(Action::Palette) {
+                self.run_entry(r);
+            }
+            ctx.memory_mut(|m| m.request_focus(view::view_id()));
+            return;
+        }
+        if resp.should_close() {
+            ctx.memory_mut(|m| m.request_focus(view::view_id()));
+            return;
+        }
+        self.palette = Some(st);
+    }
+
+    /// The menu bar (hidden by default; Alt or the palette shows it).
+    fn menu_bar_ui(&mut self, ui: &mut egui::Ui, c: &Colors) {
+        if !self.menu_bar {
+            return;
+        }
+        let entries = palette::entries();
+        let lang = self.lang;
+        let mut run = None;
+        egui::Panel::top("jarak-menu")
+            .exact_size(size::CONTROL)
+            .resizable(false)
+            .frame(
+                egui::Frame::NONE
+                    .fill(c.bg_raised)
+                    .inner_margin(egui::Margin::symmetric(space::XS as i8, 0)),
+            )
+            .show_separator_line(false)
+            .show(ui, |ui| {
+                let bar = ui.max_rect();
+                ui.painter().hline(
+                    bar.x_range(),
+                    bar.bottom(),
+                    egui::Stroke::new(size::BORDER, c.border_subtle),
+                );
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = space::XS;
+                    for menu in palette::Menu::ALL {
+                        let (en, ko) = menu.name();
+                        let b = ui.add(kim_ui::Button::ghost(lang.pick(en, ko)));
+                        kim_ui::popover(&b, 300.0, |ui| {
+                            for e in entries.iter().filter(|e| e.menu == menu) {
+                                let resp = kim_ui::menu_item(ui, lang.pick(e.en, e.ko), false);
+                                if let Some(keys) = e.keys {
+                                    ui.painter().text(
+                                        egui::pos2(
+                                            resp.rect.right() - space::S,
+                                            resp.rect.center().y,
+                                        ),
+                                        egui::Align2::RIGHT_CENTER,
+                                        keys,
+                                        egui::FontId::proportional(font::CAPTION),
+                                        c.text_muted,
+                                    );
+                                }
+                                if resp.clicked() {
+                                    run = Some(e.run);
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+        if let Some(r) = run {
+            self.run_entry(r);
+        }
+    }
+
+    /// The assets dialog: the document's images and the folder's orphans, with Show and Rename.
+    fn assets_ui(&mut self, ctx: &egui::Context, c: &Colors) {
+        let Some(mut view) = self.assets_view.take() else {
+            return;
+        };
+        let lang = self.lang;
+        let mut reveal = None;
+        let mut rename = None;
+        let mut close = false;
+        let title = self.t("Images and assets", "이미지와 asset").to_string();
+        let resp = kim_ui::dialog_sized(ctx, "jarak-assets", &title, 620.0, |ui| {
+            egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
+                ui.label(
+                    RichText::new(lang.pick("In this document", "이 문서의 이미지"))
+                        .size(font::BODY)
+                        .strong()
+                        .color(c.text_primary),
+                );
+                if view.refs.is_empty() {
+                    ui.label(RichText::new(lang.pick("No images.", "이미지가 없습니다.")).color(c.text_muted));
+                }
+                for (url, local, what) in &view.refs {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(url).size(font::BODY).color(c.text_primary));
+                        ui.label(RichText::new(what).size(font::CAPTION).color(c.text_muted));
+                        let exists = local.as_deref().is_some_and(Path::is_file);
+                        if exists {
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.add(kim_ui::Button::ghost(lang.pick("Rename…", "이름 바꾸기…"))).clicked() {
+                                    let stem = local
+                                        .as_deref()
+                                        .and_then(Path::file_stem)
+                                        .map(|s| s.to_string_lossy().into_owned())
+                                        .unwrap_or_default();
+                                    view.rename = Some((url.clone(), stem));
+                                }
+                                if ui.add(kim_ui::Button::ghost(lang.pick("Show", "보기"))).clicked() {
+                                    reveal = local.clone();
+                                }
+                            });
+                        }
+                    });
+                    if let Some((r, name)) = view.rename.as_mut()
+                        && r == url
+                    {
+                        ui.horizontal(|ui| {
+                            let w = (ui.available_width() - 200.0).max(120.0);
+                            kim_ui::text_field(ui, name, lang.pick("New name", "새 이름"), "", w);
+                            if ui.add(kim_ui::Button::primary(lang.pick("Rename", "바꾸기"))).clicked() {
+                                rename = Some((r.clone(), name.clone()));
+                            }
+                        });
+                    }
+                }
+                ui.add_space(space::M);
+                ui.label(
+                    RichText::new(lang.pick(
+                        "Orphaned (no Markdown file in this folder refers to them; nothing is deleted)",
+                        "고아 파일(이 폴더의 어떤 Markdown도 참조하지 않음, 아무것도 지우지 않음)",
+                    ))
+                    .size(font::BODY)
+                    .strong()
+                    .color(c.text_primary),
+                );
+                if view.orphans.is_empty() {
+                    ui.label(RichText::new(lang.pick("None.", "없음.")).color(c.text_muted));
+                }
+                for p in &view.orphans {
+                    ui.horizontal(|ui| {
+                        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                        ui.label(RichText::new(name).size(font::BODY).color(c.text_primary));
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.add(kim_ui::Button::ghost(lang.pick("Show", "보기"))).clicked() {
+                                reveal = Some(p.clone());
+                            }
+                        });
+                    });
+                }
+            });
+            kim_ui::dialog_actions(ui, |ui| {
+                if ui
+                    .add(kim_ui::Button::secondary(lang.pick("Close", "닫기")))
+                    .clicked()
+                {
+                    close = true;
+                }
+            });
+        });
+        if let Some(p) = reveal {
+            self.reveal(&p);
+        }
+        if close || resp.should_close() {
+            return;
+        }
+        self.assets_view = Some(view);
+        if let Some((r, n)) = rename {
+            self.rename_asset(&r, &n);
+        }
+    }
+
+    /// Closes document `i` without asking (its changes were saved or given up), or the window
+    /// when it is the only one.
+    fn close_or_quit(&mut self, i: usize) {
+        if self.tabs.len() > 1 {
+            self.close_now(i);
+        } else {
+            self.quitting = true;
+        }
     }
 
     /// Uses `o` for links Ctrl+clicked in the preview (the program passes the Windows shell).
@@ -294,6 +1083,14 @@ impl JarakApp {
             themed: false,
             quitting: false,
             audit_screen: "editor".into(),
+            editing: Editing::Standard,
+            vim: jarak_core::vim::Vim::new(),
+            vim_tab: 0,
+            settings: None,
+            palette: None,
+            menu_bar: false,
+            alt_armed: false,
+            assets_view: None,
         };
         app.open_args(args);
         app
@@ -301,7 +1098,8 @@ impl JarakApp {
 
     /// Sets up a UI audit's view (ADR 0099): `editor`, `editor-empty`, `editor-selection`,
     /// `editor-wrap`, `question`, `preview`, `split`, `paste-image` (pastes a sample bitmap and
-    /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy). Only used while `KIM_UI_INSPECT` is set.
+    /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy), `vim`,
+    /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92). Only used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -315,6 +1113,55 @@ impl JarakApp {
             }
             "editor-wrap" => self.act(Action::ToggleWrap),
             "preview" => self.tab_mut().set_mode(Mode::Preview),
+            // Step 92: Vim editing (Normal with a search highlight and an unfinished command,
+            // Insert, the command line), the palette, the menu bar, the assets dialog. The mode
+            // is set directly: an audit writes no settings.
+            "vim" | "vim-insert" | "vim-command" | "vim-session" => {
+                self.editing = Editing::Vim;
+                let i = self.active;
+                self.vim.reset(&mut self.tabs[i].file.doc);
+                // `\r` is Enter, `\u{1b}` Esc. The session (the e2e's) edits and writes with `:w`.
+                let keys = match screen {
+                    "vim" => "gg/Markdown\r2d",
+                    "vim-insert" => "ggA",
+                    "vim-session" => "ggOtop\u{1b}j0dwGdd:%s/gamma/GAMMA/g\r:w\r",
+                    _ => ":%s/Markdown/GFM/g",
+                };
+                for c in keys.chars() {
+                    match c {
+                        '\r' => self.vim_input(Ok(jarak_core::vim::Key::Enter)),
+                        '\u{1b}' => self.vim_input(Ok(jarak_core::vim::Key::Esc)),
+                        c => self.vim_input(Err(c.to_string())),
+                    };
+                }
+                if screen != "vim-session" {
+                    self.message = None;
+                }
+            }
+            "palette" => {
+                self.palette = Some(palette::PaletteState {
+                    query: "save".into(),
+                    selected: 0,
+                    focus: true,
+                });
+            }
+            "menu-bar" => self.menu_bar = true,
+            "assets" => {
+                let dir = self
+                    .tab()
+                    .file
+                    .path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf);
+                if let Some(dir) = dir {
+                    let _ = images::write_samples(&dir.join(jarak_core::assets::ASSET_DIR));
+                }
+                let t = self.tab_mut();
+                t.file.doc.select_all();
+                t.file.doc.paste(images::SAMPLE_DOC);
+                self.open_assets();
+            }
             // Step 91: pictures in the preview — scaled to the column, at their size (PNG and
             // WebP), a missing one and a remote one (the audit runs on a copy; the pictures are
             // written next to it, the document is not saved).
@@ -441,6 +1288,16 @@ impl JarakApp {
         let page = self.tab().view.page_lines;
         let read_only = self.tab().file.read_only;
         match a {
+            Action::Palette => {
+                self.palette = if self.palette.is_some() {
+                    None
+                } else {
+                    Some(palette::PaletteState {
+                        focus: true,
+                        ..Default::default()
+                    })
+                };
+            }
             Action::Cmd(c) => {
                 let edits = matches!(
                     c,
@@ -984,6 +1841,9 @@ impl JarakApp {
             self.title = title;
         }
         let c = Colors::get(&ctx);
+        self.alt_toggle(&ctx);
+        self.vim_frame();
+        self.menu_bar_ui(ui, &c);
         self.status_bar(ui, &c);
         let mut ctrl_click = None;
         let lang = self.lang;
@@ -1065,7 +1925,8 @@ impl JarakApp {
         if let Some(pos) = ctrl_click {
             self.reveal_reference_at(pos);
         }
-        if self.pending.is_none() {
+        let dialog_open = self.palette.is_some() || self.assets_view.is_some();
+        if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             if !preview_only && !focused && !ctx.memory(|m| m.focused().is_some()) {
                 ctx.memory_mut(|m| m.request_focus(view::view_id()));
@@ -1075,6 +1936,20 @@ impl JarakApp {
             }
         }
         self.question(&ctx, &c);
+        // Ctrl+Shift+P toggles the palette even while it has the focus.
+        if dialog_open
+            && ctx.input(|i| {
+                i.events.iter().any(|e| {
+                    matches!(e, egui::Event::Key { key: egui::Key::P, pressed: true, modifiers, .. }
+                        if modifiers.shift && (modifiers.ctrl || modifiers.command))
+                })
+            })
+        {
+            self.palette = None;
+        } else {
+            self.palette_ui(&ctx, &c);
+        }
+        self.assets_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
@@ -1096,6 +1971,10 @@ impl JarakApp {
         let events = ctx.input(|i| i.events.clone());
         if self.tab().mode == Mode::Preview {
             self.preview_keys(&events);
+            return;
+        }
+        if self.editing == Editing::Vim {
+            self.vim_keyboard(events);
             return;
         }
         for e in events {
@@ -1128,6 +2007,75 @@ impl JarakApp {
                     if let Some(a) = keys::action_for(key, modifiers) {
                         self.act(a);
                     }
+                }
+                egui::Event::MouseWheel {
+                    delta, modifiers, ..
+                } if modifiers.command => {
+                    if delta.y > 0.0 {
+                        self.act(Action::ZoomIn);
+                    } else if delta.y < 0.0 {
+                        self.act(Action::ZoomOut);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Keys in Vim editing: Vim's first; what Vim does not take (Ctrl+S, Ctrl+E, …) works as in
+    /// Standard editing.
+    fn vim_keyboard(&mut self, events: Vec<egui::Event>) {
+        for e in events {
+            match e {
+                egui::Event::Text(s) => {
+                    if !s.chars().all(char::is_control) {
+                        self.vim_input(Err(s));
+                    }
+                }
+                egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => {
+                    if self.vim.mode.is_insert() && self.vim.prompt.is_none() {
+                        let v = &mut self.tab_mut().view;
+                        v.preedit = text;
+                        v.after_edit();
+                    }
+                }
+                egui::Event::Ime(egui::ImeEvent::Commit(s)) => {
+                    self.tab_mut().view.preedit.clear();
+                    if !s.is_empty() {
+                        self.vim_input(Err(s));
+                    }
+                }
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
+                    let taken = vim_key(key, modifiers).is_some_and(|k| self.vim_input(Ok(k)));
+                    if !taken && let Some(a) = keys::action_for(key, modifiers) {
+                        // Plain editing keys belong to Vim's modes; the rest are the window's.
+                        let plain_edit = matches!(
+                            a,
+                            Action::Cmd(_)
+                                | Action::Indent
+                                | Action::Outdent
+                                | Action::ToggleOverwrite
+                        ) && !modifiers.command
+                            && !modifiers.ctrl
+                            && !self.vim.mode.is_insert();
+                        if !plain_edit {
+                            self.act(a);
+                            let i = self.active;
+                            if !self.vim.mode.is_insert() && !self.vim.mode.is_visual() {
+                                self.vim.reset(&mut self.tabs[i].file.doc);
+                            }
+                        }
+                    }
+                }
+                egui::Event::Copy => self.act(Action::Copy),
+                egui::Event::Cut => self.act(Action::Cut),
+                egui::Event::Paste(s) => {
+                    self.vim_input(Err(s));
                 }
                 egui::Event::MouseWheel {
                     delta, modifiers, ..
@@ -1286,7 +2234,29 @@ impl JarakApp {
                 c.text_muted,
             ));
         }
-        let message = self.message.clone();
+        let mut message = self.message.clone();
+        // Vim: the mode (and the keys of an unfinished command) lead; the command line replaces
+        // the message while it is typed.
+        let mut vim_label = None;
+        if self.editing == Editing::Vim && t.mode != Mode::Preview {
+            if let Some(p) = &self.vim.prompt {
+                message = Some(format!("{p}\u{2581}"));
+            }
+            let pending = self.vim.pending();
+            let mode = match self.vim.prompt.as_deref().map(|p| p.chars().next()) {
+                Some(Some(':')) => "COMMAND",
+                Some(_) => "SEARCH",
+                None => self.vim.mode.label(),
+            };
+            vim_label = Some(if pending.is_empty() {
+                mode.to_string()
+            } else {
+                format!("{mode}  {pending}")
+            });
+            // INS/OVR belong to Standard editing.
+            items.retain(|(s, _)| s != "INS" && s != "OVR");
+        }
+        let mut leave_vim = false;
         egui::Panel::bottom("jarak-status")
             .exact_size(size::CONTROL)
             .resizable(false)
@@ -1317,6 +2287,26 @@ impl JarakApp {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(text_area), |ui| {
                     ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = space::L;
+                        if let Some(l) = &vim_label {
+                            let tip = self.t(
+                                "Vim editing — click to switch to Standard editing",
+                                "Vim 편집 — 누르면 표준 편집으로 바꿉니다",
+                            );
+                            let r = ui
+                                .add(
+                                    egui::Label::new(
+                                        RichText::new(l).size(font::CAPTION).strong().color(c.accent),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(tip);
+                            r.widget_info(|| {
+                                egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Vim mode {l}"))
+                            });
+                            if r.clicked() {
+                                leave_vim = true;
+                            }
+                        }
                         if let Some(m) = &message {
                             ui.label(RichText::new(m).size(font::CAPTION).color(c.text_primary));
                         }
@@ -1328,6 +2318,9 @@ impl JarakApp {
                         });
                     });
                 });
+                if leave_vim {
+                    self.set_editing(Editing::Standard);
+                }
                 if self.settings_note {
                     let note = self.t(
                         "Settings open in a window of their own once Step 105 (#124) is done; nothing to set yet.",

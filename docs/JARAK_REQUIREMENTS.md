@@ -19,8 +19,10 @@ Step 89 implemented `JARAK-FR-040`, `JARAK-FR-041` and `JARAK-FR-046` and measur
 ([JARAK_ARCHITECTURE §12](JARAK_ARCHITECTURE.md)); Step 91 completed `JARAK-FR-044` (decoding off
 the UI thread into a bounded cache, WebP, placeholders with the path) and implemented
 `JARAK-FR-045` (reveal from the reference, `jarak assets list/rename`, Save As offers to copy
-the pictures) ([JARAK_ARCHITECTURE §13](JARAK_ARCHITECTURE.md)); each implementing Step updates
-the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
+the pictures) ([JARAK_ARCHITECTURE §13](JARAK_ARCHITECTURE.md)); Step 92 implemented
+`JARAK-FR-050`…`JARAK-FR-054` — Vim editing, the command palette and the menu bar
+([JARAK_ARCHITECTURE §14](JARAK_ARCHITECTURE.md), [JARAK_VIM](JARAK_VIM.md),
+[JARAK_KEYS](JARAK_KEYS.md)); each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 

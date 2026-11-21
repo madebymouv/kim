@@ -123,6 +123,13 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "paste-image",
                 // Step 91: pictures scaled to the column, PNG and WebP, missing and remote.
                 "images",
+                // Step 92: Vim editing, the command line, the palette, the menu bar, the assets.
+                "vim",
+                "vim-insert",
+                "vim-command",
+                "palette",
+                "menu-bar",
+                "assets",
             ],
         ),
     ];

@@ -33,6 +33,8 @@ pub enum Action {
     TogglePreview,
     /// Ctrl+Shift+E: source and preview side by side.
     ToggleSplit,
+    /// Ctrl+Shift+P: the command palette (Step 92).
+    Palette,
 }
 
 /// The action for `key` with `m` held, if any.
@@ -88,6 +90,7 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::O) if !shift => Some(A::Open),
         (true, Key::S) if !shift => Some(A::Save),
         (true, Key::S) => Some(A::SaveAs),
+        (true, Key::P) if shift => Some(A::Palette),
         (true, Key::W) if !shift => Some(A::Close),
         (true, Key::F4) if !shift => Some(A::Close),
         (true, Key::Plus | Key::Equals) => Some(A::ZoomIn),
@@ -102,9 +105,132 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
     }
 }
 
+/// The keys of `a` as the palette and the menus show them (the default bindings above; a test
+/// checks every label against [`action_for`]).
+pub fn key_label(a: Action) -> Option<&'static str> {
+    use Action as A;
+    use Command as C;
+    Some(match a {
+        A::Cmd(c) => match c {
+            C::Undo => "Ctrl+Z",
+            C::Redo => "Ctrl+Y",
+            C::DeleteBackward => "Backspace",
+            C::DeleteForward => "Delete",
+            C::DeleteWordBackward => "Ctrl+Backspace",
+            C::DeleteWordForward => "Ctrl+Delete",
+            C::Newline => "Enter",
+            C::SelectAll => "Ctrl+A",
+            C::MoveLeft => "Left",
+            C::MoveRight => "Right",
+            C::MoveUp => "Up",
+            C::MoveDown => "Down",
+            C::WordLeft => "Ctrl+Left",
+            C::WordRight => "Ctrl+Right",
+            C::LineStart => "Home",
+            C::LineEnd => "End",
+            C::DocStart => "Ctrl+Home",
+            C::DocEnd => "Ctrl+End",
+            C::PageUp => "PageUp",
+            C::PageDown => "PageDown",
+            C::SelectLeft => "Shift+Left",
+            C::SelectRight => "Shift+Right",
+            C::SelectUp => "Shift+Up",
+            C::SelectDown => "Shift+Down",
+            C::SelectWordLeft => "Ctrl+Shift+Left",
+            C::SelectWordRight => "Ctrl+Shift+Right",
+            C::SelectLineStart => "Shift+Home",
+            C::SelectLineEnd => "Shift+End",
+            C::SelectDocStart => "Ctrl+Shift+Home",
+            C::SelectDocEnd => "Ctrl+Shift+End",
+            C::SelectPageUp => "Shift+PageUp",
+            C::SelectPageDown => "Shift+PageDown",
+        },
+        A::New => "Ctrl+N",
+        A::Open => "Ctrl+O",
+        A::Save => "Ctrl+S",
+        A::SaveAs => "Ctrl+Shift+S",
+        A::Close => "Ctrl+W",
+        A::Indent => "Tab",
+        A::Outdent => "Shift+Tab",
+        A::ToggleOverwrite => "Insert",
+        A::ZoomIn => "Ctrl+Plus",
+        A::ZoomOut => "Ctrl+Minus",
+        A::ZoomReset => "Ctrl+0",
+        A::NextDocument => "Ctrl+Tab",
+        A::PreviousDocument => "Ctrl+Shift+Tab",
+        A::ToggleWrap => "Alt+Z",
+        A::Copy => "Ctrl+C",
+        A::Cut => "Ctrl+X",
+        A::Paste => "Ctrl+V",
+        A::TogglePreview => "Ctrl+E",
+        A::ToggleSplit => "Ctrl+Shift+E",
+        A::Palette => "Ctrl+Shift+P",
+    })
+}
+
+/// A label of [`key_label`] as the key and modifiers it names.
+pub fn parse_label(label: &str) -> Option<(Key, Modifiers)> {
+    let mut m = Modifiers::NONE;
+    let mut key = None;
+    for part in label.split('+') {
+        match part {
+            "Ctrl" => {
+                m.ctrl = true;
+                m.command = true;
+            }
+            "Shift" => m.shift = true,
+            "Alt" => m.alt = true,
+            "Plus" => key = Some(Key::Plus),
+            "Minus" => key = Some(Key::Minus),
+            "0" => key = Some(Key::Num0),
+            "Left" => key = Some(Key::ArrowLeft),
+            "Right" => key = Some(Key::ArrowRight),
+            "Up" => key = Some(Key::ArrowUp),
+            "Down" => key = Some(Key::ArrowDown),
+            name => key = Key::from_name(name),
+        }
+    }
+    key.map(|k| (k, m))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_key_label_is_the_binding_of_its_action() {
+        let mut actions: Vec<Action> = jarak_core::command::COMMANDS
+            .iter()
+            .map(|c| Action::Cmd(c.command))
+            .collect();
+        actions.extend([
+            Action::New,
+            Action::Open,
+            Action::Save,
+            Action::SaveAs,
+            Action::Close,
+            Action::Indent,
+            Action::Outdent,
+            Action::ToggleOverwrite,
+            Action::ZoomIn,
+            Action::ZoomOut,
+            Action::ZoomReset,
+            Action::NextDocument,
+            Action::PreviousDocument,
+            Action::ToggleWrap,
+            Action::Copy,
+            Action::Cut,
+            Action::Paste,
+            Action::TogglePreview,
+            Action::ToggleSplit,
+            Action::Palette,
+        ]);
+        for a in actions {
+            let label = key_label(a).expect("every action has keys");
+            let (k, m) = parse_label(label).unwrap_or_else(|| panic!("{label}"));
+            assert_eq!(action_for(k, m), Some(a), "{label}");
+        }
+    }
 
     fn m(ctrl: bool, shift: bool) -> Modifiers {
         Modifiers {

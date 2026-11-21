@@ -578,5 +578,12 @@ fn vim_patterns_translate_to_regular_expressions() {
     assert_eq!(vim_regex("\\<word\\>"), "\\bword\\b");
     assert_eq!(vim_regex("\\v(a|b)+"), "(a|b)+");
     assert_eq!(vim_regex("a.b*"), "a.b*");
+    assert_eq!(vim_regex("x\\{2,3}y"), "x{2,3}y");
+    assert_eq!(vim_regex("{x}"), "\\{x\\}");
+    let mut t = ed("|xx Foo foo\n");
+    t.k("/\\cFOO<CR>");
+    assert_eq!(t.s(), "xx |Foo foo\n", "\\c ignores case");
+    t.k(":s/x\\{2}/Y/<CR>");
+    assert_eq!(t.text(), "Y Foo foo\n");
     assert_eq!(vim_replacement("[&] \\1 $x", "\n"), "[${0}] ${1} $$x");
 }

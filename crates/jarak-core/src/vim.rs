@@ -608,16 +608,27 @@ pub fn vim_regex(p: &str) -> String {
     }
     let mut out = String::with_capacity(p.len() + 8);
     let mut it = p.chars().peekable();
+    // Inside `\{n,m}` the closing brace needs no backslash.
+    let mut brace = false;
     while let Some(c) = it.next() {
-        if c == '\\' {
+        if brace && c == '}' {
+            out.push('}');
+            brace = false;
+        } else if c == '\\' {
             match it.next() {
                 Some('(') => out.push('('),
                 Some(')') => out.push(')'),
                 Some('|') => out.push('|'),
                 Some('+') => out.push('+'),
                 Some('?' | '=') => out.push('?'),
-                Some('{') => out.push('{'),
-                Some('}') => out.push('}'),
+                Some('{') => {
+                    out.push('{');
+                    brace = true;
+                }
+                Some('}') => {
+                    out.push('}');
+                    brace = false;
+                }
                 Some('<' | '>') => out.push_str("\\b"),
                 Some('n') => out.push_str("\\n"),
                 Some('t') => out.push_str("\\t"),
@@ -918,11 +929,13 @@ impl Vim {
     }
 
     fn regex(&self, pat: &str) -> Result<regex::Regex, String> {
-        let ci = self.ignorecase && !(self.smartcase && pat.chars().any(char::is_uppercase));
-        let mut src = vim_regex(pat);
-        if let Some(rest) = src.strip_prefix("\\c") {
-            src = format!("(?i){rest}");
-        } else if ci {
+        // `\c` anywhere ignores case for the pattern (Vim's rule); otherwise the options decide.
+        let forced = pat.contains("\\c");
+        let body = pat.replace("\\c", "");
+        let ci = forced
+            || (self.ignorecase && !(self.smartcase && body.chars().any(char::is_uppercase)));
+        let mut src = vim_regex(&body);
+        if ci {
             src = format!("(?i){src}");
         }
         regex::RegexBuilder::new(&src)

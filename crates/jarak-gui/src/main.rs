@@ -250,6 +250,10 @@ fn run(
             )
             .with_clipboard(Arc::new(jarak_gui::clipboard::WinClipboard))
             .with_opener(Arc::new(jarak_gui::preview::ShellOpener));
+            // Step 92: the editing mode (Standard or Vim) lives in the settings file.
+            if let Some(p) = jarak_core::paths::Paths::from_env() {
+                app = app.with_settings(p.settings_file());
+            }
             // ADR 0099: a UI audit names the view to photograph.
             if kim_ui::inspect::active()
                 && let Ok(screen) = std::env::var("KIM_UI_SCREEN")

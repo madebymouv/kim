@@ -821,6 +821,306 @@ fn the_preview_never_scrolls_past_the_end_of_the_document() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+fn vim_keys(h: &mut Harness<'static, JarakApp>, s: &str) {
+    for c in s.chars() {
+        h.event(egui::Event::Text(c.to_string()));
+    }
+    let _ = h.try_run();
+}
+
+#[test]
+fn a_vim_session_edits_with_motions_operators_visual_and_wq() {
+    use jarak_gui::Editing;
+    let d = temp("vim");
+    let doc = d.join("notes.md");
+    std::fs::write(&doc, "one two three\nfour five\nsix\n").unwrap();
+    let (a, _) = app_with(&[doc.to_str().unwrap()], Arc::default());
+    let mut h = harness(a);
+    h.state_mut().set_editing(Editing::Vim);
+    h.run();
+    assert!(h.query_by_label_contains("Vim mode NORMAL").is_some());
+    assert!(
+        !h.state().tab().view.ime,
+        "keys stay keys in Normal mode (IME off)"
+    );
+    assert!(h.state().tab().view.block_caret);
+    vim_keys(&mut h, "wdw");
+    assert_eq!(doc_text(&h), "one three\nfour five\nsix\n");
+    // A count shows while it is typed.
+    vim_keys(&mut h, "2");
+    assert!(h.query_by_label_contains("NORMAL  2").is_some());
+    vim_keys(&mut h, "x");
+    assert_eq!(doc_text(&h), "one ree\nfour five\nsix\n");
+    // Insert mode: the IME composes, typed text goes in, Esc returns.
+    vim_keys(&mut h, "A");
+    assert!(h.query_by_label_contains("Vim mode INSERT").is_some());
+    assert!(h.state().tab().view.ime);
+    vim_keys(&mut h, "!한글");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.query_by_label_contains("Vim mode NORMAL").is_some());
+    assert_eq!(doc_text(&h), "one ree!한글\nfour five\nsix\n");
+    vim_keys(&mut h, "u");
+    assert_eq!(
+        doc_text(&h),
+        "one ree\nfour five\nsix\n",
+        "the insert was one undo step"
+    );
+    key(&mut h, egui::Key::R, egui::Modifiers::CTRL);
+    assert_eq!(
+        doc_text(&h),
+        "one ree!한글\nfour five\nsix\n",
+        "Ctrl+R redoes"
+    );
+    // Visual line: two lines yanked, pasted at the end.
+    vim_keys(&mut h, "jVjyGp");
+    assert_eq!(
+        doc_text(&h),
+        "one ree!한글\nfour five\nsix\nfour five\nsix\n"
+    );
+    // The command line shows in the status bar while it is typed.
+    vim_keys(&mut h, ":%s/six/6/g");
+    assert!(h.query_by_label_contains(":%s/six/6/g").is_some());
+    assert!(h.query_by_label_contains("Vim mode COMMAND").is_some());
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "one ree!한글\nfour five\n6\nfour five\n6\n");
+    assert!(
+        h.query_by_label_contains("2 substitutions on 2 lines")
+            .is_some()
+    );
+    // Standard keys still work in Vim editing: Ctrl+S saves.
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert_eq!(
+        std::fs::read_to_string(&doc).unwrap(),
+        "one ree!한글\nfour five\n6\nfour five\n6\n"
+    );
+    // :q with unsaved changes refuses; :wq saves and closes.
+    vim_keys(&mut h, "dd:q");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(h.query_by_label_contains("E37").is_some());
+    assert!(!h.state().may_quit());
+    vim_keys(&mut h, ":wq");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    // `dd` took the line the substitution left the cursor on (the last one).
+    assert_eq!(
+        std::fs::read_to_string(&doc).unwrap(),
+        "one ree!한글\nfour five\n6\nfour five\n"
+    );
+    assert!(h.state().may_quit(), ":wq closes the window");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn vim_search_highlights_matches_and_noh_clears_them() {
+    use jarak_gui::Editing;
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "alpha beta alpha");
+    h.state_mut().set_editing(Editing::Vim);
+    vim_keys(&mut h, "gg/alpha");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(h.state().tab().view.marks, vec![(0, 5), (11, 16)]);
+    vim_keys(&mut h, ":noh");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(h.state().tab().view.marks.is_empty());
+    // Back to Standard: Esc does nothing, the caret is a line again.
+    h.state_mut().set_editing(Editing::Standard);
+    h.run();
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    text(&mut h, "!");
+    assert!(doc_text(&h).contains('!'));
+    assert!(!h.state().tab().view.block_caret);
+    assert!(h.query_by_label_contains("Vim mode").is_none());
+}
+
+#[test]
+fn a_read_only_document_stays_unchanged_in_vim() {
+    use jarak_gui::Editing;
+    let d = temp("vim-ro");
+    let f = d.join("bin.dat");
+    std::fs::write(&f, b"ab\x00cd\n").unwrap();
+    let (a, _) = app_with(&[f.to_str().unwrap()], Arc::default());
+    let mut h = harness(a);
+    assert!(h.state().tab().file.read_only);
+    h.state_mut().set_editing(Editing::Vim);
+    vim_keys(&mut h, "ddxix");
+    assert_eq!(std::fs::read(&f).unwrap(), b"ab\x00cd\n");
+    assert!(!h.state().tab().file.doc.is_dirty());
+    assert!(
+        h.query_by_label_contains("read-only").is_some()
+            || h.query_by_label_contains("Read-only").is_some()
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_editing_mode_is_remembered_in_the_settings_file() {
+    use jarak_gui::Editing;
+    let d = temp("settings");
+    let file = d.join("settings.toml");
+    std::fs::write(&file, "# kept\ntheme = \"dark\"\n").unwrap();
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_settings(file.clone()));
+    assert_eq!(h.state().editing, Editing::Standard);
+    h.state_mut().set_editing(Editing::Vim);
+    let saved = std::fs::read_to_string(&file).unwrap();
+    assert_eq!(saved, "# kept\ntheme = \"dark\"\nediting_mode = \"vim\"\n");
+    let (b, _) = app_with(&[], Arc::default());
+    let h2 = harness(b.with_settings(file));
+    assert_eq!(
+        h2.state().editing,
+        Editing::Vim,
+        "a new window starts in Vim editing"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_palette_lists_commands_with_their_keys_and_runs_one() {
+    use jarak_gui::Editing;
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    key(
+        &mut h,
+        egui::Key::P,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert!(h.state().palette.is_some());
+    assert!(h.query_by_label_contains("Save as…").is_some());
+    assert!(h.query_by_label_contains("Editing mode: Vim").is_some());
+    assert!(
+        h.query_by_label_contains("Extend the selection to the line end")
+            .is_some()
+    );
+    // Typing filters (the search field has the focus); Enter runs the first match.
+    text(&mut h, "editing vim");
+    assert!(h.query_by_label_contains("Save as…").is_none());
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(h.state().palette.is_none());
+    assert_eq!(h.state().editing, Editing::Vim);
+    // Typing in the palette never reached the document.
+    assert_eq!(doc_text(&h), "");
+    // Esc closes it; a click on an entry runs it.
+    key(
+        &mut h,
+        egui::Key::P,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state().palette.is_none());
+    key(
+        &mut h,
+        egui::Key::P,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    text(&mut h, "standard");
+    h.get_by_label("Editing mode: Standard").click();
+    h.run();
+    assert_eq!(h.state().editing, Editing::Standard);
+}
+
+#[test]
+fn alt_alone_shows_the_menu_bar_whose_menus_run_commands() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    assert!(!h.state().menu_bar);
+    let alt = egui::Modifiers {
+        alt: true,
+        ..Default::default()
+    };
+    // What Windows gives for Alt alone (traced on the desktop): the modifier, the Alt key
+    // itself, and back.
+    let press_alt = |h: &mut Harness<'static, JarakApp>| {
+        h.event(egui::Event::ModifiersChanged(alt));
+        h.event(egui::Event::Key {
+            key: egui::Key::AltLeft,
+            physical_key: Some(egui::Key::AltLeft),
+            pressed: true,
+            repeat: false,
+            modifiers: alt,
+        });
+        h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        h.event(egui::Event::Key {
+            key: egui::Key::AltLeft,
+            physical_key: Some(egui::Key::AltLeft),
+            pressed: false,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run();
+    };
+    press_alt(&mut h);
+    assert!(h.state().menu_bar);
+    h.get_by_label("View").click();
+    h.run();
+    assert!(h.query_by_label_contains("Word wrap").is_some());
+    h.get_by_label("Word wrap").click();
+    h.run();
+    assert!(h.state().tab().view.wrap);
+    // Alt with a key (Alt+Z) is that key, not the menu bar.
+    h.event(egui::Event::ModifiersChanged(alt));
+    key(&mut h, egui::Key::Z, alt);
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    h.run();
+    assert!(h.state().menu_bar, "still shown");
+    assert!(!h.state().tab().view.wrap, "Alt+Z toggled the wrap back");
+    press_alt(&mut h);
+    assert!(!h.state().menu_bar, "Alt again hides it");
+}
+
+#[test]
+fn the_assets_dialog_lists_images_and_orphans_and_renames_one() {
+    use jarak_gui::images::encode_png;
+    let d = temp("assets-dialog");
+    std::fs::create_dir_all(d.join("assets")).unwrap();
+    let png = encode_png(4, 4, &[9u8; 64]).unwrap();
+    std::fs::write(d.join("assets").join("shot.png"), &png).unwrap();
+    std::fs::write(d.join("assets").join("old.png"), &png).unwrap();
+    let doc = d.join("n.md");
+    std::fs::write(&doc, "![a](assets/shot.png)\n![m](assets/missing.png)\n").unwrap();
+    let (a, _) = app_with(&[doc.to_str().unwrap()], Arc::default());
+    let rec = Arc::new(Recorder::default());
+    let mut h = harness(a.with_opener(rec));
+    h.state_mut().run_entry(jarak_gui::palette::Run::Assets);
+    h.run();
+    let v = h.state().assets_view.clone().expect("the dialog is open");
+    assert_eq!(v.refs.len(), 2);
+    assert!(v.refs[0].2.starts_with("png"), "{:?}", v.refs);
+    assert_eq!(v.refs[1].2, "missing");
+    assert_eq!(v.orphans, vec![d.join("assets").join("old.png")]);
+    assert!(h.query_by_label_contains("Orphaned").is_some());
+    // Rename through the dialog's button and field.
+    h.get_all_by_label("Rename…").next().unwrap().click();
+    h.run();
+    h.state_mut().rename_asset("assets/shot.png", "login");
+    h.run();
+    assert!(
+        d.join("assets").join("login.png").is_file(),
+        "{:?}",
+        h.state().message
+    );
+    assert_eq!(
+        std::fs::read_to_string(&doc).unwrap(),
+        "![a](assets/login.png)\n![m](assets/missing.png)\n"
+    );
+    assert!(
+        !h.state().tab().file.doc.is_dirty(),
+        "saved with the new reference"
+    );
+    // A dirty document is not renamed (typing reaches the document once the dialog is closed).
+    h.state_mut().assets_view = None;
+    h.run();
+    text(&mut h, "x");
+    assert!(h.state().tab().file.doc.is_dirty());
+    h.state_mut().rename_asset("assets/login.png", "again");
+    h.run();
+    assert!(d.join("assets").join("login.png").is_file());
+    assert!(
+        h.query_by_label_contains("Save the document first")
+            .is_some()
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn the_gear_says_honestly_that_settings_come_later() {
     let (a, _) = app_with(&[], Arc::default());

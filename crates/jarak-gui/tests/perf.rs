@@ -225,3 +225,43 @@ fn fifty_pictures_scroll_and_type_within_budget() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Step 92 (#111): Vim editing in the 10 MB document — Normal-mode motions and operators
+/// (`j w e b x dw u .`) each in one frame (`JARAK-NFR-002`: ≤ 16 ms p95).
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn vim_keys_in_a_10_mb_document() {
+    let line = "The quick brown fox 한글 문장 jumps over the lazy dog 0123456789\r\n";
+    let text = line.repeat(10 * 1024 * 1024 / line.len() + 1);
+    let dir = std::env::temp_dir().join(format!("jarak-perf-vim-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ten.txt");
+    std::fs::write(&file, &text).unwrap();
+    let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let app = JarakApp::new(Lang::En, &[format!("{}:70000", file.display())], incoming);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    h.state_mut().editing = jarak_gui::Editing::Vim;
+    h.run();
+    let keys = ["j", "w", "e", "b", "x", "d", "w", "u", ".", "j", "w", "x"];
+    let mut times = Vec::new();
+    for i in 0..300 {
+        let k = keys[i % keys.len()];
+        let t = Instant::now();
+        h.event(egui::Event::Text(k.into()));
+        h.step();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(f64::total_cmp);
+    let p = |q: f64| times[((times.len() as f64 - 1.0) * q) as usize];
+    println!(
+        "Vim keys (10 MB): p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms",
+        p(0.5),
+        p(0.95),
+        p(1.0)
+    );
+    assert!(p(0.95) < 16.0, "p95 {:.2} ms", p(0.95));
+    let _ = std::fs::remove_dir_all(&dir);
+}
