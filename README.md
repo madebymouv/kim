@@ -9,8 +9,10 @@ equally well for humans and for AI agents. Kim is made by **mouv**.
 background **Host** that survives closing any **Client** (GUI window, CLI, agent). Linux support
 is planned but not implemented. The catalog also lists two planned tools: **Noeul**, a
 screenshot and pin utility (F1 captures a region, a double-click pins it on the desktop), and
-**Ddalgak**, an automation engine for the remaps, text, launches and macros you define. Each is
-installed on its own, only when you ask; neither has a release yet.
+**Ddalgak**, an automation engine for the remaps, text, launches and macros you define. A fourth
+tool is in development: **Jarak** (자락), a native text editor with Notepad++-class editing, Vim
+keys and instant Markdown preview with Ctrl+V image paste ([philosophy](docs/JARAK_PHILOSOPHY.md)).
+Each is installed on its own, only when you ask; none has a release yet.
 
 > Status: **pre-alpha.** `kim` (signed catalog, explicit install/update/uninstall) and the Kim
 > Manager GUI work; no tool has a release yet, and Subak is not released. Nothing in this repository installs, updates, or

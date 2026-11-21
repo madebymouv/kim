@@ -108,6 +108,11 @@ pub fn run_env(args: &[&str], env: &[(&str, &str)]) -> (i32, Value) {
     if !env.iter().any(|(k, _)| k.eq_ignore_ascii_case("APPDATA")) {
         cmd.env("APPDATA", empty_appdata());
     }
+    // A test run from inside a real Subak pane (the maintainer's terminal) inherits that pane's
+    // identity; the CLI would take it as the default target. Tests set these themselves.
+    for k in ["SUBAK_PANE_ID", "SUBAK_TERMINAL_ID", "SUBAK_ENDPOINT"] {
+        cmd.env_remove(k);
+    }
     for (k, v) in env {
         cmd.env(k, v);
     }

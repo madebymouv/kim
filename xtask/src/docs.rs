@@ -66,7 +66,83 @@ pub fn check(root: &Path) -> Result<Report, String> {
     }
 
     check_docs_index(root, &mut report.problems)?;
+    let matrix = root.join("docs").join(JARAK_MATRIX);
+    if matrix.exists() {
+        check_parity_matrix(&read(&matrix)?, &defined, &mut report.problems);
+    }
     Ok(report)
+}
+
+/// ADR 0102: Jarak's Notepad++ parity matrix.
+const JARAK_MATRIX: &str = "JARAK_NOTEPADPP_MATRIX.md";
+/// The Jarak Steps (84–111) that may own a matrix row.
+const JARAK_STEPS: std::ops::RangeInclusive<u32> = 84..=111;
+
+/// Every row of the parity matrix (`| AREA-nn | feature | status | requirement | step | verify |
+/// evidence |`) has a known status, an owner Step of the Jarak roadmap, a defined `JARAK-*`
+/// requirement unless it is `not intended`, and evidence when it is `partial` or `supported`.
+pub fn check_parity_matrix(
+    text: &str,
+    defined: &BTreeMap<String, String>,
+    problems: &mut Vec<String>,
+) {
+    let mut seen = BTreeSet::new();
+    for line in text.lines() {
+        let t = line.trim();
+        let Some(first) = t.strip_prefix("| ").and_then(|r| r.split(' ').next()) else {
+            continue;
+        };
+        let is_row_id = first.split_once('-').is_some_and(|(a, n)| {
+            !a.is_empty()
+                && a.bytes().all(|b| b.is_ascii_uppercase())
+                && n.len() == 2
+                && n.bytes().all(|b| b.is_ascii_digit())
+        });
+        if !is_row_id {
+            continue;
+        }
+        let cells: Vec<&str> = t.trim_matches('|').split('|').map(str::trim).collect();
+        let id = cells[0];
+        let at = format!("{JARAK_MATRIX} {id}");
+        if !seen.insert(id.to_string()) {
+            problems.push(format!("{at}: duplicate row ID"));
+        }
+        if cells.len() != 7 {
+            problems.push(format!("{at}: expected 7 columns, found {}", cells.len()));
+            continue;
+        }
+        let status = cells[2];
+        if !matches!(status, "planned" | "partial" | "supported" | "not intended") {
+            problems.push(format!("{at}: unknown status `{status}`"));
+        }
+        if !cells[4]
+            .parse::<u32>()
+            .is_ok_and(|s| JARAK_STEPS.contains(&s))
+        {
+            problems.push(format!(
+                "{at}: owner Step `{}` is not one of 84–111",
+                cells[4]
+            ));
+        }
+        if status != "not intended" {
+            let ids = referenced_ids(cells[3]);
+            if ids.is_empty() || !ids.iter().all(|i| i.starts_with("JARAK-")) {
+                problems.push(format!("{at}: needs a JARAK-* requirement"));
+            }
+            for i in ids.iter().filter(|i| !defined.contains_key(*i)) {
+                problems.push(format!("{at}: requirement {i} is not defined"));
+            }
+        }
+        if matches!(status, "partial" | "supported") && matches!(cells[6], "" | "—" | "-") {
+            problems.push(format!("{at}: `{status}` needs evidence"));
+        }
+        if cells[1].is_empty() || cells[5].is_empty() {
+            problems.push(format!("{at}: empty feature or verification cell"));
+        }
+    }
+    if seen.is_empty() {
+        problems.push(format!("{JARAK_MATRIX}: no rows found"));
+    }
 }
 
 fn read(path: &Path) -> Result<String, String> {
@@ -93,7 +169,7 @@ fn collect_markdown(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 /// Returns `id -> row` for every requirement row and records malformed or duplicate rows.
 /// Product prefixes of requirement IDs (`<PRODUCT>-<FR|NFR|SEC>-ddd`).
-pub const PRODUCTS: &[&str] = &["KIM-", "SUBAK-", "NOEUL-", "DDALGAK-"];
+pub const PRODUCTS: &[&str] = &["KIM-", "SUBAK-", "NOEUL-", "DDALGAK-", "JARAK-"];
 
 /// `docs/PRODUCT_REQUIREMENTS.md` plus every `docs/<TOOL>_REQUIREMENTS.md`.
 fn requirement_documents(root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -309,6 +385,43 @@ mod tests {
                 "SUBAK-SEC-003"
             ]
         );
+    }
+
+    #[test]
+    fn the_jarak_parity_matrix_needs_owner_requirement_and_evidence() {
+        let mut defined = BTreeMap::new();
+        defined.insert("JARAK-FR-020".to_string(), String::new());
+        let text = "| FILE-01 | New | planned | `JARAK-FR-020` | 87 | T | — |
+| FILE-02 | Open | supported | `JARAK-FR-020` | 87 | T | — |
+| FILE-03 | Plugins | not intended | — | 108 | D | — |
+| FILE-04 | Save | planned | — | 87 | T | — |
+| FILE-05 | Print | planned | `JARAK-FR-999` | 120 | T | — |
+| FILE-01 | Again | planned | `JARAK-FR-020` | 87 | T | — |
+| FILE-06 | Short | planned | `JARAK-FR-020` | 87 | T |
+";
+        let mut problems = Vec::new();
+        check_parity_matrix(text, &defined, &mut problems);
+        let joined = problems.join(
+            "
+",
+        );
+        assert!(
+            joined.contains("FILE-02: `supported` needs evidence"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("FILE-04: needs a JARAK-* requirement"),
+            "{joined}"
+        );
+        assert!(joined.contains("FILE-05: owner Step `120`"), "{joined}");
+        assert!(
+            joined.contains("FILE-05: requirement JARAK-FR-999 is not defined"),
+            "{joined}"
+        );
+        assert!(joined.contains("FILE-01: duplicate row ID"), "{joined}");
+        assert!(joined.contains("FILE-06: expected 7 columns"), "{joined}");
+        assert!(!joined.contains("FILE-03"), "{joined}");
+        assert_eq!(problems.len(), 6, "{joined}");
     }
 
     #[test]

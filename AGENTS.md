@@ -64,7 +64,7 @@ weaken them in code, defaults, tests or docs.
   and commit messages when a change implements or affects them. Platform, Kim and Subak IDs live
   in `docs/PRODUCT_REQUIREMENTS.md`; a tool with its own requirements document uses
   `docs/<TOOL>_REQUIREMENTS.md` with IDs `<TOOL>-FR|NFR|SEC-ddd` (registered prefixes:
-  `KIM`, `SUBAK`, `NOEUL`, `DDALGAK` in `xtask/src/docs.rs`) and milestones `M1…M9` or a tool
+  `KIM`, `SUBAK`, `NOEUL`, `DDALGAK`, `JARAK` in `xtask/src/docs.rs`) and milestones `M1…M9` or a tool
   letter (`N1`, `D1`, …). `cargo xtask docs-check` validates all of them.
 
 ## 4. Development cadence, tests and e2e (maintainer rules)
@@ -124,7 +124,9 @@ These rules come directly from the maintainer and are mandatory.
   canonical checkout on `main`: no per-issue branches, no extra Git worktrees, no parallel coding
   agents or subagents, no separate repositories per tool. Take the earliest unfinished Step (by the
   number in the issue title) whose dependencies are met; record a blocked Step's exact blocker and
-  never close it.
+  never close it. Temporary maintainer priority (2026-11-22,
+  [ADR 0102](docs/adr/0102-jarak-fourth-kim-tool.md)): the Jarak Steps 84–111 (#103–#130) come
+  first; older unfinished issues stay open and unchanged until the Jarak roadmap is done.
 - Commit messages: imperative summary, then a body that references the issue
   (`Refs #N`) and the requirement IDs touched.
 - **No pull requests** (maintainer decision, 2026-11-04).
