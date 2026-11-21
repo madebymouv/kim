@@ -9,11 +9,14 @@
 //!   edits only through them, and the command registry ([`command`]).
 //! - Step 87: files ([`file`]) — encodings, line endings, the lossless check, atomic saves, and
 //!   the [`file::FileDocument`] that ties a document to its path and format.
+//! - Step 89: the Markdown render model ([`markdown`]): blocks and inlines with their source
+//!   lines, drawn natively by the window.
 
 pub mod command;
 pub mod document;
 pub mod file;
 pub mod history;
+pub mod markdown;
 pub mod paths;
 pub mod selection;
 pub mod target;

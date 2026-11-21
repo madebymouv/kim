@@ -12,7 +12,9 @@ in Step 88; Step 87 implemented files and encodings in `jarak-core` and `jarak i
 `JARAK-FR-024` prompt come with Step 88; Step 88 implemented the editor window —
 `JARAK-FR-024`, `JARAK-FR-030…035` (033 checked with the real Korean IME), the window half of
 `JARAK-FR-020`, and measured `JARAK-NFR-001…003` ([JARAK_ARCHITECTURE §10](JARAK_ARCHITECTURE.md));
-each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
+Step 89 implemented `JARAK-FR-040`, `JARAK-FR-041` and `JARAK-FR-046` and measured
+`JARAK-NFR-005` ([JARAK_ARCHITECTURE §11](JARAK_ARCHITECTURE.md)); each implementing Step
+updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 

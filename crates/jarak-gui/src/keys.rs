@@ -29,6 +29,10 @@ pub enum Action {
     Copy,
     Cut,
     Paste,
+    /// Ctrl+E: the Markdown source or its preview.
+    TogglePreview,
+    /// Ctrl+Shift+E: source and preview side by side.
+    ToggleSplit,
 }
 
 /// The action for `key` with `m` held, if any.
@@ -66,6 +70,11 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (false, Key::Tab) => Some(if shift { A::Outdent } else { A::Indent }),
         (false, Key::Insert) if !shift => Some(A::ToggleOverwrite),
         (true, Key::A) if !shift => Some(A::Cmd(C::SelectAll)),
+        (true, Key::E) => Some(if shift {
+            A::ToggleSplit
+        } else {
+            A::TogglePreview
+        }),
         (true, Key::C) if !shift => Some(A::Copy),
         (true, Key::Insert) if !shift => Some(A::Copy),
         (true, Key::X) if !shift => Some(A::Cut),
@@ -144,6 +153,8 @@ mod tests {
         assert_eq!(k(Key::Equals, true, false), Some(A::ZoomIn));
         assert_eq!(k(Key::Num0, true, false), Some(A::ZoomReset));
         assert_eq!(k(Key::Tab, true, false), Some(A::NextDocument));
+        assert_eq!(k(Key::E, true, false), Some(A::TogglePreview));
+        assert_eq!(k(Key::E, true, true), Some(A::ToggleSplit));
         assert_eq!(k(Key::C, true, false), Some(A::Copy));
         assert_eq!(k(Key::X, true, false), Some(A::Cut));
         assert_eq!(k(Key::V, true, false), Some(A::Paste));

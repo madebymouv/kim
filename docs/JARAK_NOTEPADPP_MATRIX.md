@@ -3,7 +3,8 @@
 Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` partial and
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
-Step 110 — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported — the Step that implements a row updates
+it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -452,7 +453,7 @@ palette, the headless CLI) follow in §2.
 | UI-04 | Line number margin | supported | `JARAK-FR-030` | 88 | T, M | Step 88: line numbers, the caret's line brighter (audited views, real screenshots) |
 | UI-05 | Current line highlight | supported | `JARAK-FR-030` | 88 | T | Step 88: the caret's line highlighted (audited views) |
 | UI-06 | Vertical edge line(s) at configured columns | planned | `JARAK-FR-037` | 103 | T | — |
-| UI-07 | Clickable links (Ctrl+click) | planned | `JARAK-FR-046` | 89 | T | — |
+| UI-07 | Clickable links (Ctrl+click) | supported | `JARAK-FR-046` | 89 | T | Step 89: links in the preview open with Ctrl+click only, web and mail only (window tests); a plain click explains |
 | UI-08 | Context menu in the text | planned | `JARAK-FR-031` | 110 | M | — |
 | UI-09 | Toolbar with icons | not intended | — | 88 | D | — |
 | UI-10 | Menu bar (Jarak: hidden by default, shown with Alt or from the palette) | planned | `JARAK-FR-054` | 92 | T | — |
@@ -461,8 +462,8 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| JRK-01 | Markdown: GitHub-flavoured preview rendered natively | planned | `JARAK-FR-040` | 89 | T, M | — |
-| JRK-02 | Markdown: instant Source / Preview / Split toggle keeping caret and scroll | planned | `JARAK-FR-041` | 89 | T, M | — |
+| JRK-01 | Markdown: GitHub-flavoured preview rendered natively | supported | `JARAK-FR-040` | 89 | T, M | Step 89: GFM render model (7 tests) drawn natively (UI audit `preview`, real screenshot) |
+| JRK-02 | Markdown: instant Source / Preview / Split toggle keeping caret and scroll | supported | `JARAK-FR-041` | 89 | T, M | Step 89: Ctrl+E / Esc / Ctrl+Shift+E keep caret, text and clean state and map the position (window tests; real desktop; 38 ms first switch of 1 MB) |
 | JRK-03 | Markdown: Ctrl+V image paste into portable assets with a relative reference | planned | `JARAK-FR-042` | 90 | T, M | — |
 | JRK-04 | Markdown: image paste into an untitled document (explicit behaviour) | planned | `JARAK-FR-043` | 90 | T, M | — |
 | JRK-05 | Markdown: inline image rendering, scaling, cache, placeholders | planned | `JARAK-FR-044` | 91 | T, M | — |

@@ -301,6 +301,126 @@ fn copy_cut_and_paste_use_the_clipboard_with_the_documents_line_endings() {
     assert_eq!(clip.get_text().as_deref(), Some("b"));
 }
 
+/// A link opener that records instead of opening.
+#[derive(Default)]
+struct Recorder(Mutex<Vec<String>>);
+
+impl jarak_gui::preview::Opener for Recorder {
+    fn open_url(&self, url: &str) -> bool {
+        self.0.lock().unwrap().push(url.to_string());
+        true
+    }
+}
+
+#[test]
+fn ctrl_e_switches_to_the_preview_and_back_without_touching_the_document() {
+    let d = temp("preview");
+    let p = d.join("notes.md");
+    let mut src = String::from("# Notes\n\n");
+    for i in 0..60 {
+        src.push_str(&format!(
+            "## Section {i}\n\nParagraph {i} with *emphasis*.\n\n"
+        ));
+    }
+    std::fs::write(&p, &src).unwrap();
+    // Open at line 121 (Section 30's heading is line 122, 1-based).
+    let (a, _) = app_with(&[&format!("{}:121", p.display())], Arc::default());
+    let mut h = harness(a);
+    let top_before = h.state().tab().view.top_line;
+    assert!(top_before > 0, "the source scrolled to the caret");
+    let caret = h.state().tab().file.doc.selection().primary();
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().mode, jarak_gui::Mode::Preview);
+    assert!(
+        h.query_by_label("Preview").is_some(),
+        "the mode in the status bar"
+    );
+    // The preview starts at the block that holds the source's top line.
+    let r = h.state_mut().tabs[0].rendered();
+    let block = &r.blocks[h.state().tab().preview.top_block];
+    assert!(
+        block.lines.contains(&top_before) || block.lines.start >= top_before,
+        "{:?} for top line {top_before}",
+        block.lines
+    );
+    // Typing in the preview edits nothing and says how to edit.
+    text(&mut h, "x");
+    assert!(h.query_by_label_contains("cannot be edited").is_some());
+    // Scrolling the preview, then back: the source shows the preview's top block, the caret
+    // did not move, the text is byte-identical and clean.
+    key(&mut h, egui::Key::PageDown, egui::Modifiers::NONE);
+    let preview_line = {
+        let r = h.state_mut().tabs[0].rendered();
+        r.blocks[h.state().tab().preview.top_block].lines.start
+    };
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().mode, jarak_gui::Mode::Source);
+    assert_eq!(h.state().tab().view.top_line, preview_line);
+    assert_eq!(h.state().tab().file.doc.selection().primary(), caret);
+    assert_eq!(doc_text(&h), src);
+    assert!(!h.state().tab().file.doc.is_dirty());
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), src);
+    // Esc in the preview also returns to the source.
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert_eq!(h.state().tab().mode, jarak_gui::Mode::Source);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_split_view_edits_the_source_and_the_preview_follows() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    key(
+        &mut h,
+        egui::Key::E,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(h.state().tab().mode, jarak_gui::Mode::Split);
+    assert!(h.query_by_label("Split").is_some());
+    text(&mut h, "# Title");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "body");
+    // The parse follows the edit (a new history state, a new parse).
+    let r = h.state_mut().tabs[0].rendered();
+    assert_eq!(r.blocks.len(), 2, "{:?}", r.blocks);
+    assert!(
+        h.query_by_label("Markdown preview").is_some(),
+        "the preview is on screen"
+    );
+    key(
+        &mut h,
+        egui::Key::E,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(h.state().tab().mode, jarak_gui::Mode::Source);
+}
+
+#[test]
+fn links_open_only_on_ctrl_click_and_only_web_or_mail() {
+    let rec = Arc::new(Recorder::default());
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(960.0, 640.0))
+        .build_ui_state(
+            |ui, app: &mut JarakApp| app.ui(ui),
+            a.with_opener(rec.clone()),
+        );
+    h.run();
+    h.state_mut().open_link("https://example.com/a");
+    h.state_mut().open_link("file:///C:/Windows/notepad.exe");
+    h.state_mut().open_link("javascript:alert(1)");
+    assert_eq!(
+        *rec.0.lock().unwrap(),
+        vec!["https://example.com/a".to_string()]
+    );
+    h.run();
+    assert!(
+        h.query_by_label_contains("web and mail links only")
+            .is_some()
+    );
+}
+
 #[test]
 fn the_gear_says_honestly_that_settings_come_later() {
     let (a, _) = app_with(&[], Arc::default());

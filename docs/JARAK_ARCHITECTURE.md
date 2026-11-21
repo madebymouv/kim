@@ -2,7 +2,7 @@
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
 integration; Step 86: the text model, §8; Step 87: files and encodings, §9; Step 88: the editor
-window, §10) · Owner: mouv · Decision:
+window, §10; Step 89: Markdown, §11) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -265,3 +265,45 @@ three lines, three wheel notches scrolling eight lines.
 (the caret still treats each as one); the wheel scrolls about 2.7 lines per notch (egui's points
 per notch, not Windows' "lines to scroll" setting); dragging selected text inside the document,
 the text context menu and clickable status-bar items are later Steps (110, 110, 103).
+
+## 11. Markdown and the preview (Step 89)
+
+- **Render model** (`jarak-core::markdown`, `pulldown-cmark` 0.13, MIT): GitHub-flavoured Markdown
+  — headings, paragraphs, emphasis, strong, strikethrough, inline code, links, images, block
+  quotes, bullet/ordered/task lists (nested), fenced and indented code blocks, tables with column
+  alignment, rules, footnotes; GFM's extended autolinks (bare `http(s)://` and `www.` URLs, with
+  GFM's trailing-punctuation rule) are added by Jarak. Raw HTML is shown as text, never
+  interpreted. Every top-level block keeps its source lines (trailing blank lines excluded). The
+  model is a pure function of the text and never touches the document (`JARAK-SEC-001`).
+- **Preview** (`jarak-gui::preview`): drawn natively on egui's painter in the UI font (code in the
+  monospace font), a reading column of at most 820 points, centred: headings with a rule under
+  levels 1–2, task checkboxes, list markers, the quote bar in the accent colour, code blocks and
+  table headers on `bg.raised`, banded table rows, footnotes. Like the text view it is
+  virtualized: it scrolls by block (top block plus a pixel offset) and lays out only the blocks on
+  screen. The parse is cached per history state.
+- **Modes** per document: Source, Preview (Ctrl+E; Esc returns), Split (Ctrl+Shift+E: source left,
+  preview right, the preview following the source's top line). Switching maps the source's top
+  line to the block that shows it and back; the caret never moves; the document stays
+  byte-identical and clean. In the preview typing edits nothing and says how to get back; the
+  arrows, Page keys and Space scroll; Ctrl+S, Ctrl+W, zoom still work. The status bar shows
+  "Preview" / "Split" in the accent colour.
+- **Links** (`JARAK-FR-046`, `JARAK-SEC-006`): the pointer shows a hand and the address; a plain
+  click only says "Ctrl+click to open"; Ctrl+click opens web and mail links (`http`, `https`,
+  `mailto`) with the Windows shell (`ShellExecuteW`) — `file:`, `javascript:` and relative paths
+  are refused. Images are labelled placeholders until Step 91.
+
+| Measurement (release) | Result | Budget |
+| --- | --- | --- |
+| First switch of a 1 MB Markdown document to the preview (parse + visible layout, headless) | 38.4 ms | ≤ 100 ms (`JARAK-NFR-005`) |
+| Later switches (cached parse) | p50 0.11 ms, max 1.54 ms | — |
+
+Tests: 7 in `markdown` (inlines, task and nested lists, quotes, code, tables with alignment,
+rules, HTML, links, images, autolinks with GFM punctuation, footnotes, source lines, CRLF, a
+1 MB parse); `preview` (only web and mail links open; the parse cached per state; line ↔ block
+mapping both ways); window flows (Ctrl+E keeps the caret, the text and the clean state and maps
+the position both ways, typing in the preview edits nothing, Esc returns; the split view edits
+the source and re-parses; links open only through the opener and only for web/mail); UI audit
+`preview` and `split` (35 runs with the editor views, 0 failures); e2e
+`step89_jarak_markdown_preview.rs` (first focused run PASS). Real desktop: Ctrl+E, typing in the
+preview, Down/PageDown, Esc, Ctrl+Shift+E twice on the fixture — the title never showed `*`, the
+file stayed byte-identical, the window closed with exit 0 (screenshot reviewed).

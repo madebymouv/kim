@@ -56,3 +56,46 @@ fn a_keystroke_frame_in_a_10_mb_document() {
     assert!(p(0.95) < 16.0, "p95 {:.2} ms", p(0.95));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Step 89 (#108): switching a 1 MB Markdown document to the preview (`JARAK-NFR-005`: ≤ 100 ms),
+/// the first switch (parse + layout of the visible blocks) and the following ones (cached parse).
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn preview_switch_of_a_1_mb_markdown_document() {
+    let unit = "## Section\n\nSome text with *emphasis*, `code` and a [link](https://x.org).\n\n- item one\n- item two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```\ncode block\n```\n\n";
+    let text = unit.repeat(1024 * 1024 / unit.len());
+    let dir = std::env::temp_dir().join(format!("jarak-perf-md-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("big.md");
+    std::fs::write(&file, &text).unwrap();
+    let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let app = JarakApp::new(Lang::En, &[format!("{}:20000", file.display())], incoming);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    let ctrl_e = egui::Event::Key {
+        key: egui::Key::E,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::CTRL,
+    };
+    let mut times = Vec::new();
+    for _ in 0..20 {
+        let t = Instant::now();
+        h.event(ctrl_e.clone());
+        h.step();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    let first = times[0];
+    let mut rest = times[1..].to_vec();
+    rest.sort_by(f64::total_cmp);
+    println!(
+        "preview switch (1 MB Markdown): first {first:.1} ms, then p50 {:.2} ms, max {:.2} ms",
+        rest[rest.len() / 2],
+        rest[rest.len() - 1]
+    );
+    assert!(first < 100.0, "first switch {first:.1} ms");
+    let _ = std::fs::remove_dir_all(&dir);
+}

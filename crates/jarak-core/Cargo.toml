@@ -1,6 +1,6 @@
 [package]
 name = "jarak-core"
-version = "0.0.5"
+version = "0.0.6"
 description = "Jarak's document model and editing engine: no GUI toolkit, no windowing, no clipboard (ADR 0102)"
 edition.workspace = true
 rust-version.workspace = true
@@ -24,6 +24,9 @@ unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
 # Legacy code pages (Windows ANSI, EUC-KR/CP949, Shift_JIS, GBK, Big5, windows-125x, …), Step 87.
 encoding_rs = "0.8.35"
+# GitHub-flavoured Markdown (MIT), Step 89: tables, task lists, strikethrough, footnotes. No HTML
+# output, no SIMD feature needed; the render model is Jarak's own (`markdown`).
+pulldown-cmark = { version = "0.13", default-features = false }
 
 [target."cfg(windows)".dependencies]
 # GetACP (the system ANSI code page) and ReplaceFileW (atomic save keeping the attributes).

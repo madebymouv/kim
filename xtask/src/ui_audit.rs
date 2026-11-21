@@ -107,7 +107,7 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
             ],
         ),
         // Step 88 (ADR 0102): Jarak's editor with a document, empty, with a selection, with word
-        // wrap, and the unsaved-changes question.
+        // wrap, and the unsaved-changes question; Step 89 the preview and the split view.
         (
             "jarak",
             &[
@@ -116,6 +116,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "editor-selection",
                 "editor-wrap",
                 "question",
+                // Step 89: the Markdown preview alone and side by side with the source.
+                "preview",
+                "split",
             ],
         ),
     ];

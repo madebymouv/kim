@@ -5,10 +5,13 @@
 //!   ([`keys`]), Korean IME, open/save/save-as/close with the Windows dialogs, the unsaved-changes
 //!   prompt on close and quit, the status bar's real values, zoom and word wrap. One document is
 //!   shown at a time; Ctrl+Tab switches between open documents until Step 93 adds tabs.
+//! - Step 89: the Markdown preview ([`preview`]) — Ctrl+E switches between the source and the
+//!   rendered preview, Ctrl+Shift+E shows both side by side; the reading position carries over.
 
 pub mod clipboard;
 pub mod handoff;
 pub mod keys;
+pub mod preview;
 pub mod view;
 
 use eframe::egui::{self, Align, Layout, Rect, RichText, Vec2};
@@ -47,11 +50,23 @@ impl Dialogs for NoDialogs {
     }
 }
 
+/// How a document is shown (`JARAK-FR-041`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    #[default]
+    Source,
+    Preview,
+    /// Source on the left, preview on the right (the preview follows the source).
+    Split,
+}
+
 /// One open document and its view.
 #[derive(Debug, Clone)]
 pub struct Tab {
     pub file: FileDocument,
     pub view: ViewState,
+    pub mode: Mode,
+    pub preview: preview::PreviewState,
     /// Whether the text mixes line endings, for the history state it was counted at (counting
     /// a large file every frame would cost a frame).
     eol_cache: Option<(u64, bool)>,
@@ -64,9 +79,41 @@ impl Tab {
         Tab {
             file,
             view: ViewState::default(),
+            mode: Mode::Source,
+            preview: preview::PreviewState::default(),
             eol_cache: None,
             changed_at: None,
         }
+    }
+
+    /// The parse of the document (cached per history state).
+    pub fn rendered(&mut self) -> Arc<jarak_core::markdown::Rendered> {
+        let state = self.file.doc.history().state();
+        let doc = &self.file.doc;
+        self.preview.rendered(state, || doc.text().to_string())
+    }
+
+    /// Switches the mode, carrying the reading position: the source's top line to the block that
+    /// shows it, and back (the caret never moves).
+    pub fn set_mode(&mut self, mode: Mode) {
+        if mode == self.mode {
+            return;
+        }
+        let r = self.rendered();
+        match (self.mode, mode) {
+            (Mode::Source, _) | (Mode::Split, Mode::Preview) => {
+                self.preview.scroll_to_line(&r, self.view.top_line);
+            }
+            (Mode::Preview, _) => {
+                if let Some(line) = self.preview.top_line(&r) {
+                    self.view.top_line = line;
+                    self.view.top_px = 0.0;
+                }
+            }
+            (Mode::Split, _) => {}
+        }
+        self.view.preedit.clear();
+        self.mode = mode;
     }
 
     /// The text mixes line endings: recounted after an edit — in a document above two million
@@ -159,6 +206,7 @@ pub struct JarakApp {
     pub fallback: TextEncoding,
     dialogs: Arc<dyn Dialogs>,
     clipboard: Arc<dyn clipboard::Clipboard>,
+    opener: Arc<dyn preview::Opener>,
     title: String,
     themed: bool,
     /// The window may close now (every question answered).
@@ -194,6 +242,29 @@ impl JarakApp {
         self
     }
 
+    /// Uses `o` for links Ctrl+clicked in the preview (the program passes the Windows shell).
+    pub fn with_opener(mut self, o: Arc<dyn preview::Opener>) -> JarakApp {
+        self.opener = o;
+        self
+    }
+
+    /// Opens a link the user Ctrl+clicked: web and mail links only (`JARAK-SEC-006`).
+    pub fn open_link(&mut self, url: &str) {
+        self.message = Some(if !preview::openable(url) {
+            format!(
+                "{} {url}",
+                self.t(
+                    "Jarak opens web and mail links only:",
+                    "Jarak은 웹과 메일 링크만 엽니다:"
+                )
+            )
+        } else if self.opener.open_url(url) {
+            format!("{} {url}", self.t("Opened", "열었습니다:"))
+        } else {
+            format!("{} {url}", self.t("Could not open", "열지 못했습니다:"))
+        });
+    }
+
     pub fn with(
         lang: Lang,
         args: &[String],
@@ -212,6 +283,7 @@ impl JarakApp {
             fallback,
             dialogs,
             clipboard: Arc::new(clipboard::MemoryClipboard::default()),
+            opener: Arc::new(preview::NoOpener),
             title: String::new(),
             themed: false,
             quitting: false,
@@ -222,7 +294,7 @@ impl JarakApp {
     }
 
     /// Sets up a UI audit's view (ADR 0099): `editor`, `editor-empty`, `editor-selection`,
-    /// `editor-wrap`, `question`. Only used while `KIM_UI_INSPECT` is set.
+    /// `editor-wrap`, `question`, `preview`, `split`. Only used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -235,6 +307,8 @@ impl JarakApp {
                 ));
             }
             "editor-wrap" => self.act(Action::ToggleWrap),
+            "preview" => self.tab_mut().set_mode(Mode::Preview),
+            "split" => self.tab_mut().set_mode(Mode::Split),
             "question" => {
                 self.type_text("!");
                 self.request_close(self.active);
@@ -391,6 +465,24 @@ impl JarakApp {
                 self.save_as(self.active);
             }
             Action::Close => self.request_close(self.active),
+            Action::TogglePreview => {
+                let t = self.tab_mut();
+                let to = if t.mode == Mode::Source {
+                    Mode::Preview
+                } else {
+                    Mode::Source
+                };
+                t.set_mode(to);
+            }
+            Action::ToggleSplit => {
+                let t = self.tab_mut();
+                let to = if t.mode == Mode::Split {
+                    Mode::Source
+                } else {
+                    Mode::Split
+                };
+                t.set_mode(to);
+            }
             Action::Copy => {
                 let s = self.copy_text();
                 self.clipboard.set_text(&s);
@@ -650,20 +742,56 @@ impl JarakApp {
         }
         let c = Colors::get(&ctx);
         self.status_bar(ui, &c);
-        let focused = egui::CentralPanel::default()
+        let (focused, link) = egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(c.bg_base))
             .show(ui, |ui| {
                 let rect = ui.max_rect();
                 let read_only = self.tab().file.read_only;
                 let t = &mut self.tabs[self.active];
-                view::show(ui, rect, &mut t.file.doc, &mut t.view, read_only).focused
+                match t.mode {
+                    Mode::Source => (
+                        view::show(ui, rect, &mut t.file.doc, &mut t.view, read_only).focused,
+                        preview::PreviewOutput::default(),
+                    ),
+                    Mode::Preview => {
+                        let r = t.rendered();
+                        let out = preview::show(ui, rect, &r, &mut t.preview, t.view.zoom);
+                        (false, out)
+                    }
+                    Mode::Split => {
+                        let mid = rect.center().x.round();
+                        let left = Rect::from_min_max(rect.min, egui::pos2(mid, rect.bottom()));
+                        let right = Rect::from_min_max(egui::pos2(mid + 1.0, rect.top()), rect.max);
+                        let focused =
+                            view::show(ui, left, &mut t.file.doc, &mut t.view, read_only).focused;
+                        // The preview follows the source's top line.
+                        let r = t.rendered();
+                        t.preview.scroll_to_line(&r, t.view.top_line);
+                        let out = preview::show(ui, right, &r, &mut t.preview, t.view.zoom);
+                        ui.painter().vline(
+                            mid + 0.5,
+                            rect.y_range(),
+                            egui::Stroke::new(size::BORDER, c.border_subtle),
+                        );
+                        (focused, out)
+                    }
+                }
             })
             .inner;
+        if let Some(url) = link.open {
+            self.open_link(&url);
+        } else if let Some(url) = link.plain_click {
+            self.message = Some(format!(
+                "{} {url}",
+                self.t("Ctrl+click to open", "Ctrl+클릭으로 엽니다:")
+            ));
+        }
         if self.pending.is_none() {
-            if !focused && !ctx.memory(|m| m.focused().is_some()) {
+            let preview_only = self.tab().mode == Mode::Preview;
+            if !preview_only && !focused && !ctx.memory(|m| m.focused().is_some()) {
                 ctx.memory_mut(|m| m.request_focus(view::view_id()));
             }
-            if focused {
+            if focused || preview_only {
                 self.keyboard(&ctx);
             }
         }
@@ -675,6 +803,10 @@ impl JarakApp {
 
     fn keyboard(&mut self, ctx: &egui::Context) {
         let events = ctx.input(|i| i.events.clone());
+        if self.tab().mode == Mode::Preview {
+            self.preview_keys(&events);
+            return;
+        }
         for e in events {
             match e {
                 egui::Event::Text(s) => {
@@ -714,6 +846,70 @@ impl JarakApp {
                     } else if delta.y < 0.0 {
                         self.act(Action::ZoomOut);
                     }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Keys while only the preview shows: scrolling, the mode, files; typing explains how to edit.
+    fn preview_keys(&mut self, events: &[egui::Event]) {
+        for e in events {
+            match e {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
+                    let blocks = self.tabs[self.active].rendered().blocks.len();
+                    let p = &mut self.tab_mut().preview;
+                    let step = |p: &mut preview::PreviewState, d: isize| {
+                        p.top_block = (p.top_block as isize + d)
+                            .clamp(0, blocks.saturating_sub(1) as isize)
+                            as usize;
+                        p.top_px = 0.0;
+                    };
+                    match (key, modifiers.command) {
+                        (egui::Key::ArrowDown, false) => step(p, 1),
+                        (egui::Key::ArrowUp, false) => step(p, -1),
+                        (egui::Key::PageDown, false) | (egui::Key::Space, false) => step(p, 5),
+                        (egui::Key::PageUp, false) => step(p, -5),
+                        (egui::Key::Home, _) => step(p, -(blocks as isize)),
+                        (egui::Key::End, _) => step(p, blocks as isize),
+                        (egui::Key::Escape, _) => self.tab_mut().set_mode(Mode::Source),
+                        _ => {
+                            if let Some(a) = keys::action_for(*key, *modifiers)
+                                && matches!(
+                                    a,
+                                    Action::TogglePreview
+                                        | Action::ToggleSplit
+                                        | Action::Save
+                                        | Action::SaveAs
+                                        | Action::Open
+                                        | Action::New
+                                        | Action::Close
+                                        | Action::Copy
+                                        | Action::ZoomIn
+                                        | Action::ZoomOut
+                                        | Action::ZoomReset
+                                        | Action::NextDocument
+                                        | Action::PreviousDocument
+                                )
+                            {
+                                self.act(a);
+                            }
+                        }
+                    }
+                }
+                egui::Event::Text(_) | egui::Event::Paste(_) => {
+                    self.message = Some(
+                        self.t(
+                            "The preview cannot be edited: Ctrl+E or Esc returns to the source",
+                            "미리보기는 편집할 수 없습니다. Ctrl+E나 Esc로 원본으로 돌아갑니다",
+                        )
+                        .to_string(),
+                    );
                 }
                 _ => {}
             }
@@ -784,6 +980,11 @@ impl JarakApp {
         }
         if t.view.wrap {
             items.push((self.t("Wrap", "줄 바꿈").to_string(), c.text_muted));
+        }
+        match t.mode {
+            Mode::Preview => items.push((self.t("Preview", "미리보기").to_string(), c.accent)),
+            Mode::Split => items.push((self.t("Split", "나란히 보기").to_string(), c.accent)),
+            Mode::Source => {}
         }
         if t.file.read_only {
             items.push((self.t("Read-only", "읽기 전용").to_string(), c.warning));

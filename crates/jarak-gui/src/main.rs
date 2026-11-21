@@ -248,7 +248,8 @@ fn run(
                 Arc::new(jarak_gui::WinDialogs),
                 jarak_core::file::system_encoding(),
             )
-            .with_clipboard(Arc::new(jarak_gui::clipboard::WinClipboard));
+            .with_clipboard(Arc::new(jarak_gui::clipboard::WinClipboard))
+            .with_opener(Arc::new(jarak_gui::preview::ShellOpener));
             // ADR 0099: a UI audit names the view to photograph.
             if kim_ui::inspect::active()
                 && let Ok(screen) = std::env::var("KIM_UI_SCREEN")
