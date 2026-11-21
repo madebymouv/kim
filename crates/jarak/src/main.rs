@@ -21,8 +21,9 @@ network and changes a file only when a command says so (`jarak assets rename`).
 Usage: jarak [OPTIONS] <COMMAND>
 
 Commands:
-  open          Start the Jarak window with files (file, file:line, file:line:column), or hand
-                them to the running window; --new-window starts another window
+  open          Start the Jarak window with files (file, file:line, file:line:column) or a
+                folder (its workspace), or hand them to the running window; --new-window starts
+                another window
   info          A file's encoding, byte-order mark, line endings, size and line count, and
                 whether Jarak can save it unchanged (read-only); --fallback <encoding> reads
                 text that is neither UTF-8 nor UTF-16 in that code page
@@ -558,12 +559,7 @@ fn open(rest: &[&str], g: &Global) -> Result<Done, Fail> {
     let mut targets = Vec::new();
     for a in rest {
         let t = OpenTarget::parse(a).ok_or_else(|| Fail::usage("an empty file name"))?;
-        if t.path.is_dir() {
-            return Err(Fail::usage(format!(
-                "`{}` is a folder; Jarak opens files",
-                t.path.display()
-            )));
-        }
+        // Step 93: a folder opens as the window's workspace.
         targets.push(OpenTarget {
             path: absolute(&t.path),
             ..t
@@ -585,6 +581,7 @@ fn open(rest: &[&str], g: &Global) -> Result<Done, Fail> {
                 "line": t.line,
                 "column": t.column,
                 "exists": t.path.is_file(),
+                "folder": t.path.is_dir(),
             })
         })
         .collect();

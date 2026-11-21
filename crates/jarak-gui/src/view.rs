@@ -49,6 +49,8 @@ pub struct ViewState {
     pub marks: Vec<(usize, usize)>,
     /// The view keeps the focus on Esc (Vim editing: Esc is a key of its own).
     pub keep_escape: bool,
+    /// Step 93: which view draws it (0 main, 1 second): its widget id.
+    pub salt: u8,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -77,6 +79,7 @@ impl Default for ViewState {
             ime: true,
             marks: Vec::new(),
             keep_escape: false,
+            salt: 0,
             drag: None,
             clicks: None,
         }
@@ -186,11 +189,19 @@ pub struct ViewOutput {
     pub focused: bool,
     /// The document position of a Ctrl+click (an image reference there is shown in Explorer).
     pub ctrl_click: Option<usize>,
+    /// Step 93: the view was clicked or a drag started in it this frame (a view without the
+    /// focus takes it then).
+    pub clicked: bool,
 }
 
 /// The id of the text view (focus, IME).
 pub fn view_id() -> egui::Id {
-    egui::Id::unique("jarak-text-view")
+    view_id_for(0)
+}
+
+/// The text view of a view (0 main, 1 second).
+pub fn view_id_for(salt: u8) -> egui::Id {
+    egui::Id::unique(("jarak-text-view", salt))
 }
 
 /// Draws `doc` into `rect` and handles the mouse; keys are handled by the window, which calls
@@ -204,7 +215,7 @@ pub fn show(
 ) -> ViewOutput {
     let c = Colors::get(ui.ctx());
     let m = Metrics::new(ui, state.zoom);
-    let id = view_id();
+    let id = view_id_for(state.salt);
     let resp = ui.interact(rect, id, Sense::click_and_drag());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::MultilineTextInput, true, "Text"));
     if resp.clicked() || resp.drag_started() {
@@ -449,6 +460,7 @@ pub fn show(
     ViewOutput {
         focused,
         ctrl_click,
+        clicked: resp.clicked() || resp.drag_started(),
     }
 }
 
@@ -550,7 +562,7 @@ fn paint_scrollbar(
     );
     let resp = ui.interact(
         track,
-        egui::Id::unique("jarak-scrollbar"),
+        egui::Id::unique(("jarak-scrollbar", state.salt)),
         Sense::click_and_drag(),
     );
     if let Some(p) = resp.interact_pointer_pos() {

@@ -13,6 +13,7 @@
 //!   lines, drawn natively by the window.
 //! - Step 90: pasted images as portable assets next to the document ([`assets`]).
 //! - Step 92: Vim-style modal editing over the same document operations ([`vim`]).
+//! - Step 93: the session and the recent files ([`session`]).
 
 pub mod assets;
 pub mod command;
@@ -22,6 +23,7 @@ pub mod history;
 pub mod markdown;
 pub mod paths;
 pub mod selection;
+pub mod session;
 pub mod target;
 pub mod text;
 pub mod vim;

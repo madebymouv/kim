@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -55,26 +55,26 @@ palette, the headless CLI) follow in §2.
 | FILE-01 | New untitled document (Ctrl+N) | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+N opens a new untitled document (key test); shown with tabs in Step 93 |
 | FILE-02 | Open one or several files with a dialog (Ctrl+O) | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+O with the Windows Open dialog (`GetOpenFileNameW`); the dialog itself not exercised by a test yet |
 | FILE-03 | Open files by drag and drop onto the window | partial | `JARAK-FR-032` | 88 | M | Step 88: files dropped on the window open (`dropped_files`); a real drop not yet verified |
-| FILE-04 | Open containing folder in Explorer / in a command prompt | planned | `JARAK-FR-060` | 93 | T | — |
-| FILE-05 | Open the file in the default viewer (shell association) | planned | `JARAK-FR-060` | 93 | T | — |
-| FILE-06 | Open Folder as Workspace | planned | `JARAK-FR-063` | 93 | T, M | — |
+| FILE-04 | Open containing folder in Explorer / in a command prompt | supported | `JARAK-FR-060` | 93 | T | Step 93: tab menu and palette — Show in Explorer (selected), a command prompt in the folder (window test with a recording opener) |
+| FILE-05 | Open the file in the default viewer (shell association) | supported | `JARAK-FR-060` | 93 | T | Step 93: the default program, never for programs or scripts (`exe`, `bat`, `ps1`, `lnk`, … shown in Explorer instead; unit + window test) |
+| FILE-06 | Open Folder as Workspace | supported | `JARAK-FR-063` | 93 | T, M | Step 93: a dropped folder, `jarak open <folder>` or the document's folder becomes the workspace; restored by the session (window test, e2e) |
 | FILE-07 | Reload from disk | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::reload` (tests); the command comes with Step 88 |
 | FILE-08 | Save (Ctrl+S) | supported | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+S, atomic (window test; real desktop: the file written with CRLF, nothing left behind) |
 | FILE-09 | Save As | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+Shift+S and Ctrl+S on an untitled document ask for a name (window test with a scripted dialog); the real dialog not exercised yet |
 | FILE-10 | Save a Copy As (document keeps its path) | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::save_copy` keeps the document's file and dirty state (tests); the dialog comes with Step 88 |
-| FILE-11 | Save All | planned | `JARAK-FR-020` | 93 | T | — |
-| FILE-12 | Rename the file of the document | planned | `JARAK-FR-020` | 93 | T | — |
+| FILE-11 | Save All | supported | `JARAK-FR-020` | 93 | T | Step 93: Save All (tab menu, palette, File menu; window test) |
+| FILE-12 | Rename the file of the document | supported | `JARAK-FR-020` | 93 | T | Step 93: Rename moves the file without replacing another; the document follows (window test) |
 | FILE-13 | Close (Ctrl+W) | supported | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+W/Ctrl+F4 with the unsaved-changes question (window tests; real desktop) |
-| FILE-14 | Close All | planned | `JARAK-FR-020` | 93 | T | — |
-| FILE-15 | Close more: all but active, to the left, to the right, all unchanged | planned | `JARAK-FR-020` | 93 | T | — |
-| FILE-16 | Move the file to the Recycle Bin | planned | `JARAK-FR-020` | 93 | T | — |
-| FILE-17 | Load Session from a file | planned | `JARAK-FR-062` | 93 | T | — |
-| FILE-18 | Save Session to a file | planned | `JARAK-FR-062` | 93 | T | — |
+| FILE-14 | Close All | supported | `JARAK-FR-020` | 93 | T | Step 93: Close All, asking about each unsaved document in turn (window test) |
+| FILE-15 | Close more: all but active, to the left, to the right, all unchanged | supported | `JARAK-FR-020` | 93 | T | Step 93: close the others, to the left, to the right, the unchanged ones (window test) |
+| FILE-16 | Move the file to the Recycle Bin | supported | `JARAK-FR-020` | 93 | T | Step 93: asked first, SHFileOperationW with FOF_ALLOWUNDO (never a deletion), the document closes (window test with a recording opener) |
+| FILE-17 | Load Session from a file | supported | `JARAK-FR-062` | 93 | T | Step 93: Open a session file… (window test) |
+| FILE-18 | Save Session to a file | supported | `JARAK-FR-062` | 93 | T | Step 93: Save the session to a file… (documents with a file; window test) |
 | FILE-19 | Print (dialog) | planned | `JARAK-FR-140` | 106 | M | — |
 | FILE-20 | Print Now (default printer, no dialog) | planned | `JARAK-FR-140` | 106 | M | — |
-| FILE-21 | Recent files list | planned | `JARAK-FR-028` | 93 | T | — |
-| FILE-22 | Restore recently closed file (Ctrl+Shift+T) | planned | `JARAK-FR-028` | 93 | T | — |
-| FILE-23 | Open all recent files / empty the recent files list | planned | `JARAK-FR-028` | 93 | T | — |
+| FILE-21 | Recent files list | supported | `JARAK-FR-028` | 93 | T | Step 93: newest first, at most 20, in the palette and the File menu (window test) |
+| FILE-22 | Restore recently closed file (Ctrl+Shift+T) | supported | `JARAK-FR-028` | 93 | T | Step 93: Ctrl+Shift+T reopens the closed files newest first (window test) |
+| FILE-23 | Open all recent files / empty the recent files list | supported | `JARAK-FR-028` | 93 | T | Step 93: open all recent files, empty the list (palette, File menu) |
 | FILE-24 | Exit with unsaved-change prompts | supported | `JARAK-FR-024` | 87 | T, M | Step 88: closing the window asks for each unsaved document (window test; real desktop: Esc kept it, Enter saved and closed) |
 | FILE-25 | Prompt Save / Don't save / Cancel when closing a dirty document | supported | `JARAK-FR-024` | 87 | T, M | Step 88: Save (Enter) / Don't save / Cancel (Esc) (window tests; real desktop; audited `question` view) |
 
@@ -271,18 +271,18 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| VIEWS-01 | Move current document to the other view | planned | `JARAK-FR-061` | 93 | T, M | — |
-| VIEWS-02 | Clone current document to the other view | planned | `JARAK-FR-061` | 93 | T, M | — |
-| VIEWS-03 | Move / open the document in a new instance | planned | `JARAK-FR-002` | 93 | T | — |
-| VIEWS-04 | Focus on another view (F8) | planned | `JARAK-FR-061` | 93 | T | — |
-| VIEWS-05 | Synchronize vertical / horizontal scrolling | planned | `JARAK-FR-061` | 93 | T | — |
-| VIEWS-06 | Go to tab 1–9, next / previous tab | planned | `JARAK-FR-060` | 93 | T | — |
-| VIEWS-07 | Move tab forward / backward | planned | `JARAK-FR-060` | 93 | T | — |
+| VIEWS-01 | Move current document to the other view | supported | `JARAK-FR-061` | 93 | T, M | Step 93: move to the other view (tab menu, palette, Window menu; window test, e2e) |
+| VIEWS-02 | Clone current document to the other view | supported | `JARAK-FR-061` | 93 | T, M | Step 93: clone — one buffer, a view and carets per pane, one undo history (window test, e2e) |
+| VIEWS-03 | Move / open the document in a new instance | supported | `JARAK-FR-002` | 93 | T | Step 93: open / move the document to a new window (`--new-window`; saved documents; window test) |
+| VIEWS-04 | Focus on another view (F8) | supported | `JARAK-FR-061` | 93 | T | Step 93: F8 (window test) |
+| VIEWS-05 | Synchronize vertical / horizontal scrolling | supported | `JARAK-FR-061` | 93 | T | Step 93: synchronized vertical and horizontal scrolling keep the views' distance (palette, Window menu) |
+| VIEWS-06 | Go to tab 1–9, next / previous tab | supported | `JARAK-FR-060` | 93 | T | Step 93: Ctrl+1…9 (9 the last), Ctrl+Tab / Ctrl+Shift+Tab within the focused view (window test) |
+| VIEWS-07 | Move tab forward / backward | supported | `JARAK-FR-060` | 93 | T | Step 93: Ctrl+Shift+PageUp/PageDown and dragging a tab (window test) |
 | VIEWS-08 | Tab colouring | planned | `JARAK-FR-060` | 110 | T | — |
 | VIEWS-09 | Document Map panel | planned | `JARAK-FR-102` | 101 | T, M | — |
-| VIEWS-10 | Document List panel | planned | `JARAK-FR-064` | 93 | T | — |
+| VIEWS-10 | Document List panel | supported | `JARAK-FR-064` | 93 | T | Step 93: the side panel's Documents page (window test, UI audit) |
 | VIEWS-11 | Function List panel | planned | `JARAK-FR-093` | 99 | T, M | — |
-| VIEWS-12 | Folder as Workspace panel | planned | `JARAK-FR-063` | 93 | T, M | — |
+| VIEWS-12 | Folder as Workspace panel | supported | `JARAK-FR-063` | 93 | T, M | Step 93: the side panel's Folder page: lazy tree, filter, Refresh (unit + window test, UI audit) |
 | VIEWS-13 | Project panels (1–3, .workspace files) | not intended | — | 110 | D | — |
 
 ### FOLD — View → folding (sources V)
@@ -393,7 +393,7 @@ palette, the headless CLI) follow in §2.
 | RUN-02 | Save run commands with a name and shortcut | planned | `JARAK-FR-111` | 102 | T | — |
 | RUN-03 | Modify shortcut / delete command | planned | `JARAK-FR-111` | 102 | T | — |
 | RUN-04 | Launch in browsers / Wikipedia / PHP help entries | planned | `JARAK-FR-111` | 102 | T | — |
-| RUN-05 | Open the file in another instance | planned | `JARAK-FR-002` | 93 | T | — |
+| RUN-05 | Open the file in another instance | supported | `JARAK-FR-002` | 93 | T | Step 93: Open in a new window (the same as VIEWS-03) |
 
 ### PLUG — Plugins menu and bundled plugin functions (sources G)
 
@@ -413,8 +413,8 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| WIN-01 | Window list of open documents (activate) | planned | `JARAK-FR-064` | 93 | T | — |
-| WIN-02 | Windows… dialog: sort, activate, save, close several | planned | `JARAK-FR-064` | 93 | T | — |
+| WIN-01 | Window list of open documents (activate) | supported | `JARAK-FR-064` | 93 | T | Step 93: the Window menu lists the open documents; a click shows one |
+| WIN-02 | Windows… dialog: sort, activate, save, close several | supported | `JARAK-FR-064` | 93 | T | Step 93: the Documents… dialog sorts (name, folder, unsaved first), shows, saves and closes the checked ones (window test, UI audit) |
 
 ### HELP — ? menu and command line (sources C, U)
 
@@ -436,7 +436,7 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| REL-01 | Remember the session at exit and restore it at start | planned | `JARAK-FR-062` | 93 | T | — |
+| REL-01 | Remember the session at exit and restore it at start | supported | `JARAK-FR-062` | 93 | T | Step 93: session.json (schema, atomic), restored at start (a setting), untitled text kept (window test, e2e across a restart) |
 | REL-02 | Session snapshot and periodic backup of dirty documents | planned | `JARAK-FR-121` | 104 | T, M | — |
 | REL-03 | File status auto-detection with reload prompt | planned | `JARAK-FR-120` | 104 | T, M | — |
 | REL-04 | Update silently (auto-reload unmodified documents) | planned | `JARAK-FR-120` | 104 | T | — |
@@ -447,7 +447,7 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| UI-01 | Tab bar with dirty markers, close buttons and context menu | planned | `JARAK-FR-060` | 93 | T, M | — |
+| UI-01 | Tab bar with dirty markers, close buttons and context menu | supported | `JARAK-FR-060` | 93 | T, M | Step 93: tab bars from the design tokens with dirty dots, close buttons, middle click, drag, context menu (window tests, UI audit 95 runs 0 failures) |
 | UI-02 | Status bar: language, length/lines, position, EOL, encoding, insert/overwrite | partial | `JARAK-FR-035` | 88 | T, M | Step 88: Ln/Col, selection, encoding, EOL, language, INS/OVR (window tests, audited views); the length/lines summary comes with Step 101 |
 | UI-03 | Overwrite mode (Insert key) | supported | `JARAK-FR-031` | 88 | T | Step 88: Insert toggles overwrite; typing replaces the next grapheme, never a line break (core test, window test) |
 | UI-04 | Line number margin | supported | `JARAK-FR-030` | 88 | T, M | Step 88: line numbers, the caret's line brighter (audited views, real screenshots) |

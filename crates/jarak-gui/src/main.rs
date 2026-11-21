@@ -241,9 +241,16 @@ fn run(
                 });
             }
             // `Owner` has no `Drop`: its handles stay open until the process ends.
+            // Step 93: with a session (not in a UI audit), the session's documents come first and
+            // the command line's files are opened after them.
+            let paths = jarak_core::paths::Paths::from_env();
+            // An e2e may keep a session in a UI audit's sandbox (`KIM_UI_SESSION=1`).
+            let with_session = paths.is_some()
+                && (!kim_ui::inspect::active()
+                    || std::env::var("KIM_UI_SESSION").is_ok_and(|v| v == "1"));
             let mut app = JarakApp::with(
                 lang,
-                &files,
+                if with_session { &[] } else { &files },
                 incoming,
                 Arc::new(jarak_gui::WinDialogs),
                 jarak_core::file::system_encoding(),
@@ -251,8 +258,18 @@ fn run(
             .with_clipboard(Arc::new(jarak_gui::clipboard::WinClipboard))
             .with_opener(Arc::new(jarak_gui::preview::ShellOpener));
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
-            if let Some(p) = jarak_core::paths::Paths::from_env() {
+            if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());
+                if with_session {
+                    let restore = jarak_gui::read_setting(&p.settings_file(), "restore_session")
+                        .is_none_or(|v| v != "false");
+                    app = app.with_session(jarak_gui::sessions::SessionFiles {
+                        file: p.session_file(),
+                        recovery: p.recovery_dir(),
+                        restore,
+                    });
+                    app.open_args(&files);
+                }
             }
             // ADR 0099: a UI audit names the view to photograph.
             if kim_ui::inspect::active()

@@ -691,6 +691,19 @@ impl Document {
         }
     }
 
+    /// Step 93: puts `sel` in place of the selection and returns the old one, without sealing
+    /// the undo step (a second view of the same document keeps carets of its own).
+    pub fn swap_selection(&mut self, sel: &Selection) -> Selection {
+        let len = self.len_chars();
+        let s = self.text.slice(..);
+        let new = sel.map(|r| Range {
+            anchor: text::floor_grapheme(s, r.anchor.min(len)),
+            head: text::floor_grapheme(s, r.head.min(len)),
+            goal: r.goal,
+        });
+        std::mem::replace(&mut self.sel, new)
+    }
+
     pub fn select_all(&mut self) {
         self.sel = Selection::single(Range::new(0, self.len_chars()));
         self.history.seal();

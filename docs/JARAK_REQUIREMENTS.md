@@ -22,7 +22,10 @@ the UI thread into a bounded cache, WebP, placeholders with the path) and implem
 the pictures) ([JARAK_ARCHITECTURE §13](JARAK_ARCHITECTURE.md)); Step 92 implemented
 `JARAK-FR-050`…`JARAK-FR-054` — Vim editing, the command palette and the menu bar
 ([JARAK_ARCHITECTURE §14](JARAK_ARCHITECTURE.md), [JARAK_VIM](JARAK_VIM.md),
-[JARAK_KEYS](JARAK_KEYS.md)); each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
+[JARAK_KEYS](JARAK_KEYS.md)); Step 93 implemented `JARAK-FR-060`…`JARAK-FR-064`, the recent files of
+`JARAK-FR-028` and the multi-document file operations of `JARAK-FR-020`
+([JARAK_ARCHITECTURE §15](JARAK_ARCHITECTURE.md); folds in the session wait for folding, Step 98);
+each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 

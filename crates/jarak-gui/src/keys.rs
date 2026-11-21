@@ -35,6 +35,15 @@ pub enum Action {
     ToggleSplit,
     /// Ctrl+Shift+P: the command palette (Step 92).
     Palette,
+    /// Step 93: F8, the other view takes the focus.
+    FocusOther,
+    /// Ctrl+1 … Ctrl+9: the tab of that number (9: the last).
+    GoToTab(u8),
+    /// Ctrl+Shift+PageUp / PageDown: the tab one place left / right.
+    MoveTabLeft,
+    MoveTabRight,
+    /// Ctrl+Shift+T: the last closed file again.
+    ReopenClosed,
 }
 
 /// The action for `key` with `m` held, if any.
@@ -91,6 +100,11 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::S) if !shift => Some(A::Save),
         (true, Key::S) => Some(A::SaveAs),
         (true, Key::P) if shift => Some(A::Palette),
+        (false, Key::F8) => Some(A::FocusOther),
+        (true, Key::PageUp) if shift => Some(A::MoveTabLeft),
+        (true, Key::PageDown) if shift => Some(A::MoveTabRight),
+        (true, Key::T) if shift => Some(A::ReopenClosed),
+        (true, k) if !shift && digit(k).is_some() => digit(k).map(A::GoToTab),
         (true, Key::W) if !shift => Some(A::Close),
         (true, Key::F4) if !shift => Some(A::Close),
         (true, Key::Plus | Key::Equals) => Some(A::ZoomIn),
@@ -103,6 +117,22 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         }),
         _ => None,
     }
+}
+
+/// Ctrl+1 … Ctrl+9.
+fn digit(k: Key) -> Option<u8> {
+    Some(match k {
+        Key::Num1 => 1,
+        Key::Num2 => 2,
+        Key::Num3 => 3,
+        Key::Num4 => 4,
+        Key::Num5 => 5,
+        Key::Num6 => 6,
+        Key::Num7 => 7,
+        Key::Num8 => 8,
+        Key::Num9 => 9,
+        _ => return None,
+    })
 }
 
 /// The keys of `a` as the palette and the menus show them (the default bindings above; a test
@@ -165,6 +195,14 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::TogglePreview => "Ctrl+E",
         A::ToggleSplit => "Ctrl+Shift+E",
         A::Palette => "Ctrl+Shift+P",
+        A::FocusOther => "F8",
+        A::GoToTab(n) => [
+            "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6", "Ctrl+7", "Ctrl+8",
+            "Ctrl+9",
+        ][usize::from(n.clamp(1, 9)) - 1],
+        A::MoveTabLeft => "Ctrl+Shift+PageUp",
+        A::MoveTabRight => "Ctrl+Shift+PageDown",
+        A::ReopenClosed => "Ctrl+Shift+T",
     })
 }
 
@@ -181,6 +219,9 @@ pub fn parse_label(label: &str) -> Option<(Key, Modifiers)> {
             "Shift" => m.shift = true,
             "Alt" => m.alt = true,
             "Plus" => key = Some(Key::Plus),
+            d if d.len() == 1 && d.as_bytes()[0].is_ascii_digit() && d != "0" => {
+                key = Key::from_name(&format!("Num{d}")).or_else(|| Key::from_name(d));
+            }
             "Minus" => key = Some(Key::Minus),
             "0" => key = Some(Key::Num0),
             "Left" => key = Some(Key::ArrowLeft),
@@ -224,6 +265,12 @@ mod tests {
             Action::TogglePreview,
             Action::ToggleSplit,
             Action::Palette,
+            Action::FocusOther,
+            Action::GoToTab(1),
+            Action::GoToTab(9),
+            Action::MoveTabLeft,
+            Action::MoveTabRight,
+            Action::ReopenClosed,
         ]);
         for a in actions {
             let label = key_label(a).expect("every action has keys");

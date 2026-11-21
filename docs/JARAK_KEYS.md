@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`
+Status: **current** (Step 92; tabs and views since Step 93) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -17,7 +17,11 @@ checks each label against the key handling, `crates/jarak-gui/src/keys.rs`).
 | Ctrl+S | Save |
 | Ctrl+Shift+S | Save as… (to another folder: offers to copy the document's images) |
 | Ctrl+W | Close the document |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous document |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous document (in the focused view) |
+| Ctrl+1 … Ctrl+9 | The tab of that number (Ctrl+9: the last) |
+| Ctrl+Shift+PageUp / PageDown | Move the tab left / right |
+| Ctrl+Shift+T | Reopen the last closed file |
+| F8 | The other view takes the focus |
 
 ## Editing
 

@@ -2,7 +2,7 @@
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
 integration; Step 86: the text model, §8; Step 87: files and encodings, §9; Step 88: the editor
-window, §10; Step 89: Markdown, §11; Step 90: Ctrl+V images, §12; Step 91: pictures and assets, §13; Step 92: Vim, the palette and the menu bar, §14) · Owner: mouv · Decision:
+window, §10; Step 89: Markdown, §11; Step 90: Ctrl+V images, §12; Step 91: pictures and assets, §13; Step 92: Vim, the palette and the menu bar, §14; Step 93: tabs, views and the session, §15) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -503,3 +503,72 @@ Hangul still toggled → a motion and a line delete (not jamo); `Shift+V` → `V
 `COMMAND`, saved and closed (exit 0); the file is `one 한글 three⏎six⏎` with its CRLF
 (screenshots reviewed). Alt alone showed the menu bar (after the fix above), the Edit menu listed
 its commands with their keys, Esc closed it, Alt hid the bar, typing and Ctrl+S kept working.
+
+## 15. Tabs, two views and the session (Step 93)
+
+- **Tabs** (`tabs.rs`, `JARAK-FR-060`, UI-01): a bar per view with one tab per document — its
+  name (`⧉` for a clone), a dot while unsaved (the close `×` on hover), middle click closes,
+  dragging reorders, the context menu: close, close the others / to the left / to the right / the
+  unchanged ones / all, save all, rename the file, move it to the Recycle Bin, copy the path, the
+  name or the folder, show in Explorer, a command prompt there, the default program, move or
+  clone to the other view, open or move to a new window. The bar is laid out from the design
+  system's tab tokens (the compact 28-point bar, tabs of one whole-point width between 96 and
+  220) and recorded for the UI audit (`tabbar`, `tab[i]`); the audit's first run found tabs
+  overlapping by 2 px² at fractional widths, fixed with whole-point geometry. The bars show once
+  there is more than one document (or a second view). Keys: Ctrl+Tab / Ctrl+Shift+Tab, Ctrl+1…9
+  (9 the last), Ctrl+Shift+PageUp/PageDown move the tab, Ctrl+W, Ctrl+Shift+T reopens the last
+  closed file.
+- **Two views** (`views.rs`, `JARAK-FR-061`): documents are in the main view, the second, or both
+  (a clone). A clone is one buffer — the text, the undo history, the file — with a view of its
+  own in each pane (scroll, mode, carets); `Tab::view` and the document's selection belong to the
+  focused pane, the other pane's live in `Tab::alt` and are swapped when the focus moves, so the
+  rest of the window still works on "the active document". The unfocused clone's carets are kept
+  as line and column (edits elsewhere leave them on their line; `Document::swap_selection` never
+  seals an undo step, so typing still merges). Move, clone, F8 (focus the other view), side by
+  side or one above the other, a draggable divider, synchronized vertical / horizontal scrolling
+  (the other view keeps its distance). Opening a file while the second view has the focus opens
+  it there; an empty second view goes away; the main view always has a document. The focused
+  view's active tab carries the accent; a click in the other view moves the focus (a window test
+  found the stale egui focus switching back — only clicks switch now).
+- **The session** (`jarak-core::session`, `sessions.rs`, `JARAK-FR-062`, REL-01):
+  `%LOCALAPPDATA%\mouv\jarak\session.json`, JSON with a schema
+  (`docs/contracts/schemas/jarak-session-v1.schema.json`, golden examples in
+  `docs/contracts/examples/jarak-session-v1/`, unknown keys and other versions refused), written
+  atomically when the window closes (also from `on_exit`), read at start before the command line's
+  files: the documents with their caret, top line, mode and views, the second view (order, active,
+  orientation, focus), the workspace folder and the recent files. Untitled documents with text are
+  kept by the session (not asked about at exit) in `recovery\untitled-<n>.txt`; documents with a
+  file and unsaved changes are still asked about. Restoring is a setting
+  (`restore_session = true` in `settings.toml`; the palette's *Restore the session at start*
+  toggles it; the recent files are kept either way). A session can be saved to and opened from a
+  file of the user's choice (FILE-17/18; documents with a file only). Files missing since the last
+  session are named in the status bar.
+- **Recent and closed files** (`JARAK-FR-028`): newest first, once, at most 20; the palette lists
+  them (*Open recent: …*), the File menu too; open all, empty the list, Ctrl+Shift+T.
+- **File operations** (`docops.rs`, `JARAK-FR-020`): closing several documents asks about each
+  unsaved one in turn (Cancel stops, the rest stay); Save All; Rename moves the file without
+  replacing another (`MoveFileExW` without replace) and the document follows; the Recycle Bin is
+  asked first and uses `SHFileOperationW` with `FOF_ALLOWUNDO` (never a deletion); the default
+  program refuses programs and scripts by extension (`exe`, `bat`, `cmd`, `ps1`, `vbs`, `js`,
+  `lnk`, `msi`, `reg`, `py`, …: Explorer shows them instead); a new window starts this program with
+  `--new-window <file>` (the document must be saved; *Move to a new window* closes it here).
+- **Folder as Workspace and the document list** (`workspace.rs`, `JARAK-FR-063`, `JARAK-FR-064`):
+  a left panel with *Folder* (the tree read a folder at a time, folders first, `.git` hidden, a
+  filter over names six levels deep, Refresh) and *Documents* (every open document; a click shows
+  it). A folder dropped on the window, given to `jarak open <folder>` or the document's folder
+  (palette) becomes the workspace; the session restores it. The *Documents…* dialog (WIN-02) sorts
+  by name, folder or unsaved first, shows one, saves or closes the checked ones; the Window menu
+  lists the open documents (WIN-01).
+
+Tests: `session` 4 (round trip, broken/foreign/newer/unknown-key files refused, the golden example
+read by the Rust model, recent files); `tabs` 2, `docops` 1, `workspace` 1; window flows 8 new
+(tabs by mouse and keys, reorder, close, reopen; a clone is one buffer with a caret per view and
+one undo history; moving between the views and an empty second view going away; closing several
+asks about each unsaved one, close unchanged, save all; the session restores documents, views,
+carets, the preview mode and untitled text, and only the recent files when restoring is off;
+rename, Recycle Bin, Explorer, command prompt, default program refusing a `.bat`, new window; a
+dropped folder as the workspace, the document list and the Documents dialog; a session file saved
+and opened elsewhere). UI audit views `tabs`, `views`, `side`, `documents` (95 runs, 0 failures
+after the overlap fix). e2e `step93_jarak_tabs_views_session.rs` (two release-window runs with a
+session in the sandbox: both tab bars, `session.json` naming the clone in both views, the same
+bars after the restart; first focused run PASS).

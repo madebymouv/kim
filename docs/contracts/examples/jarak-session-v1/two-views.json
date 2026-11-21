@@ -1,0 +1,38 @@
+{
+  "schema": "jarak.session",
+  "schema_version": 1,
+  "documents": [
+    {
+      "path": "C:\\Users\\me\\notes\\ideas.md",
+      "caret": 120,
+      "top_line": 4,
+      "shown": "preview",
+      "views": "both"
+    },
+    {
+      "path": "C:\\Users\\me\\notes\\todo.txt",
+      "caret": 0,
+      "top_line": 0,
+      "shown": "source",
+      "views": "main"
+    },
+    {
+      "untitled": "untitled-1.txt",
+      "caret": 5,
+      "top_line": 0,
+      "shown": "source",
+      "views": "second"
+    }
+  ],
+  "active": 1,
+  "second": {
+    "order": [0, 2],
+    "active": 2,
+    "vertical": true,
+    "focus": false
+  },
+  "workspace": "C:\\Users\\me\\notes",
+  "recent": [
+    "C:\\Users\\me\\notes\\old.md"
+  ]
+}

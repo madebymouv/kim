@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/jarak-session-v1.schema.json",
+  "title": "Jarak session, schema version 1",
+  "description": "Contents of %LOCALAPPDATA%\\mouv\\jarak\\session.json (Step 93, JARAK-FR-062): the open documents, the views, the workspace folder and the recent files. See docs/JARAK_ARCHITECTURE.md section 15.",
+  "type": "object",
+  "required": ["schema", "schema_version"],
+  "properties": {
+    "schema": { "const": "jarak.session" },
+    "schema_version": { "const": 1 },
+    "documents": { "type": "array", "items": { "$ref": "#/$defs/doc" } },
+    "active": { "type": "integer", "minimum": 0 },
+    "second": { "$ref": "#/$defs/second" },
+    "workspace": { "type": "string", "minLength": 1 },
+    "recent": { "type": "array", "items": { "type": "string", "minLength": 1 }, "maxItems": 20 }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "doc": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "untitled": { "type": "string", "pattern": "^[^./\\\\:][^/\\\\:]*$" },
+        "caret": { "type": "integer", "minimum": 0 },
+        "top_line": { "type": "integer", "minimum": 0 },
+        "shown": { "enum": ["source", "preview", "split"] },
+        "views": { "enum": ["main", "second", "both"] }
+      },
+      "additionalProperties": false
+    },
+    "second": {
+      "type": "object",
+      "required": ["order", "active"],
+      "properties": {
+        "order": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "active": { "type": "integer", "minimum": 0 },
+        "vertical": { "type": "boolean" },
+        "focus": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

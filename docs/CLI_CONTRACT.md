@@ -345,7 +345,8 @@ real runs. The mode commands (Step 72) and the profile commands (Steps 75, 81) u
 | `engine_paused` | 7 | #101: `rule run` while the engine is paused; `ddalgak resume` first. Nothing ran. |
 | `rule_not_runnable` | 7 | #101: `rule run` of a rule that is inactive (its code and reason in the message) or that works only with its keys (a remap, a hold, a mode or engine rule, a hotstring). Nothing ran. |
 
-**Jarak codes** (Step 87, [JARAK_ARCHITECTURE](JARAK_ARCHITECTURE.md)). Jarak also uses the
+**Jarak codes** (Step 87, [JARAK_ARCHITECTURE](JARAK_ARCHITECTURE.md); Step 93: `jarak open <folder>`
+hands the folder to the window as its workspace, its target says `"folder": true`). Jarak also uses the
 shared `usage`, `io`, `permission_denied` and `not_installed`.
 
 | Code | Exit | Meaning |

@@ -12,13 +12,18 @@
 //!   shows local images.
 
 pub mod clipboard;
+pub mod docops;
 pub mod handoff;
 pub mod images;
 pub mod keys;
 pub mod media;
 pub mod palette;
 pub mod preview;
+pub mod sessions;
+pub mod tabs;
 pub mod view;
+pub mod views;
+pub mod workspace;
 
 use eframe::egui::{self, Align, Layout, Rect, RichText, Vec2};
 use jarak_core::command::Command;
@@ -69,6 +74,11 @@ pub enum Mode {
 /// One open document and its view.
 #[derive(Debug, Clone)]
 pub struct Tab {
+    /// Step 93: stable across reorders and closes (the views name documents by it).
+    pub id: u64,
+    /// Which views show it, and the other view's state of a clone.
+    pub pane: views::Pane,
+    pub alt: Option<Box<views::PaneState>>,
     pub file: FileDocument,
     pub view: ViewState,
     pub mode: Mode,
@@ -81,8 +91,12 @@ pub struct Tab {
 }
 
 impl Tab {
-    fn new(file: FileDocument) -> Tab {
+    pub(crate) fn new(file: FileDocument) -> Tab {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Tab {
+            id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            pane: views::Pane::Main,
+            alt: None,
             file,
             view: ViewState::default(),
             mode: Mode::Source,
@@ -166,7 +180,7 @@ impl Tab {
     }
 
     /// A new document nobody typed into yet (replaced by the first file opened).
-    fn is_blank(&self) -> bool {
+    pub(crate) fn is_blank(&self) -> bool {
         self.file.path.is_none() && self.file.doc.len_chars() == 0 && !self.file.doc.is_dirty()
     }
 
@@ -259,20 +273,42 @@ pub fn read_editing(path: &Path) -> Option<Editing> {
     })
 }
 
+/// A `key = value` line of the settings file (`None` when it is not there).
+pub fn read_setting(path: &Path, key: &str) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines().find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        (k.trim() == key).then(|| v.trim().trim_matches('"').to_string())
+    })
+}
+
+/// Writes `key = value` into the settings file (a string value quoted), keeping its other lines.
+pub fn write_setting(path: &Path, key: &str, value: &str) -> std::io::Result<()> {
+    let line = if value == "true" || value == "false" || value.parse::<f64>().is_ok() {
+        format!("{key} = {value}")
+    } else {
+        format!("{key} = \"{value}\"")
+    };
+    write_line(path, key, &line)
+}
+
 /// Writes the editing mode into the settings file, keeping its other lines.
 pub fn write_editing(path: &Path, e: Editing) -> std::io::Result<()> {
-    let value = format!(
-        "editing_mode = \"{}\"",
-        if e == Editing::Vim { "vim" } else { "standard" }
-    );
+    write_setting(
+        path,
+        "editing_mode",
+        if e == Editing::Vim { "vim" } else { "standard" },
+    )
+}
+
+fn write_line(path: &Path, key: &str, value: &str) -> std::io::Result<()> {
+    let value = value.to_string();
     let old = std::fs::read_to_string(path).unwrap_or_default();
     let mut found = false;
     let mut lines: Vec<String> = old
         .lines()
         .map(|l| {
-            if l.split_once('=')
-                .is_some_and(|(k, _)| k.trim() == "editing_mode")
-            {
+            if l.split_once('=').is_some_and(|(k, _)| k.trim() == key) {
                 found = true;
                 value.clone()
             } else {
@@ -299,6 +335,10 @@ pub enum Pending {
     /// Step 91 (`JARAK-FR-045`): after Save As to another folder, copy the images the document
     /// refers to (source, destination) so its references keep working.
     CopyAssets(Vec<(PathBuf, PathBuf)>),
+    /// Step 93: closing several documents — this one (unsaved), then the rest (ids).
+    CloseQueue(usize, Vec<u64>),
+    /// Step 93: move this document's file to the Recycle Bin (asked first).
+    Recycle(u64),
 }
 
 /// The window's state.
@@ -337,6 +377,17 @@ pub struct JarakApp {
     alt_armed: bool,
     /// Step 92: the document's images and the folder's orphans (`markdown.assets`).
     pub assets_view: Option<AssetsView>,
+    /// Step 93: the second view, the main view's active document while the second has the
+    /// focus, the recent and the closed files, the session, the side panel, the Documents dialog.
+    pub second: Option<views::Second>,
+    pub main_active: u64,
+    pub recent: Vec<PathBuf>,
+    pub closed: Vec<PathBuf>,
+    pub session: Option<sessions::SessionFiles>,
+    session_saved: bool,
+    pub workspace: Option<workspace::Workspace>,
+    pub side: Option<workspace::Side>,
+    pub docs_dialog: Option<workspace::DocsDialog>,
 }
 
 /// The assets dialog's content.
@@ -596,7 +647,64 @@ impl JarakApp {
             palette::Run::Editing(e) => self.set_editing(e),
             palette::Run::MenuBar => self.menu_bar = !self.menu_bar,
             palette::Run::Assets => self.open_assets(),
+            palette::Run::Tab(m) => {
+                let pane = self.focused_pane();
+                let k = self
+                    .order(pane)
+                    .iter()
+                    .position(|x| *x == self.active)
+                    .unwrap_or(0);
+                if m.needs_file() && self.tab().file.path.is_none() {
+                    self.message = Some(
+                        self.t(
+                            "The document has no file yet.",
+                            "문서에 아직 파일이 없습니다.",
+                        )
+                        .to_string(),
+                    );
+                } else {
+                    self.tab_menu(pane, k, m);
+                }
+            }
+            palette::Run::Recent(k) => self.open_recent(k),
+            palette::Run::RecentAll => self.open_all_recent(),
+            palette::Run::RecentClear => self.clear_recent(),
+            palette::Run::Orientation => self.toggle_orientation(),
+            palette::Run::SyncV => self.toggle_sync(true),
+            palette::Run::SyncH => self.toggle_sync(false),
+            palette::Run::Side(s) => self.toggle_side(s),
+            palette::Run::Documents => {
+                self.docs_dialog = Some(workspace::DocsDialog::default());
+            }
+            palette::Run::RestoreSession => self.toggle_restore(),
+            palette::Run::SessionSave => self.save_session_as(),
+            palette::Run::SessionLoad => self.load_session_from(),
         }
+    }
+
+    /// Turns restoring the session at start on or off (kept in the settings file).
+    pub fn toggle_restore(&mut self) {
+        let on = !self.session.as_ref().is_some_and(|s| s.restore);
+        if let Some(s) = self.session.as_mut() {
+            s.restore = on;
+        }
+        if let Some(p) = &self.settings {
+            let _ = write_setting(p, "restore_session", if on { "true" } else { "false" });
+        }
+        self.message = Some(
+            if on {
+                self.t(
+                    "The session is restored at start.",
+                    "시작할 때 세션을 복원합니다.",
+                )
+            } else {
+                self.t(
+                    "The session is not restored at start.",
+                    "시작할 때 세션을 복원하지 않습니다.",
+                )
+            }
+            .to_string(),
+        );
     }
 
     /// Opens the assets dialog for the document (a saved Markdown document).
@@ -760,7 +868,18 @@ impl JarakApp {
         let Some(mut st) = self.palette.take() else {
             return;
         };
-        let entries = palette::entries();
+        let mut entries = palette::entries();
+        // Step 93: the recent files, as commands of their own.
+        for (k, p) in self.recent.iter().take(10).enumerate() {
+            entries.push(palette::Entry {
+                id: "file.recent",
+                en: std::borrow::Cow::Owned(format!("Open recent: {}", p.display())),
+                ko: std::borrow::Cow::Owned(format!("최근 파일 열기: {}", p.display())),
+                keys: None,
+                run: palette::Run::Recent(k),
+                menu: palette::Menu::File,
+            });
+        }
         let found = palette::filter(&entries, &st.query);
         st.selected = st.selected.min(found.len().saturating_sub(1));
         let (up, down, enter) = ctx.input(|i| {
@@ -808,7 +927,7 @@ impl JarakApp {
                         let current = matches!(e.run, palette::Run::Editing(m) if m == editing);
                         let name = format!(
                             "{}{}",
-                            lang.pick(e.en, e.ko),
+                            lang.pick(&e.en, &e.ko),
                             if current { "  ✓" } else { "" }
                         );
                         // The selection goes under the item's text (a shape reserved before it).
@@ -859,11 +978,11 @@ impl JarakApp {
             if r != palette::Run::Act(Action::Palette) {
                 self.run_entry(r);
             }
-            ctx.memory_mut(|m| m.request_focus(view::view_id()));
+            ctx.memory_mut(|m| m.request_focus(view::view_id_for(u8::from(self.second_focused()))));
             return;
         }
         if resp.should_close() {
-            ctx.memory_mut(|m| m.request_focus(view::view_id()));
+            ctx.memory_mut(|m| m.request_focus(view::view_id_for(u8::from(self.second_focused()))));
             return;
         }
         self.palette = Some(st);
@@ -877,6 +996,24 @@ impl JarakApp {
         let entries = palette::entries();
         let lang = self.lang;
         let mut run = None;
+        let mut show = None;
+        let recent: Vec<String> = self
+            .recent
+            .iter()
+            .take(10)
+            .map(|p| p.display().to_string())
+            .collect();
+        let docs: Vec<String> = self
+            .tabs
+            .iter()
+            .map(|t| {
+                format!(
+                    "{}{}",
+                    if t.file.doc.is_dirty() { "• " } else { "" },
+                    t.file.title()
+                )
+            })
+            .collect();
         egui::Panel::top("jarak-menu")
             .exact_size(size::CONTROL)
             .resizable(false)
@@ -900,7 +1037,7 @@ impl JarakApp {
                         let b = ui.add(kim_ui::Button::ghost(lang.pick(en, ko)));
                         kim_ui::popover(&b, 300.0, |ui| {
                             for e in entries.iter().filter(|e| e.menu == menu) {
-                                let resp = kim_ui::menu_item(ui, lang.pick(e.en, e.ko), false);
+                                let resp = kim_ui::menu_item(ui, lang.pick(&e.en, &e.ko), false);
                                 if let Some(keys) = e.keys {
                                     ui.painter().text(
                                         egui::pos2(
@@ -918,12 +1055,33 @@ impl JarakApp {
                                     ui.close();
                                 }
                             }
+                            if menu == palette::Menu::File && !recent.is_empty() {
+                                ui.separator();
+                                for (k, name) in recent.iter().enumerate() {
+                                    if kim_ui::menu_item(ui, name, false).clicked() {
+                                        run = Some(palette::Run::Recent(k));
+                                        ui.close();
+                                    }
+                                }
+                            }
+                            if menu == palette::Menu::Window {
+                                ui.separator();
+                                for (i, name) in docs.iter().enumerate() {
+                                    if kim_ui::menu_item(ui, name, false).clicked() {
+                                        show = Some(i);
+                                        ui.close();
+                                    }
+                                }
+                            }
                         });
                     }
                 });
             });
         if let Some(r) = run {
             self.run_entry(r);
+        }
+        if let Some(i) = show {
+            self.show_doc(i);
         }
     }
 
@@ -1091,7 +1249,17 @@ impl JarakApp {
             menu_bar: false,
             alt_armed: false,
             assets_view: None,
+            second: None,
+            main_active: 0,
+            recent: Vec::new(),
+            closed: Vec::new(),
+            session: None,
+            session_saved: false,
+            workspace: None,
+            side: None,
+            docs_dialog: None,
         };
+        app.main_active = app.tabs[0].id;
         app.open_args(args);
         app
     }
@@ -1099,7 +1267,8 @@ impl JarakApp {
     /// Sets up a UI audit's view (ADR 0099): `editor`, `editor-empty`, `editor-selection`,
     /// `editor-wrap`, `question`, `preview`, `split`, `paste-image` (pastes a sample bitmap and
     /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy), `vim`,
-    /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92). Only used while `KIM_UI_INSPECT` is set.
+    /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92), `tabs`, `views`,
+    /// `side`, `documents` (Step 93). Only used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -1146,6 +1315,40 @@ impl JarakApp {
                 });
             }
             "menu-bar" => self.menu_bar = true,
+            // Step 93: three documents in tabs, two views with a clone, the side panel, the
+            // Documents dialog (small files written next to the audit's copy).
+            "tabs" | "views" | "side" | "documents" => {
+                let dir = self
+                    .tab()
+                    .file
+                    .path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf);
+                if let Some(dir) = dir {
+                    let mut names = Vec::new();
+                    for (n, t) in [
+                        ("todo.txt", "- write the docs\n- test the views\n"),
+                        ("notes-2026.md", "# Notes\n\nA second file.\n"),
+                    ] {
+                        let p = dir.join(n);
+                        let _ = std::fs::write(&p, t);
+                        names.push(p.display().to_string());
+                    }
+                    self.open_args(&names);
+                    let first = self.order(views::PaneId::Main)[0];
+                    self.activate(first, views::PaneId::Main);
+                    match screen {
+                        "views" => {
+                            self.clone_to_other();
+                            self.focus_pane(views::PaneId::Main);
+                        }
+                        "side" => self.open_workspace(&dir),
+                        "documents" => self.docs_dialog = Some(workspace::DocsDialog::default()),
+                        _ => {}
+                    }
+                }
+            }
             "assets" => {
                 let dir = self
                     .tab()
@@ -1229,18 +1432,34 @@ impl JarakApp {
     }
 
     pub fn open_target(&mut self, t: &OpenTarget) {
+        if t.path.is_dir() {
+            // Step 93: a folder is shown as the workspace.
+            self.open_workspace(&t.path);
+            return;
+        }
         if let Some(i) = self
             .tabs
             .iter()
             .position(|tab| tab.file.path.as_deref() == Some(t.path.as_path()))
         {
-            self.active = i;
+            self.show_doc(i);
         } else {
             match FileDocument::open(&t.path, self.fallback, file::DEFAULT_SIZE_LIMIT) {
                 Ok(f) => {
-                    let tab = Tab::new(f);
-                    if self.tab().is_blank() && self.tabs.len() == 1 {
+                    let mut tab = Tab::new(f);
+                    jarak_core::session::Session::remember(&mut self.recent, &t.path);
+                    if self.tab().is_blank() && self.tabs.len() == 1 && self.second.is_none() {
+                        self.main_active = tab.id;
                         self.tabs[0] = tab;
+                    } else if self.second_focused() {
+                        tab.pane = views::Pane::Second;
+                        let id = tab.id;
+                        self.tabs.push(tab);
+                        if let Some(s) = self.second.as_mut() {
+                            s.order.push(id);
+                            s.active = id;
+                        }
+                        self.active = self.tabs.len() - 1;
                     } else {
                         self.tabs.push(tab);
                         self.active = self.tabs.len() - 1;
@@ -1345,9 +1564,29 @@ impl JarakApp {
                 v.after_edit();
             }
             Action::New => {
-                self.tabs.push(Tab::new(FileDocument::untitled()));
+                let mut t = Tab::new(FileDocument::untitled());
+                if self.second_focused() {
+                    t.pane = views::Pane::Second;
+                    if let Some(s) = self.second.as_mut() {
+                        s.order.push(t.id);
+                        s.active = t.id;
+                    }
+                }
+                self.tabs.push(t);
                 self.active = self.tabs.len() - 1;
             }
+            Action::FocusOther => {
+                let other = if self.second_focused() {
+                    views::PaneId::Main
+                } else {
+                    views::PaneId::Second
+                };
+                self.focus_pane(other);
+            }
+            Action::GoToTab(n) => self.go_to_tab(usize::from(n)),
+            Action::MoveTabLeft => self.move_tab(-1),
+            Action::MoveTabRight => self.move_tab(1),
+            Action::ReopenClosed => self.reopen_closed(),
             Action::Open => {
                 if let Some(p) = self.dialogs.open() {
                     self.open_target(&OpenTarget {
@@ -1391,12 +1630,8 @@ impl JarakApp {
                 self.clipboard.set_text(&s);
             }
             Action::Paste => self.paste_from_clipboard(),
-            Action::NextDocument => {
-                self.active = (self.active + 1) % self.tabs.len();
-            }
-            Action::PreviousDocument => {
-                self.active = (self.active + self.tabs.len() - 1) % self.tabs.len();
-            }
+            Action::NextDocument => self.cycle_tab(1),
+            Action::PreviousDocument => self.cycle_tab(-1),
         }
     }
 
@@ -1727,11 +1962,49 @@ impl JarakApp {
     }
 
     fn close_now(&mut self, i: usize) {
-        self.tabs.remove(i);
-        if self.tabs.is_empty() {
-            self.tabs.push(Tab::new(FileDocument::untitled()));
+        if let Some(p) = self.tabs[i].file.path.clone() {
+            jarak_core::session::Session::remember(&mut self.recent, &p);
+            self.closed.push(p);
         }
-        self.active = self.active.min(self.tabs.len() - 1);
+        // The view shows the document next to the closed one.
+        let pane = self.focused_pane();
+        let order = self.order(pane);
+        let next = order.iter().position(|x| *x == i).and_then(|k| {
+            if k > 0 {
+                order.get(k - 1).copied()
+            } else {
+                order.get(k + 1).copied()
+            }
+        });
+        let next_id = next.map(|n| self.tabs[n].id);
+        let active_id = self.tabs[self.active].id;
+        let closed_id = self.tabs[i].id;
+        self.tabs.remove(i);
+        let keep = if active_id == closed_id {
+            next_id
+        } else {
+            Some(active_id)
+        };
+        self.active = keep
+            .and_then(|id| self.index_of(id))
+            .unwrap_or(0)
+            .min(self.tabs.len().saturating_sub(1));
+        if self.tabs.is_empty() {
+            let t = Tab::new(FileDocument::untitled());
+            self.main_active = t.id;
+            self.tabs.push(t);
+            self.active = 0;
+        }
+        self.normalize();
+    }
+
+    /// The first document the window must ask about before closing (untitled ones are kept by
+    /// the session when it is restored).
+    fn first_unsaved(&self) -> Option<usize> {
+        let keep = self.keeps_untitled();
+        self.tabs
+            .iter()
+            .position(|t| t.file.doc.is_dirty() && !(keep && t.file.path.is_none()))
     }
 
     /// The window was asked to close: `true` when it may (nothing unsaved, or every question
@@ -1740,8 +2013,8 @@ impl JarakApp {
         if self.quitting {
             return true;
         }
-        if let Some(i) = self.tabs.iter().position(|t| t.file.doc.is_dirty()) {
-            self.active = i;
+        if let Some(i) = self.first_unsaved() {
+            self.show_doc(i);
             self.pending = Some(Pending::Quit);
             false
         } else {
@@ -1765,19 +2038,29 @@ impl JarakApp {
             }
             return;
         }
+        if let Pending::Recycle(id) = &p {
+            if save {
+                self.recycle_now(*id);
+            }
+            return;
+        }
         if save && !self.save(i) {
             // Not saved (cancelled dialog, an error): nothing is closed.
             return;
         }
         match p {
-            Pending::CopyAssets(_) => {}
+            Pending::CopyAssets(_) | Pending::Recycle(_) => {}
             Pending::Close(i) => self.close_now(i),
+            Pending::CloseQueue(i, rest) => {
+                self.close_now(i);
+                self.close_many(rest);
+            }
             Pending::Quit => {
                 if !save {
                     // Don't save: forget this document's changes for the quit.
                     self.close_now(i);
                 }
-                if self.tabs.iter().any(|t| t.file.doc.is_dirty()) {
+                if self.first_unsaved().is_some() {
                     self.request_quit();
                 } else {
                     self.quitting = true;
@@ -1826,13 +2109,22 @@ impl JarakApp {
         }
         // Closing the window asks about unsaved changes first.
         // (A UI audit's run closes itself without asking: it holds no user data.)
-        if ctx.input(|i| i.viewport().close_requested())
-            && !kim_ui::inspect::active()
-            && !self.request_quit()
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        if ctx.input(|i| i.viewport().close_requested()) && !kim_ui::inspect::active() {
+            if self.request_quit() {
+                // Step 93: the session is written as the window closes.
+                if !self.session_saved {
+                    self.save_session();
+                    self.session_saved = true;
+                }
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            }
         }
         if self.quitting {
+            if !self.session_saved {
+                self.save_session();
+                self.session_saved = true;
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         let title = self.window_title();
@@ -1845,64 +2137,26 @@ impl JarakApp {
         self.vim_frame();
         self.menu_bar_ui(ui, &c);
         self.status_bar(ui, &c);
-        let mut ctrl_click = None;
-        let lang = self.lang;
-        let (focused, link) = egui::CentralPanel::default()
+        self.side_ui(ui, &c);
+        // The keyboard focus belongs to the focused view's text (after a move, a clone, F8).
+        if self.second.is_some() {
+            let (mine, other) = if self.second_focused() {
+                (1, 0)
+            } else {
+                (0, 1)
+            };
+            if ctx.memory(|m| m.focused()) == Some(view::view_id_for(other)) {
+                ctx.memory_mut(|m| m.request_focus(view::view_id_for(mine)));
+            }
+        }
+        let drawn = egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(c.bg_base))
             .show(ui, |ui| {
                 let rect = ui.max_rect();
-                let read_only = self.tab().file.read_only;
-                let t = &mut self.tabs[self.active];
-                match t.mode {
-                    Mode::Source => {
-                        let v = view::show(ui, rect, &mut t.file.doc, &mut t.view, read_only);
-                        ctrl_click = v.ctrl_click;
-                        (v.focused, preview::PreviewOutput::default())
-                    }
-                    Mode::Preview => {
-                        let r = t.rendered();
-                        let doc = t.file.path.clone();
-                        let out = preview::show(
-                            ui,
-                            rect,
-                            &r,
-                            &mut t.preview,
-                            t.view.zoom,
-                            doc.as_deref(),
-                            lang,
-                        );
-                        (false, out)
-                    }
-                    Mode::Split => {
-                        let mid = rect.center().x.round();
-                        let left = Rect::from_min_max(rect.min, egui::pos2(mid, rect.bottom()));
-                        let right = Rect::from_min_max(egui::pos2(mid + 1.0, rect.top()), rect.max);
-                        let v = view::show(ui, left, &mut t.file.doc, &mut t.view, read_only);
-                        ctrl_click = v.ctrl_click;
-                        let focused = v.focused;
-                        // The preview follows the source's top line.
-                        let r = t.rendered();
-                        t.preview.scroll_to_line(&r, t.view.top_line);
-                        let doc = t.file.path.clone();
-                        let out = preview::show(
-                            ui,
-                            right,
-                            &r,
-                            &mut t.preview,
-                            t.view.zoom,
-                            doc.as_deref(),
-                            lang,
-                        );
-                        ui.painter().vline(
-                            mid + 0.5,
-                            rect.y_range(),
-                            egui::Stroke::new(size::BORDER, c.border_subtle),
-                        );
-                        (focused, out)
-                    }
-                }
+                self.draw_views(ui, rect, &c)
             })
             .inner;
+        let (focused, link, ctrl_click) = (drawn.focused, drawn.link, drawn.ctrl_click);
         if let Some(url) = link.open {
             self.open_link(&url);
         } else if let Some(url) = link.plain_click {
@@ -1925,11 +2179,13 @@ impl JarakApp {
         if let Some(pos) = ctrl_click {
             self.reveal_reference_at(pos);
         }
-        let dialog_open = self.palette.is_some() || self.assets_view.is_some();
+        let dialog_open =
+            self.palette.is_some() || self.assets_view.is_some() || self.docs_dialog.is_some();
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
+            let salt = u8::from(self.second_focused());
             if !preview_only && !focused && !ctx.memory(|m| m.focused().is_some()) {
-                ctx.memory_mut(|m| m.request_focus(view::view_id()));
+                ctx.memory_mut(|m| m.request_focus(view::view_id_for(salt)));
             }
             if focused || preview_only {
                 self.keyboard(&ctx);
@@ -1950,6 +2206,7 @@ impl JarakApp {
             self.palette_ui(&ctx, &c);
         }
         self.assets_ui(&ctx, &c);
+        self.docs_dialog_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
@@ -2350,7 +2607,21 @@ impl JarakApp {
             Some(Pending::CopyAssets(list)) => Some(list.len()),
             _ => None,
         };
-        let (title, body) = match copy {
+        let recycle = matches!(self.pending, Some(Pending::Recycle(_)));
+        let (title, body) = if recycle {
+            (
+                format!(
+                    "{} {name}?",
+                    self.t("Move to the Recycle Bin:", "휴지통으로 옮길까요:")
+                ),
+                self.t(
+                    "The file goes to the Recycle Bin (it can be restored there) and the document closes.",
+                    "파일이 휴지통으로 가고(거기서 복원할 수 있음) 문서가 닫힙니다.",
+                )
+                .to_string(),
+            )
+        } else {
+            match copy {
             Some(n) => (
                 format!(
                     "{} {n}",
@@ -2376,8 +2647,16 @@ impl JarakApp {
                 )
                 .to_string(),
             ),
+        }
         };
-        let (save, dont, cancel) = if copy.is_some() {
+        let (save, dont, cancel) = if recycle {
+            (
+                self.t("Move to the Recycle Bin", "휴지통으로 옮기기")
+                    .to_string(),
+                String::new(),
+                self.t("Cancel", "취소").to_string(),
+            )
+        } else if copy.is_some() {
             (
                 self.t("Copy", "복사").to_string(),
                 self.t("Don't copy", "복사 안 함").to_string(),
@@ -2409,7 +2688,7 @@ impl JarakApp {
                 if ui.add(kim_ui::Button::primary(&save)).clicked() {
                     choice = Some(Some(true));
                 }
-                if ui.add(kim_ui::Button::secondary(&dont)).clicked() {
+                if !dont.is_empty() && ui.add(kim_ui::Button::secondary(&dont)).clicked() {
                     choice = Some(Some(false));
                 }
                 if !cancel.is_empty() && ui.add(kim_ui::Button::secondary(&cancel)).clicked() {
@@ -2432,6 +2711,15 @@ impl JarakApp {
 impl eframe::App for JarakApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         JarakApp::ui(self, ui);
+    }
+
+    /// The window is gone: the session is written if closing did not write it already (a UI
+    /// audit's own close, `KIM_UI_SESSION=1`).
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if !self.session_saved {
+            self.save_session();
+            self.session_saved = true;
+        }
     }
 }
 

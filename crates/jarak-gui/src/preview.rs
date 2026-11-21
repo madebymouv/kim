@@ -38,6 +38,22 @@ pub trait Opener: Send + Sync {
     fn reveal(&self, _path: &Path) -> bool {
         false
     }
+    /// Step 93: a command prompt in `dir` (FILE-04).
+    fn open_terminal(&self, _dir: &Path) -> bool {
+        false
+    }
+    /// Step 93: the file in its default program (FILE-05; the window refuses programs first).
+    fn open_file(&self, _path: &Path) -> bool {
+        false
+    }
+    /// Step 93: a new Jarak window with the file (VIEWS-03).
+    fn new_window(&self, _path: &Path) -> bool {
+        false
+    }
+    /// Step 93: the file to the Recycle Bin (FILE-16; asked first by the window).
+    fn recycle(&self, _path: &Path) -> bool {
+        false
+    }
 }
 
 /// Opens nothing (tests, and before the program installs the real one).
@@ -87,6 +103,116 @@ impl Opener for ShellOpener {
         }
     }
 
+    /// `cmd.exe /K cd /d "<dir>"`, started in that folder.
+    #[allow(unsafe_code)]
+    fn open_terminal(&self, dir: &Path) -> bool {
+        if !dir.is_dir() {
+            return false;
+        }
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::UI::Shell::ShellExecuteW;
+            use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+            let w = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+            let d = dir.display().to_string();
+            let (verb, exe, params, cwd) = (
+                w("open"),
+                w("cmd.exe"),
+                w(&format!("/K cd /d \"{d}\"")),
+                w(&d),
+            );
+            // SAFETY: NUL-terminated strings that live across the call; no parent window.
+            let r = unsafe {
+                ShellExecuteW(
+                    std::ptr::null_mut(),
+                    verb.as_ptr(),
+                    exe.as_ptr(),
+                    params.as_ptr(),
+                    cwd.as_ptr(),
+                    SW_SHOWNORMAL,
+                )
+            };
+            r as usize > 32
+        }
+    }
+
+    /// `ShellExecuteW("open", file)`: the file's default program.
+    #[allow(unsafe_code)]
+    fn open_file(&self, path: &Path) -> bool {
+        if !path.is_file() || !crate::docops::safe_to_open(path) {
+            return false;
+        }
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::UI::Shell::ShellExecuteW;
+            use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+            let w = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+            let (verb, target) = (w("open"), w(&path.display().to_string()));
+            // SAFETY: NUL-terminated strings that live across the call; no parent window.
+            let r = unsafe {
+                ShellExecuteW(
+                    std::ptr::null_mut(),
+                    verb.as_ptr(),
+                    target.as_ptr(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    SW_SHOWNORMAL,
+                )
+            };
+            r as usize > 32
+        }
+    }
+
+    /// This program again, `--new-window <file>`.
+    fn new_window(&self, path: &Path) -> bool {
+        let Ok(exe) = std::env::current_exe() else {
+            return false;
+        };
+        std::process::Command::new(exe)
+            .arg("--new-window")
+            .arg(path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .is_ok()
+    }
+
+    /// `SHFileOperationW(FO_DELETE, FOF_ALLOWUNDO)`: the Recycle Bin, never a deletion.
+    #[allow(unsafe_code)]
+    fn recycle(&self, path: &Path) -> bool {
+        if !path.is_file() {
+            return false;
+        }
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::UI::Shell::{
+                FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT,
+                SHFILEOPSTRUCTW, SHFileOperationW,
+            };
+            // Double NUL-terminated.
+            let from: Vec<u16> = path
+                .display()
+                .to_string()
+                .encode_utf16()
+                .chain([0, 0])
+                .collect();
+            let mut op = SHFILEOPSTRUCTW {
+                hwnd: std::ptr::null_mut(),
+                wFunc: FO_DELETE,
+                pFrom: from.as_ptr(),
+                pTo: std::ptr::null(),
+                fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI) as u16,
+                fAnyOperationsAborted: 0,
+                hNameMappings: std::ptr::null_mut(),
+                lpszProgressTitle: std::ptr::null(),
+            };
+            // SAFETY: a filled structure whose strings live across the call.
+            let r = unsafe { SHFileOperationW(&mut op) };
+            r == 0 && op.fAnyOperationsAborted == 0 && !path.exists()
+        }
+    }
+
     /// `explorer.exe /select,"<file>"`: Explorer opens the folder with the file selected.
     #[allow(unsafe_code)]
     fn reveal(&self, path: &Path) -> bool {
@@ -130,6 +256,8 @@ pub struct PreviewState {
     hot: Vec<(Rect, PathBuf, String)>,
     /// The document's pictures (Step 91: decoded off the UI thread, bounded).
     pub media: Arc<Mutex<Media>>,
+    /// Step 93: which view draws it (its widget id).
+    pub salt: u8,
 }
 
 impl PreviewState {
@@ -833,7 +961,11 @@ pub fn show(
     let c = Colors::get(ui.ctx());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, CornerRadius::ZERO, c.bg_base);
-    let resp = ui.interact(rect, egui::Id::unique("jarak-preview"), Sense::click());
+    let resp = ui.interact(
+        rect,
+        egui::Id::unique(("jarak-preview", state.salt)),
+        Sense::click(),
+    );
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Document, true, "Markdown preview"));
     let pad = space::XL * zoom;
     let bar_w = size::PROGRESS * 2.0;

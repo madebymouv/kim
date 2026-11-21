@@ -1,6 +1,6 @@
 [package]
 name = "jarak-core"
-version = "0.0.10"
+version = "0.0.11"
 description = "Jarak's document model and editing engine: no GUI toolkit, no windowing, no clipboard (ADR 0102)"
 edition.workspace = true
 rust-version.workspace = true
@@ -30,6 +30,9 @@ pulldown-cmark = { version = "0.13", default-features = false }
 # Step 92: Vim's `/` search and `:s` (patterns translated from Vim's syntax). Already in the
 # workspace (Ddalgak ships it); the same features: Unicode classes and case folding, no others.
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
+# Step 93: the session file (JSON with a schema; the versions already in the workspace).
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 
 [target."cfg(windows)".dependencies]
 # GetACP (the system ANSI code page) and ReplaceFileW (atomic save keeping the attributes).

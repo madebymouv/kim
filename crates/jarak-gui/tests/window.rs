@@ -318,6 +318,34 @@ impl jarak_gui::preview::Opener for Recorder {
             .push(format!("reveal:{}", path.display()));
         true
     }
+    fn open_terminal(&self, dir: &std::path::Path) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("terminal:{}", dir.display()));
+        true
+    }
+    fn open_file(&self, path: &std::path::Path) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("open:{}", path.display()));
+        true
+    }
+    fn new_window(&self, path: &std::path::Path) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("new:{}", path.display()));
+        true
+    }
+    fn recycle(&self, path: &std::path::Path) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("recycle:{}", path.display()));
+        true
+    }
 }
 
 /// Runs frames until the preview drew `n` decoded pictures (the decoder is a real thread).
@@ -1118,6 +1146,441 @@ fn the_assets_dialog_lists_images_and_orphans_and_renames_one() {
         h.query_by_label_contains("Save the document first")
             .is_some()
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+fn files(d: &std::path::Path, names: &[(&str, &str)]) -> Vec<String> {
+    names
+        .iter()
+        .map(|(n, t)| {
+            let p = d.join(n);
+            std::fs::write(&p, t).unwrap();
+            p.to_str().unwrap().to_string()
+        })
+        .collect()
+}
+
+fn titles(h: &Harness<'static, JarakApp>, pane: jarak_gui::views::PaneId) -> Vec<String> {
+    let a = h.state();
+    a.order(pane)
+        .iter()
+        .map(|i| a.tabs[*i].file.title())
+        .collect()
+}
+
+#[test]
+fn tabs_switch_reorder_close_and_reopen_by_mouse_and_keys() {
+    use jarak_gui::views::PaneId;
+    let d = temp("tabs");
+    let f = files(&d, &[("a.txt", "A"), ("b.txt", "B"), ("c.txt", "C")]);
+    let args: Vec<&str> = f.iter().map(String::as_str).collect();
+    let (a, _) = app_with(&args, Arc::default());
+    let mut h = harness(a);
+    assert_eq!(titles(&h, PaneId::Main), ["a.txt", "b.txt", "c.txt"]);
+    assert_eq!(h.state().tab().file.title(), "c.txt");
+    // The bar's tabs and their close buttons.
+    h.get_by_label("a.txt").click();
+    h.run();
+    assert_eq!(h.state().tab().file.title(), "a.txt");
+    key(&mut h, egui::Key::Tab, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().file.title(), "b.txt");
+    key(&mut h, egui::Key::Num9, egui::Modifiers::CTRL);
+    assert_eq!(
+        h.state().tab().file.title(),
+        "c.txt",
+        "Ctrl+9 is the last tab"
+    );
+    key(&mut h, egui::Key::Num1, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().file.title(), "a.txt");
+    key(
+        &mut h,
+        egui::Key::PageDown,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(
+        titles(&h, PaneId::Main),
+        ["b.txt", "a.txt", "c.txt"],
+        "moved right"
+    );
+    h.get_by_label("Close c.txt").click();
+    h.run();
+    assert_eq!(titles(&h, PaneId::Main), ["b.txt", "a.txt"]);
+    key(&mut h, egui::Key::W, egui::Modifiers::CTRL);
+    assert_eq!(titles(&h, PaneId::Main), ["b.txt"]);
+    // Ctrl+Shift+T brings back the closed files, newest first; they are recent files too.
+    key(
+        &mut h,
+        egui::Key::T,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(h.state().tab().file.title(), "a.txt");
+    key(
+        &mut h,
+        egui::Key::T,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(titles(&h, PaneId::Main), ["b.txt", "a.txt", "c.txt"]);
+    assert!(h.state().recent.iter().any(|p| p.ends_with("c.txt")));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_cloned_document_is_one_buffer_with_a_caret_in_each_view() {
+    use jarak_gui::views::{Pane, PaneId};
+    let d = temp("clone");
+    let f = files(&d, &[("a.txt", "one\ntwo\n"), ("b.txt", "B")]);
+    let (a, _) = app_with(&[&f[0], &f[1]], Arc::default());
+    let mut h = harness(a);
+    h.get_by_label("a.txt").click();
+    h.run();
+    h.state_mut().clone_to_other();
+    h.run();
+    assert!(h.state().second.is_some());
+    assert!(h.state().second_focused(), "the clone has the focus");
+    assert_eq!(titles(&h, PaneId::Second), ["a.txt"]);
+    let i = h.state().active;
+    assert_eq!(h.state().tabs[i].pane, Pane::Both);
+    // Typing in the second view changes the one buffer; each view keeps its caret.
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    text(&mut h, "three");
+    assert_eq!(doc_text(&h), "one\ntwo\nthree");
+    key(&mut h, egui::Key::F8, egui::Modifiers::NONE);
+    assert!(!h.state().second_focused());
+    assert_eq!(h.state().tab().file.title(), "a.txt");
+    assert_eq!(
+        doc_text(&h),
+        "one\ntwo\nthree",
+        "the main view shows the same text"
+    );
+    assert_eq!(
+        h.state().tab().file.doc.selection().primary().head,
+        0,
+        "its own caret"
+    );
+    text(&mut h, ">");
+    key(&mut h, egui::Key::F8, egui::Modifiers::NONE);
+    assert_eq!(
+        h.state().tab().file.doc.selection().primary().head,
+        14,
+        "the second view's caret came back"
+    );
+    assert_eq!(doc_text(&h), ">one\ntwo\nthree");
+    // One undo history: Ctrl+Z in either view.
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "one\ntwo\nthree");
+    // Closing the clone in one view keeps the document in the other; the empty view goes.
+    h.state_mut().close_in_pane(i, PaneId::Second);
+    h.run();
+    assert!(h.state().second.is_none());
+    assert_eq!(titles(&h, PaneId::Main), ["a.txt", "b.txt"]);
+    assert!(
+        h.state().tab().file.doc.is_dirty(),
+        "nothing was lost or asked"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn moving_documents_between_the_views() {
+    use jarak_gui::views::PaneId;
+    let d = temp("move");
+    let f = files(&d, &[("a.txt", "A"), ("b.txt", "B"), ("c.txt", "C")]);
+    let args: Vec<&str> = f.iter().map(String::as_str).collect();
+    let (a, _) = app_with(&args, Arc::default());
+    let mut h = harness(a);
+    h.state_mut().move_to_other();
+    h.run();
+    assert_eq!(titles(&h, PaneId::Main), ["a.txt", "b.txt"]);
+    assert_eq!(titles(&h, PaneId::Second), ["c.txt"]);
+    assert!(h.state().second_focused());
+    // A file opened while the second view has the focus opens there.
+    let e = files(&d, &[("e.txt", "E")]);
+    h.state_mut().open_args(&e);
+    h.run();
+    assert_eq!(titles(&h, PaneId::Second), ["c.txt", "e.txt"]);
+    // Side by side and one above the other.
+    h.state_mut().toggle_orientation();
+    assert!(!h.state().second.as_ref().unwrap().vertical);
+    // Moving the last documents back closes the second view (the focus follows a moved
+    // document, so the second view is focused again for the last one).
+    h.state_mut().move_to_other();
+    h.state_mut().focus_pane(PaneId::Second);
+    h.state_mut().move_to_other();
+    h.run();
+    assert!(h.state().second.is_none());
+    assert_eq!(titles(&h, PaneId::Main).len(), 4);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn closing_several_documents_asks_about_each_unsaved_one() {
+    use jarak_gui::views::PaneId;
+    let d = temp("close-many");
+    let f = files(
+        &d,
+        &[
+            ("a.txt", "A"),
+            ("b.txt", "B"),
+            ("c.txt", "C"),
+            ("d.txt", "D"),
+        ],
+    );
+    let args: Vec<&str> = f.iter().map(String::as_str).collect();
+    let (a, _) = app_with(&args, Arc::default());
+    let mut h = harness(a);
+    h.get_by_label("b.txt").click();
+    h.run();
+    text(&mut h, "!");
+    h.get_by_label("d.txt").click();
+    h.run();
+    h.state_mut().run_entry(jarak_gui::palette::Run::Tab(
+        jarak_gui::tabs::Menu::CloseOthers,
+    ));
+    h.run();
+    // a closed; b asks.
+    assert!(matches!(h.state().pending, Some(Pending::CloseQueue(..))));
+    assert_eq!(h.state().tab().file.title(), "b.txt");
+    h.get_by_label("Don't save").click();
+    h.run();
+    assert_eq!(
+        titles(&h, PaneId::Main),
+        ["d.txt"],
+        "the queue went on after the answer"
+    );
+    assert_eq!(std::fs::read_to_string(&f[1]).unwrap(), "B", "not saved");
+    // Close unchanged keeps the changed ones.
+    let more = files(&d, &[("x.txt", "X")]);
+    h.state_mut().open_args(&more);
+    h.run();
+    text(&mut h, "?");
+    h.state_mut().run_entry(jarak_gui::palette::Run::Tab(
+        jarak_gui::tabs::Menu::CloseUnchanged,
+    ));
+    h.run();
+    assert_eq!(titles(&h, PaneId::Main), ["x.txt"]);
+    // Save all saves the changed one.
+    h.state_mut()
+        .run_entry(jarak_gui::palette::Run::Tab(jarak_gui::tabs::Menu::SaveAll));
+    assert_eq!(std::fs::read_to_string(d.join("x.txt")).unwrap(), "?X");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_session_restores_documents_views_carets_and_untitled_text() {
+    use jarak_gui::sessions::SessionFiles;
+    use jarak_gui::views::PaneId;
+    let d = temp("session");
+    let f = files(
+        &d,
+        &[
+            ("a.md", "# A\n\nline\n"),
+            ("b.txt", "1\n2\n3\n4\n"),
+            ("c.txt", "C"),
+        ],
+    );
+    let sf = SessionFiles {
+        file: d.join("local").join("session.json"),
+        recovery: d.join("local").join("recovery"),
+        restore: true,
+    };
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_session(sf.clone()));
+    h.state_mut().open_args(&f);
+    h.run();
+    // b: caret on line 3; a: preview, cloned to the second view; an untitled text.
+    h.get_by_label("b.txt").click();
+    h.run();
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    h.get_by_label("a.md").click();
+    h.run();
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    h.state_mut().clone_to_other();
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::F8, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::N, egui::Modifiers::CTRL);
+    text(&mut h, "keep me");
+    // Closing the window: the untitled text is kept without asking.
+    assert!(
+        h.state_mut().request_quit(),
+        "nothing to ask: the untitled text is kept"
+    );
+    h.state_mut().save_session();
+    let saved = std::fs::read_to_string(&sf.file).unwrap();
+    assert!(saved.contains("\"schema\": \"jarak.session\""), "{saved}");
+    drop(h);
+    // A new window restores it.
+    let (b, _) = app_with(&[], Arc::default());
+    let mut h2 = harness(b.with_session(sf.clone()));
+    let st = h2.state();
+    assert_eq!(
+        titles(&h2, PaneId::Main),
+        ["a.md", "b.txt", "c.txt", "new 1"]
+            .map(String::from)
+            .to_vec()
+            .iter()
+            .map(|s| if s == "new 1" {
+                st.tabs.last().unwrap().file.title()
+            } else {
+                s.clone()
+            })
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(titles(&h2, PaneId::Second), ["a.md"]);
+    let b_i = st
+        .tabs
+        .iter()
+        .position(|t| t.file.title() == "b.txt")
+        .unwrap();
+    assert_eq!(
+        st.tabs[b_i]
+            .file
+            .doc
+            .line_col(st.tabs[b_i].file.doc.selection().primary().head)
+            .0,
+        2
+    );
+    let a_i = st
+        .tabs
+        .iter()
+        .position(|t| t.file.title() == "a.md")
+        .unwrap();
+    assert_eq!(
+        st.tabs[a_i].mode,
+        jarak_gui::Mode::Preview,
+        "the main view's preview"
+    );
+    let untitled = st.tabs.iter().find(|t| t.file.path.is_none()).unwrap();
+    assert_eq!(untitled.file.doc.text().to_string(), "keep me");
+    h2.run();
+    drop(h2);
+    // Without restoring, only the recent files come back.
+    let (c, _) = app_with(&[], Arc::default());
+    let h3 = harness(c.with_session(SessionFiles {
+        restore: false,
+        ..sf
+    }));
+    assert_eq!(h3.state().tabs.len(), 1);
+    assert!(h3.state().recent.len() >= 3);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn file_commands_rename_recycle_show_and_open_elsewhere() {
+    let d = temp("file-cmds");
+    let f = files(&d, &[("a.txt", "A"), ("run.bat", "echo hi")]);
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.save.lock().unwrap().push(d.join("renamed.txt"));
+    let rec = Arc::new(Recorder::default());
+    let (a, _) = app_with(&[&f[0], &f[1]], dialogs);
+    let mut h = harness(a.with_opener(rec.clone()));
+    use jarak_gui::palette::Run;
+    use jarak_gui::tabs::Menu;
+    // A program is never started by association: Explorer shows it.
+    h.state_mut().run_entry(Run::Tab(Menu::OpenDefault));
+    assert_eq!(
+        rec.0.lock().unwrap().last().unwrap(),
+        &format!("reveal:{}", f[1])
+    );
+    h.get_by_label("a.txt").click();
+    h.run();
+    h.state_mut().run_entry(Run::Tab(Menu::OpenDefault));
+    h.state_mut().run_entry(Run::Tab(Menu::OpenTerminal));
+    h.state_mut().run_entry(Run::Tab(Menu::NewWindow));
+    {
+        let r = rec.0.lock().unwrap();
+        assert!(r.contains(&format!("open:{}", f[0])));
+        assert!(r.contains(&format!("terminal:{}", d.display())));
+        assert!(r.contains(&format!("new:{}", f[0])));
+    }
+    // Rename: the file moves, the document follows.
+    h.state_mut().run_entry(Run::Tab(Menu::Rename));
+    assert!(d.join("renamed.txt").is_file() && !d.join("a.txt").exists());
+    assert_eq!(h.state().tab().file.title(), "renamed.txt");
+    // Recycle Bin: asked first, then the document closes.
+    h.state_mut().run_entry(Run::Tab(Menu::Recycle));
+    h.run();
+    assert!(matches!(h.state().pending, Some(Pending::Recycle(_))));
+    h.get_by_label("Move to the Recycle Bin").click();
+    h.run();
+    assert!(
+        rec.0
+            .lock()
+            .unwrap()
+            .contains(&format!("recycle:{}", d.join("renamed.txt").display()))
+    );
+    assert!(
+        h.state()
+            .tabs
+            .iter()
+            .all(|t| t.file.title() != "renamed.txt")
+    );
+    // Copy the path.
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_dropped_folder_becomes_the_workspace_and_the_document_list_shows_all() {
+    use jarak_gui::workspace::Side;
+    let d = temp("workspace");
+    std::fs::create_dir_all(d.join("sub")).unwrap();
+    files(&d, &[("one.md", "1"), ("sub/two.txt", "2")]);
+    let (a, _) = app_with(&[d.to_str().unwrap()], Arc::default());
+    let mut h = harness(a);
+    assert_eq!(h.state().side, Some(Side::Folder));
+    assert_eq!(h.state().workspace.as_ref().unwrap().root, d);
+    // Folders first; a click opens a file, another expands a folder.
+    h.get_by_label_contains("one.md").click();
+    h.run();
+    assert_eq!(h.state().tab().file.title(), "one.md");
+    h.get_by_label_contains("▸ sub").click();
+    h.run();
+    h.get_by_label_contains("two.txt").click();
+    h.run();
+    assert_eq!(h.state().tab().file.title(), "two.txt");
+    // The document list and the Documents dialog.
+    h.state_mut()
+        .run_entry(jarak_gui::palette::Run::Side(Side::Documents));
+    h.run();
+    h.state_mut().run_entry(jarak_gui::palette::Run::Documents);
+    h.run();
+    assert!(h.query_by_label_contains("Close checked").is_some());
+    h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "one.md")
+        .click();
+    h.run();
+    h.get_by_label("Close checked").click();
+    h.run();
+    assert!(h.state().tabs.iter().all(|t| t.file.title() != "one.md"));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_session_saved_to_a_file_opens_again_elsewhere() {
+    use jarak_gui::views::PaneId;
+    let d = temp("session-file");
+    let f = files(&d, &[("a.txt", "A"), ("b.md", "# B")]);
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.save.lock().unwrap().push(d.join("work.json"));
+    let (a, _) = app_with(&[&f[0], &f[1]], dialogs);
+    let mut h = harness(a);
+    h.state_mut().clone_to_other();
+    key(&mut h, egui::Key::N, egui::Modifiers::CTRL);
+    text(&mut h, "untitled is not saved in a session file");
+    h.state_mut()
+        .run_entry(jarak_gui::palette::Run::SessionSave);
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(d.join("work.json")).unwrap()).unwrap();
+    assert_eq!(saved["documents"].as_array().unwrap().len(), 2, "{saved}");
+    // Another window opens it.
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.open.lock().unwrap().push(d.join("work.json"));
+    let (b, _) = app_with(&[], dialogs);
+    let mut h2 = harness(b);
+    h2.state_mut()
+        .run_entry(jarak_gui::palette::Run::SessionLoad);
+    h2.run();
+    assert_eq!(titles(&h2, PaneId::Main), ["a.txt", "b.md"]);
+    assert_eq!(titles(&h2, PaneId::Second), ["b.md"]);
     let _ = std::fs::remove_dir_all(&d);
 }
 

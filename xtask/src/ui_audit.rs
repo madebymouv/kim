@@ -130,6 +130,11 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "palette",
                 "menu-bar",
                 "assets",
+                // Step 93: tabs, two views with a clone, the side panel, the Documents dialog.
+                "tabs",
+                "views",
+                "side",
+                "documents",
             ],
         ),
     ];
