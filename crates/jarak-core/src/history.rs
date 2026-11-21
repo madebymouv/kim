@@ -55,6 +55,9 @@ pub struct History {
     /// The next typed or deleted run starts a new entry.
     sealed: bool,
     next_id: u64,
+    /// Step 92: an open group (a Vim change such as `cw` and the typed text) — every edit
+    /// recorded while it is open joins one entry; the undo stack length when it opened.
+    group: Option<usize>,
 }
 
 impl History {
@@ -81,6 +84,23 @@ impl History {
         self.sealed = true;
     }
 
+    /// Starts a group: the edits until [`History::end_group`] become one undo step.
+    pub fn begin_group(&mut self) {
+        self.group = Some(self.undo.len());
+        self.sealed = true;
+    }
+
+    /// Ends the open group (nothing happens without one).
+    pub fn end_group(&mut self) {
+        self.group = None;
+        self.sealed = true;
+    }
+
+    /// A group is open.
+    pub fn in_group(&self) -> bool {
+        self.group.is_some()
+    }
+
     /// Records a transaction that was just applied. Typed (or deleted) runs merge into the
     /// previous entry while they continue where it ended and `merge` allows it; anything
     /// recorded clears the redo stack.
@@ -97,6 +117,16 @@ impl History {
         }
         self.redo.clear();
         let id = self.fresh_id();
+        if let Some(start) = self.group
+            && self.undo.len() > start
+            && let Some(last) = self.undo.last_mut()
+        {
+            last.edits.extend(edits);
+            last.after = after;
+            last.kind = Kind::Other;
+            last.id = id;
+            return;
+        }
         if merge
             && !self.sealed
             && kind != Kind::Other

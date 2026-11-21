@@ -642,6 +642,55 @@ impl Document {
         self.history.seal();
     }
 
+    /// Step 92: the edits until [`Document::end_group`] are one undo step (a Vim change).
+    pub fn begin_group(&mut self) {
+        self.history.begin_group();
+    }
+
+    pub fn end_group(&mut self) {
+        self.history.end_group();
+    }
+
+    /// Replaces `parts` (`(from, to, text)` in char positions, any order, not overlapping) as
+    /// one undo step and puts the caret at `caret` (positions after the edit), or after the last
+    /// insertion without one.
+    pub fn replace(&mut self, parts: Vec<(usize, usize, String)>, caret: Option<usize>) {
+        let len = self.len_chars();
+        let parts: Vec<(usize, usize, String)> = parts
+            .into_iter()
+            .map(|(f, t, s)| (f.min(len), t.min(len).max(f.min(len)), s))
+            .collect();
+        if parts.is_empty() {
+            return;
+        }
+        // One range per part, so `change` applies each exactly once.
+        self.sel = Selection::new(
+            parts.iter().map(|(f, t, _)| Range::new(*f, *t)).collect(),
+            0,
+        );
+        self.change(parts, Kind::Other);
+        if let Some(c) = caret {
+            let c = c.min(self.len_chars());
+            self.sel = Selection::point(text::floor_grapheme(self.text.slice(..), c));
+        } else {
+            self.sel = self.sel.only_primary_last();
+        }
+    }
+
+    /// Moves the caret (or the primary range) without sealing an open group's undo step.
+    pub fn set_caret(&mut self, sel: &Selection) {
+        let len = self.len_chars();
+        let s = self.text.slice(..);
+        self.sel = sel.map(|r| Range {
+            anchor: text::floor_grapheme(s, r.anchor.min(len)),
+            head: text::floor_grapheme(s, r.head.min(len)),
+            goal: r.goal,
+        });
+        if !self.history.in_group() {
+            self.history.seal();
+        }
+    }
+
     pub fn select_all(&mut self) {
         self.sel = Selection::single(Range::new(0, self.len_chars()));
         self.history.seal();

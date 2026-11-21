@@ -125,6 +125,11 @@ impl Selection {
         Selection::new(ranges, n)
     }
 
+    /// The last range alone (the caret after the last of several insertions).
+    pub fn only_primary_last(&self) -> Selection {
+        Selection::single(*self.ranges.last().unwrap_or(&Range::point(0)))
+    }
+
     /// Only the primary range.
     pub fn only_primary(&self) -> Selection {
         Selection::single(self.primary())

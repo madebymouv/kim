@@ -12,6 +12,7 @@
 //! - Step 89: the Markdown render model ([`markdown`]): blocks and inlines with their source
 //!   lines, drawn natively by the window.
 //! - Step 90: pasted images as portable assets next to the document ([`assets`]).
+//! - Step 92: Vim-style modal editing over the same document operations ([`vim`]).
 
 pub mod assets;
 pub mod command;
@@ -23,6 +24,7 @@ pub mod paths;
 pub mod selection;
 pub mod target;
 pub mod text;
+pub mod vim;
 
 /// Jarak's version (the whole `jarak` group ships under one version, ADR 0097).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
