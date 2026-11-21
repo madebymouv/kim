@@ -1,7 +1,7 @@
 # Jarak Architecture
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
-integration; Step 86: the text model, §8) · Owner: mouv · Decision:
+integration; Step 86: the text model, §8; Step 87: files and encodings, §9) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -10,7 +10,7 @@ integration; Step 86: the text model, §8) · Owner: mouv · Decision:
 | Crate | Program | Contents now | Never links |
 | --- | --- | --- | --- |
 | `jarak-core` | — (library) | `paths` (per-user folders), `target` (`file[:line[:column]]` open targets), the text model (`text`, `selection`, `history`, `document`, `command`; §8) | a GUI toolkit, windowing, the clipboard (`cargo xtask deps-check`) |
-| `jarak` | `jarak.exe` | The headless CLI: `version`, `capabilities`, `paths`, `open` | a GUI toolkit (`deps-check`) |
+| `jarak` | `jarak.exe` | The headless CLI: `version`, `capabilities`, `paths`, `open`, `info` | a GUI toolkit (`deps-check`) |
 | `jarak-gui` | `jarak-gui.exe` | The window shell on `kim-ui` (egui + glow), the single-instance hand-off | — |
 
 All three ship under one version (`cargo xtask bump` group `jarak`). The later Steps add their
@@ -28,6 +28,7 @@ Follows [CLI_CONTRACT](CLI_CONTRACT.md): human output or one `--json` envelope, 
 | `jarak capabilities [--json]` | read | The capabilities document (`crates/jarak/src/capabilities.json`, also the package manifest and `docs/contracts/examples/tool-capabilities-v1/jarak.json`) |
 | `jarak version [--json]` | read | Version, CLI contract 1, JSON schema 1 |
 | `jarak paths [--json]` | read | The per-user files below; creates nothing |
+| `jarak info <file> [--fallback <encoding>] [--json]` | read | Encoding, BOM, line endings (with counts), size, lines, characters, binary, lossless and read-only — what the window would open (§9); `file_not_found` (exit 3), `file_too_large` (exit 5), a folder is `usage` |
 | `jarak open [<file>[:<line>[:<column>]]...] [--new-window] [--dry-run] [--json]` | write, opens a window | Starts `jarak-gui.exe` next to `jarak.exe` (detached, no console) with absolute targets, or a running window takes them; `not_installed` (exit 3) when the window program is missing; a folder is a `usage` error |
 
 `file:line:column` (`jarak-core::target`): an argument that names an existing file is that
@@ -149,4 +150,47 @@ grapheme, word, line (goal column across wide characters), smart Home, document;
 line, all and the copied text; the save point through undo/redo; the command registry; and a
 seeded random test (40 seeds × 300 operations: typing, pasting, deleting, Enter, selections,
 undo, redo) checking that every caret stays on a grapheme boundary, that a history state id
-always means the same text, and that undo-all/redo-all return the original and final text.
+always means the same text, and that undo-all/redo-all return the original and final text; and
+a second random test (40 seeds × 400 edits) that keeps an independent `String` model in step with
+the rope after every typed, pasted or deleted text.
+
+## 9. Files, encodings and saving (Step 87, `jarak-core::file`)
+
+- **Detection**, in order: a byte-order mark (UTF-8, UTF-16 LE, UTF-16 BE); valid UTF-8; UTF-16
+  without a BOM (at least 70 % zero bytes on one side, almost none on the other); otherwise the
+  legacy encoding. The legacy encoding is the system ANSI code page (`GetACP`) — or, when
+  Windows' "Use Unicode UTF-8 for worldwide language support" makes that UTF-8 (as on the
+  maintainer's PC), the ANSI code page of the user's locale (`LOCALE_IDEFAULTANSICODEPAGE`, 949
+  for Korean), which is what older files were written in. `jarak info --fallback <label>` names
+  another (`euc-kr`, `cp949`, `windows-1252`, `shift_jis`, …).
+- **Lossless or read-only** (`JARAK-SEC-001`): after decoding, the text is encoded again with the
+  same encoding and BOM; unless that reproduces the file byte for byte (an undefined byte in the
+  code page, an unpaired UTF-16 surrogate, an odd byte count after a UTF-16 BOM, invalid UTF-8
+  read as UTF-8), the document is read-only and says why. Zero bytes outside UTF-16 mark a binary
+  file (read-only too). Opening and saving a lossless file without an edit writes the same bytes.
+- **Line endings** stay exactly as they are in the text (nothing is normalised; mixed files stay
+  mixed); `EolCounts` reports CRLF/LF/CR counts and the dominant kind, which Enter then inserts.
+- **Encoding a save** refuses a character the encoding cannot hold (EUC-KR and an emoji) with its
+  position instead of writing a substitute; nothing is written.
+- **Atomic save** (`JARAK-SEC-002`): the bytes go to `.<name>.jarak-<pid>.tmp` in the same folder,
+  are flushed (`sync_all`), and replace the original with `ReplaceFileW` (keeping its attributes,
+  e.g. hidden) or a rename for a new file. A read-only original is refused. On any failure —
+  checked by injecting one at create, write, flush and replace — the original keeps its bytes and
+  the temporary file is removed.
+- **`FileDocument`**: path (or untitled), format, read-only flag and reason, and the document;
+  `open` (a missing file is a new document created on the first save), `save`, `save_as`,
+  `save_copy` (the document keeps its file and dirty state), `reload`, `title`. Files above 1 GiB
+  are refused (`file_too_large`); Step 109 measures what the editor can serve.
+- **Not yet**: the window's Open/Save dialogs, the unsaved-changes prompt on close and the status
+  bar's real values arrive with the text view (Step 88); reinterpreting and converting between
+  encodings and the full character-set list are Step 103.
+
+Tests (13 in `file`): the corpus round trip (empty, UTF-8, Hangul, UTF-8 BOM, UTF-16 LE/BE with a
+BOM, UTF-16 LE without one, EUC-KR, windows-1252, mixed line endings without a final newline,
+trailing whitespace) byte for byte; detection and labels; lossy and binary files read-only;
+unmappable characters refused; line-ending statistics; saves creating and replacing with nothing
+left behind; a failure injected at each of the four stages leaving the original untouched; a
+read-only file refused and a hidden file still hidden after a save; folders, missing and
+oversized files refused; `FileDocument` open/save/edit in EUC-KR/save-as/copy/reload/new file/
+untitled; lossy files refusing save and save-as. e2e `step87_jarak_files.rs` runs `jarak info` on
+such a corpus (first focused run PASS).

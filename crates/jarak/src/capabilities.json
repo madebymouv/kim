@@ -2,15 +2,16 @@
   "schema": "kim.capabilities",
   "schema_version": 1,
   "tool": "jarak",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "cli_contract": 1,
   "json_schema_version": 1,
   "implementation": "placeholder",
-  "summary": "Pre-alpha (Step 85): the CLI foundation and the editor window shell; the window does not edit text yet (Steps 86-88)",
+  "summary": "Pre-alpha (Step 87): the CLI foundation, file inspection (encodings, line endings, lossless check) and the editor window shell; the window does not edit text yet (Step 88)",
   "commands": [
     { "name": "capabilities", "usage": "jarak capabilities [--json]", "summary": "This document", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
     { "name": "version", "usage": "jarak version [--json]", "summary": "Jarak's version and the contract and schema versions it speaks", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
     { "name": "paths", "usage": "jarak paths [--json]", "summary": "Where Jarak keeps its settings, session and recovery files; reads nothing and creates nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
-    { "name": "open", "usage": "jarak open [<file>[:<line>[:<column>]]...] [--new-window] [--dry-run] [--json]", "summary": "Start the Jarak window (jarak-gui.exe next to jarak.exe) with these files, or hand them to the running window; a missing file opens as a new document and is created only when you save", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": true }
+    { "name": "open", "usage": "jarak open [<file>[:<line>[:<column>]]...] [--new-window] [--dry-run] [--json]", "summary": "Start the Jarak window (jarak-gui.exe next to jarak.exe) with these files, or hand them to the running window; a missing file opens as a new document and is created only when you save", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": true },
+    { "name": "info", "usage": "jarak info <file> [--fallback <encoding>] [--json]", "summary": "A file's encoding, byte-order mark, line endings, size and line count, and whether Jarak can save it unchanged (lossless) or opens it read-only; changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false }
   ]
 }

@@ -1,8 +1,8 @@
 # Jarak–Notepad++ Feature Parity Matrix
 
 Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` partial and
-`HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial — the Step that implements a row
-updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+`HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
+rows partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -50,16 +50,16 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| FILE-01 | New untitled document (Ctrl+N) | planned | `JARAK-FR-020` | 87 | T, M | — |
-| FILE-02 | Open one or several files with a dialog (Ctrl+O) | planned | `JARAK-FR-020` | 87 | T, M | — |
+| FILE-01 | New untitled document (Ctrl+N) | partial | `JARAK-FR-020` | 87 | T, M | Step 87: `FileDocument::untitled` (tests); the key and the window come with Step 88 |
+| FILE-02 | Open one or several files with a dialog (Ctrl+O) | partial | `JARAK-FR-020` | 87 | T, M | Step 87: `FileDocument::open` with detection (tests, e2e `step87`); the dialog comes with Step 88 |
 | FILE-03 | Open files by drag and drop onto the window | planned | `JARAK-FR-032` | 88 | M | — |
 | FILE-04 | Open containing folder in Explorer / in a command prompt | planned | `JARAK-FR-060` | 93 | T | — |
 | FILE-05 | Open the file in the default viewer (shell association) | planned | `JARAK-FR-060` | 93 | T | — |
 | FILE-06 | Open Folder as Workspace | planned | `JARAK-FR-063` | 93 | T, M | — |
-| FILE-07 | Reload from disk | planned | `JARAK-FR-020` | 87 | T | — |
-| FILE-08 | Save (Ctrl+S) | planned | `JARAK-FR-020` | 87 | T, M | — |
-| FILE-09 | Save As | planned | `JARAK-FR-020` | 87 | T, M | — |
-| FILE-10 | Save a Copy As (document keeps its path) | planned | `JARAK-FR-020` | 87 | T | — |
+| FILE-07 | Reload from disk | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::reload` (tests); the command comes with Step 88 |
+| FILE-08 | Save (Ctrl+S) | partial | `JARAK-FR-020` | 87 | T, M | Step 87: atomic `FileDocument::save` keeping bytes, encoding and attributes (fault-injection tests); the key comes with Step 88 |
+| FILE-09 | Save As | partial | `JARAK-FR-020` | 87 | T, M | Step 87: `FileDocument::save_as` (tests); the dialog comes with Step 88 |
+| FILE-10 | Save a Copy As (document keeps its path) | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::save_copy` keeps the document's file and dirty state (tests); the dialog comes with Step 88 |
 | FILE-11 | Save All | planned | `JARAK-FR-020` | 93 | T | — |
 | FILE-12 | Rename the file of the document | planned | `JARAK-FR-020` | 93 | T | — |
 | FILE-13 | Close (Ctrl+W) | planned | `JARAK-FR-020` | 87 | T, M | — |
@@ -90,7 +90,7 @@ palette, the headless CLI) follow in §2.
 | EDIT-08 | Copy to clipboard: full path, file name, directory of the document | planned | `JARAK-FR-087` | 97 | T | — |
 | EDIT-09 | Copy to clipboard: names and paths of all open documents | planned | `JARAK-FR-087` | 97 | T | — |
 | EDIT-10 | Increase / decrease line indent (Tab, Shift+Tab) | planned | `JARAK-FR-085` | 88 | T | — |
-| EDIT-11 | Set read-only for the document / clear the file's read-only attribute | planned | `JARAK-FR-027` | 87 | T | — |
+| EDIT-11 | Set read-only for the document / clear the file's read-only attribute | partial | `JARAK-FR-027` | 87 | T | Step 87: read-only files refused and lossy/binary documents read-only with a reason (tests); the menu commands come with Step 88 |
 | EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | planned | `JARAK-FR-027` | 103 | T | — |
 | EDIT-13 | Paste HTML / RTF clipboard content as source | planned | `JARAK-FR-087` | 110 | T | — |
 | EDIT-14 | On selection: open the selected path as a file / its folder | planned | `JARAK-FR-103` | 101 | T | — |
@@ -299,9 +299,9 @@ palette, the headless CLI) follow in §2.
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | ENC-01 | Interpret as ANSI (system code page) | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-02 | Interpret as UTF-8 | planned | `JARAK-FR-021` | 87 | T | — |
-| ENC-03 | Interpret as UTF-8-BOM | planned | `JARAK-FR-021` | 87 | T | — |
-| ENC-04 | Interpret as UTF-16 BE BOM / UTF-16 LE BOM | planned | `JARAK-FR-021` | 87 | T | — |
+| ENC-02 | Interpret as UTF-8 | partial | `JARAK-FR-021` | 87 | T | Step 87: UTF-8 detected and saved byte for byte (corpus test, e2e); the menu comes with Step 103 |
+| ENC-03 | Interpret as UTF-8-BOM | partial | `JARAK-FR-021` | 87 | T | Step 87: UTF-8 BOM detected and kept (corpus test, e2e); the menu comes with Step 103 |
+| ENC-04 | Interpret as UTF-16 BE BOM / UTF-16 LE BOM | partial | `JARAK-FR-021` | 87 | T | Step 87: UTF-16 LE/BE with BOM detected and kept (corpus test, e2e); the menu comes with Step 103 |
 | ENC-05 | Character sets: Korean (EUC-KR / Windows-949) | planned | `JARAK-FR-025` | 103 | T | — |
 | ENC-06 | Character sets: Japanese (Shift-JIS, EUC-JP) | planned | `JARAK-FR-025` | 103 | T | — |
 | ENC-07 | Character sets: Chinese (GB2312/GBK, Big5) | planned | `JARAK-FR-025` | 103 | T | — |
@@ -311,7 +311,7 @@ palette, the headless CLI) follow in §2.
 | ENC-11 | Convert to ANSI | planned | `JARAK-FR-025` | 103 | T | — |
 | ENC-12 | Convert to UTF-8 / UTF-8-BOM | planned | `JARAK-FR-025` | 103 | T | — |
 | ENC-13 | Convert to UTF-16 BE BOM / UTF-16 LE BOM | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-14 | Automatic encoding detection on open | planned | `JARAK-FR-021` | 87 | T | — |
+| ENC-14 | Automatic encoding detection on open | partial | `JARAK-FR-021` | 87 | T | Step 87: BOM, UTF-8, UTF-16 without BOM, then the locale's legacy code page (tests, `jarak info`, e2e `step87`); shown in the status bar with Step 88 |
 | ENC-15 | Default encoding for new documents (setting) | planned | `JARAK-FR-021` | 87 | T | — |
 | ENC-16 | Status-bar encoding and EOL indicators (clickable) | planned | `JARAK-FR-035` | 88 | T, M | — |
 

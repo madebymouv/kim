@@ -327,3 +327,56 @@ fn random_edits_undo_and_redo_stay_consistent() {
         assert_eq!(d.text().to_string(), last, "seed {seed}: redo all");
     }
 }
+
+/// The rope against an independent `String` model: the same random edits, applied to the
+/// string by char positions, must give the same text after every step.
+#[test]
+fn random_edits_keep_the_rope_identical_to_a_string_model() {
+    const POOL: [&str; 7] = ["a", "한", "e\u{301}", "🇰🇷", "\r\n", "xyz", " "];
+    for seed in 1..=40u64 {
+        let mut rng = Rng(seed.wrapping_mul(0xD1B5_4A32_D192_ED03));
+        let mut model: Vec<char> = "model 한글\nline\r\n".chars().collect();
+        let mut d = doc(&model.iter().collect::<String>());
+        for _ in 0..400 {
+            let len = model.len();
+            let (a, b) = (rng.below(len + 1), rng.below(len + 1));
+            d.set_selection(&Selection::single(Range::new(a, b)));
+            // The document snaps into grapheme starts; the model uses the same positions.
+            let r = d.selection().primary();
+            let (from, to) = (r.from(), r.to());
+            match rng.below(4) {
+                0 | 1 => {
+                    let s = POOL[rng.below(POOL.len())];
+                    if rng.below(2) == 0 {
+                        d.type_text(s);
+                    } else {
+                        d.paste(s);
+                    }
+                    model.splice(from..to, s.chars());
+                }
+                2 => {
+                    let cut = if from == to {
+                        let p = text::prev_grapheme(d.text().slice(..), from);
+                        p..from
+                    } else {
+                        from..to
+                    };
+                    d.delete_backward();
+                    model.drain(cut);
+                }
+                _ => {
+                    let cut = if from == to {
+                        from..text::next_grapheme(d.text().slice(..), from)
+                    } else {
+                        from..to
+                    };
+                    d.delete_forward();
+                    model.drain(cut);
+                }
+            }
+            let want: String = model.iter().collect();
+            assert_eq!(d.text().to_string(), want, "seed {seed}");
+            assert_eq!(d.len_chars(), model.len(), "seed {seed}");
+        }
+    }
+}

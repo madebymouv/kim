@@ -7,9 +7,12 @@
 //! - Step 86: the text model — positions and graphemes over a rope ([`text`]), carets and
 //!   selections ([`selection`]), transactions with undo/redo ([`history`]), the [`document`] that
 //!   edits only through them, and the command registry ([`command`]).
+//! - Step 87: files ([`file`]) — encodings, line endings, the lossless check, atomic saves, and
+//!   the [`file::FileDocument`] that ties a document to its path and format.
 
 pub mod command;
 pub mod document;
+pub mod file;
 pub mod history;
 pub mod paths;
 pub mod selection;

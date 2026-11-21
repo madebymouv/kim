@@ -23,6 +23,9 @@ Usage: jarak [OPTIONS] <COMMAND>
 Commands:
   open          Start the Jarak window with files (file, file:line, file:line:column), or hand
                 them to the running window; --new-window starts another window
+  info          A file's encoding, byte-order mark, line endings, size and line count, and
+                whether Jarak can save it unchanged (read-only); --fallback <encoding> reads
+                text that is neither UTF-8 nor UTF-16 in that code page
   paths         Where Jarak keeps its settings, session and recovery files (read-only)
   version       Jarak's version and the contract and schema versions it speaks (read-only)
   capabilities  Jarak's capabilities document: its commands and what each may change (read-only)
@@ -67,6 +70,8 @@ struct Global {
     quiet: bool,
     verbose: bool,
     new_window: bool,
+    /// `jarak info --fallback <label>`: the legacy encoding instead of the system's.
+    fallback: Option<String>,
 }
 
 fn main() -> ExitCode {
@@ -81,12 +86,18 @@ fn run(args: &[String]) -> ExitCode {
     let mut version = false;
     let mut unknown: Option<&str> = None;
     let mut rest_are_files = false;
-    for a in args {
+    let mut it = args.iter();
+    let mut missing_value: Option<&str> = None;
+    while let Some(a) = it.next() {
         if rest_are_files {
             words.push(a);
             continue;
         }
         match a.as_str() {
+            "--fallback" => match it.next() {
+                Some(v) => g.fallback = Some(v.clone()),
+                None => missing_value = Some("--fallback"),
+            },
             "--" => rest_are_files = true,
             "--json" => g.json = true,
             "--dry-run" => g.dry_run = true,
@@ -111,10 +122,14 @@ fn run(args: &[String]) -> ExitCode {
     let command = words
         .first()
         .copied()
-        .filter(|c| matches!(*c, "open" | "paths" | "version" | "capabilities"))
+        .filter(|c| matches!(*c, "open" | "info" | "paths" | "version" | "capabilities"))
         .unwrap_or("jarak");
     let result = if let Some(flag) = unknown {
         Err(Fail::usage(format!("unknown option `{flag}`")))
+    } else if let Some(flag) = missing_value {
+        Err(Fail::usage(format!("{flag} needs a value")))
+    } else if g.fallback.is_some() && command != "info" {
+        Err(Fail::usage("--fallback belongs to `jarak info`"))
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
@@ -162,6 +177,7 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         }
         "paths" => paths(),
         "open" => open(rest, g),
+        "info" => info(rest, g.fallback.as_deref()),
         _ => unreachable!("checked in run"),
     }
 }
@@ -187,6 +203,89 @@ fn paths() -> Result<Done, Fail> {
         p.hotkeys_file().display(),
         p.session_file().display(),
         p.recovery_dir().display()
+    );
+    Ok((data, text))
+}
+
+/// `jarak info <file>`: what Jarak would open, without opening a window or changing anything.
+fn info(rest: &[&str], fallback: Option<&str>) -> Result<Done, Fail> {
+    use jarak_core::file::{self, OpenError};
+    let [arg] = rest else {
+        return Err(Fail::usage("`jarak info` takes one file"));
+    };
+    let path = absolute(Path::new(arg));
+    let fallback = match fallback {
+        Some(l) => file::encoding_for_label(l).ok_or_else(|| {
+            Fail::usage(format!(
+                "unknown encoding `{l}` (use a label such as euc-kr, windows-1252, shift_jis)"
+            ))
+        })?,
+        None => file::system_encoding(),
+    };
+    let d = file::read(&path, fallback, file::DEFAULT_SIZE_LIMIT).map_err(|e| match e {
+        OpenError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => Fail {
+            code: "file_not_found",
+            exit: 3,
+            message: format!("{} does not exist", path.display()),
+            hint: None,
+        },
+        OpenError::Directory => Fail::usage(format!("{} is a folder", path.display())),
+        OpenError::TooLarge { size, limit } => Fail {
+            code: "file_too_large",
+            exit: 5,
+            message: format!(
+                "{} has {size} bytes; Jarak opens up to {limit}",
+                path.display()
+            ),
+            hint: None,
+        },
+        OpenError::Io(e) => Fail {
+            code: if e.kind() == std::io::ErrorKind::PermissionDenied {
+                "permission_denied"
+            } else {
+                "io"
+            },
+            exit: 1,
+            message: format!("cannot read {}: {e}", path.display()),
+            hint: None,
+        },
+    })?;
+    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    let lines = if d.text.is_empty() {
+        0
+    } else {
+        d.eol.crlf + d.eol.lf + d.eol.cr + usize::from(!d.text.ends_with(['\n', '\r']))
+    };
+    let data = json!({
+        "path": path,
+        "size": size,
+        "encoding": d.format.encoding.name(),
+        "label": d.format.encoding.label(d.format.bom),
+        "bom": d.format.bom,
+        "eol": d.eol.name(),
+        "eol_counts": { "crlf": d.eol.crlf, "lf": d.eol.lf, "cr": d.eol.cr },
+        "lines": lines,
+        "chars": d.text.chars().count(),
+        "binary": d.binary,
+        "lossless": d.lossless,
+        "read_only": d.read_only(),
+        "fallback": fallback.name(),
+    });
+    let text = format!(
+        "{}\n  encoding  {}\n  eol       {} (CRLF {}, LF {}, CR {})\n  size      {size} bytes, {lines} lines\n  saving    {}",
+        path.display(),
+        d.format.encoding.label(d.format.bom),
+        d.eol.name(),
+        d.eol.crlf,
+        d.eol.lf,
+        d.eol.cr,
+        if d.binary {
+            "read-only: a binary file (zero bytes)"
+        } else if !d.lossless {
+            "read-only: the encoding cannot reproduce every byte"
+        } else {
+            "unchanged bytes on save"
+        }
     );
     Ok((data, text))
 }
@@ -352,7 +451,7 @@ mod tests {
             .iter()
             .map(|c| c["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, ["capabilities", "version", "paths", "open"]);
+        assert_eq!(names, ["capabilities", "version", "paths", "open", "info"]);
         // Only `open` may open a window, and it has a dry run (CLI_CONTRACT §4).
         for c in doc["commands"].as_array().unwrap() {
             let open = c["name"] == "open";
@@ -368,5 +467,13 @@ mod tests {
         assert_eq!(dispatch("paths", &["x"], &g).unwrap_err().code, "usage");
         let e = open(&[""], &g).unwrap_err();
         assert_eq!(e.code, "usage");
+        assert_eq!(info(&[], None).unwrap_err().code, "usage");
+        assert_eq!(info(&["a", "b"], None).unwrap_err().code, "usage");
+        assert_eq!(info(&["a"], Some("klingon")).unwrap_err().code, "usage");
+        let missing = std::env::temp_dir().join("jarak-info-missing-file.txt");
+        assert_eq!(
+            info(&[missing.to_str().unwrap()], None).unwrap_err().code,
+            "file_not_found"
+        );
     }
 }
