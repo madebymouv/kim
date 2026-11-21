@@ -1,0 +1,62 @@
+{
+  "command": "assets.list",
+  "data": {
+    "assets_dir": "C:\\Users\\me\\notes\\assets",
+    "document": "C:\\Users\\me\\notes\\notes.md",
+    "found": 2,
+    "missing": 1,
+    "orphans": [
+      {
+        "bytes": 1,
+        "name": "assets/old.png",
+        "path": "C:\\Users\\me\\notes\\assets\\old.png"
+      }
+    ],
+    "references": [
+      {
+        "bytes": 44180,
+        "exists": true,
+        "format": "png",
+        "line": 3,
+        "path": "C:\\Users\\me\\notes\\assets\\shot.png",
+        "reference": "assets/shot.png",
+        "remote": false,
+        "rewritable": true
+      },
+      {
+        "bytes": null,
+        "exists": false,
+        "format": null,
+        "line": 4,
+        "path": "C:\\Users\\me\\notes\\assets\\missing.png",
+        "reference": "assets/missing.png",
+        "remote": false,
+        "rewritable": true
+      },
+      {
+        "bytes": null,
+        "exists": false,
+        "format": null,
+        "line": 4,
+        "path": null,
+        "reference": "https://example.com/r.png",
+        "remote": true,
+        "rewritable": true
+      },
+      {
+        "bytes": 44180,
+        "exists": true,
+        "format": "png",
+        "line": 5,
+        "path": "C:\\Users\\me\\notes\\assets\\taken.png",
+        "reference": "assets/taken.png",
+        "remote": false,
+        "rewritable": true
+      }
+    ],
+    "remote": 1
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

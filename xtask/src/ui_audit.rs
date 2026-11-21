@@ -121,6 +121,8 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "split",
                 // Step 90: a pasted bitmap saved as an asset and shown in the preview.
                 "paste-image",
+                // Step 91: pictures scaled to the column, PNG and WebP, missing and remote.
+                "images",
             ],
         ),
     ];

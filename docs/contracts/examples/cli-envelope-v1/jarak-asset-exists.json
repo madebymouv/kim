@@ -1,0 +1,12 @@
+{
+  "command": "assets.rename",
+  "error": {
+    "code": "asset_exists",
+    "details": [],
+    "exit_code": 7,
+    "hint": "choose another name",
+    "message": "C:\\Users\\me\\notes\\assets\\taken.png exists already; it is never replaced; nothing was changed"
+  },
+  "ok": false,
+  "schema_version": 1
+}

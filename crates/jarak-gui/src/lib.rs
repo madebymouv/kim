@@ -15,6 +15,7 @@ pub mod clipboard;
 pub mod handoff;
 pub mod images;
 pub mod keys;
+pub mod media;
 pub mod preview;
 pub mod view;
 
@@ -25,7 +26,7 @@ use jarak_core::target::OpenTarget;
 use keys::Action;
 use kim_design::{Lang, font, size, space};
 use kim_ui::Colors;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use view::ViewState;
 
@@ -170,28 +171,29 @@ impl Tab {
 
     /// The language shown in the status bar (detection proper is Step 98).
     pub fn language(&self) -> &'static str {
-        match self
+        if self
             .file
             .path
-            .as_ref()
-            .and_then(|p| p.extension())
-            .and_then(|e| e.to_str())
-            .map(str::to_ascii_lowercase)
             .as_deref()
+            .is_some_and(jarak_core::markdown::is_markdown_path)
         {
-            Some("md" | "markdown" | "mdown" | "mkd") => "Markdown",
-            _ => "Plain text",
+            "Markdown"
+        } else {
+            "Plain text"
         }
     }
 }
 
-/// What a pending unsaved-changes question is about.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a pending question is about.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pending {
-    /// Close this document.
+    /// Close this document (unsaved changes).
     Close(usize),
     /// Quit the window (asked for each dirty document in turn).
     Quit,
+    /// Step 91 (`JARAK-FR-045`): after Save As to another folder, copy the images the document
+    /// refers to (source, destination) so its references keep working.
+    CopyAssets(Vec<(PathBuf, PathBuf)>),
 }
 
 /// The window's state.
@@ -299,7 +301,7 @@ impl JarakApp {
 
     /// Sets up a UI audit's view (ADR 0099): `editor`, `editor-empty`, `editor-selection`,
     /// `editor-wrap`, `question`, `preview`, `split`, `paste-image` (pastes a sample bitmap and
-    /// saves: the UI audit runs on a copy). Only used while `KIM_UI_INSPECT` is set.
+    /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy). Only used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -313,6 +315,29 @@ impl JarakApp {
             }
             "editor-wrap" => self.act(Action::ToggleWrap),
             "preview" => self.tab_mut().set_mode(Mode::Preview),
+            // Step 91: pictures in the preview — scaled to the column, at their size (PNG and
+            // WebP), a missing one and a remote one (the audit runs on a copy; the pictures are
+            // written next to it, the document is not saved).
+            "images" => {
+                let dir = self
+                    .tab()
+                    .file
+                    .path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf);
+                if let Some(dir) = dir {
+                    let _ = images::write_samples(&dir.join(jarak_core::assets::ASSET_DIR));
+                }
+                let t = self.tab_mut();
+                t.file.doc.select_all();
+                t.file.doc.paste(images::SAMPLE_DOC);
+                t.file.doc.doc_start(false);
+                t.view.top_line = 0;
+                t.preview.top_block = 0;
+                t.preview.top_px = 0.0;
+                t.set_mode(Mode::Preview);
+            }
             // Step 90: the MVP journey's middle — paste a bitmap, save, show the preview.
             "paste-image" => {
                 let t = self.tab_mut();
@@ -698,8 +723,119 @@ impl JarakApp {
         let Some(p) = self.dialogs.save_as(&suggested) else {
             return false;
         };
+        let old = self.tabs[i].file.path.clone();
         let r = self.tabs[i].file.save_as(&p);
-        self.report_save(i, r)
+        let saved = self.report_save(i, r);
+        if saved
+            && self.pending.is_none()
+            && let Some(old) = old
+        {
+            let list = assets_to_copy(&self.tabs[i].file.doc.text().to_string(), &old, &p);
+            if !list.is_empty() {
+                self.active = i;
+                self.pending = Some(Pending::CopyAssets(list));
+            }
+        }
+        saved
+    }
+
+    /// Copies the images of a Save As to another folder (never replacing a file).
+    fn copy_assets(&mut self, list: &[(PathBuf, PathBuf)]) {
+        let (mut copied, mut same, mut kept, mut failed) = (0, 0, Vec::new(), Vec::new());
+        for (from, to) in list {
+            match copy_new(from, to) {
+                Ok(true) => copied += 1,
+                Ok(false) => same += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    kept.push(to.display().to_string());
+                }
+                Err(e) => failed.push(format!("{}: {e}", from.display())),
+            }
+        }
+        let mut msg = format!("{} {copied}", self.t("Images copied:", "복사한 이미지:"));
+        if same > 0 {
+            msg.push_str(&format!(
+                " · {} {same}",
+                self.t("already there:", "이미 있음:")
+            ));
+        }
+        if !kept.is_empty() {
+            msg.push_str(&format!(
+                " · {} {}",
+                self.t(
+                    "not copied, a different file has the name:",
+                    "다른 파일이 같은 이름이라 복사하지 않음:"
+                ),
+                kept.join(", ")
+            ));
+        }
+        if !failed.is_empty() {
+            msg.push_str(&format!(
+                " · {} {}",
+                self.t("failed:", "실패:"),
+                failed.join(", ")
+            ));
+        }
+        self.message = Some(msg);
+    }
+
+    /// Shows the local image a reference names in Explorer (`JARAK-FR-045`).
+    pub fn reveal(&mut self, path: &Path) {
+        self.message = Some(if !path.is_file() {
+            format!(
+                "{} {}",
+                self.t("Not found:", "찾을 수 없습니다:"),
+                path.display()
+            )
+        } else if self.opener.reveal(path) {
+            format!(
+                "{} {}",
+                self.t("Shown in Explorer:", "탐색기에서 표시:"),
+                path.display()
+            )
+        } else {
+            format!(
+                "{} {}",
+                self.t("Could not show", "표시하지 못했습니다:"),
+                path.display()
+            )
+        });
+    }
+
+    /// A Ctrl+click in the source at `pos`: an image reference there is shown in Explorer.
+    /// `true` when there was one (Step 96 gives Ctrl+click elsewhere a second caret).
+    pub fn reveal_reference_at(&mut self, pos: usize) -> bool {
+        let t = self.tab();
+        if t.language() != "Markdown" {
+            return false;
+        }
+        let Some(doc) = t.file.path.clone() else {
+            return false;
+        };
+        let text = t.file.doc.text();
+        let line = text.char_to_line(pos.min(text.len_chars()));
+        let start = text.line_to_char(line);
+        let line_text = text.line(line).to_string();
+        let at = line_text
+            .char_indices()
+            .nth(pos - start)
+            .map_or(line_text.len(), |(b, _)| b);
+        let Some(url) = jarak_core::assets::reference_at(&line_text, at) else {
+            return false;
+        };
+        match jarak_core::assets::resolve(&doc, &url) {
+            Some(p) => self.reveal(&p),
+            None => {
+                self.message = Some(format!(
+                    "{} {url}",
+                    self.t(
+                        "Not a local image in the document's folder:",
+                        "문서 폴더 안의 로컬 이미지가 아닙니다:"
+                    )
+                ));
+            }
+        }
+        true
     }
 
     fn report_save(&mut self, i: usize, r: Result<(), SaveError>) -> bool {
@@ -766,11 +902,18 @@ impl JarakApp {
             return;
         };
         let i = self.active;
+        if let Pending::CopyAssets(list) = &p {
+            if save {
+                self.copy_assets(list);
+            }
+            return;
+        }
         if save && !self.save(i) {
             // Not saved (cancelled dialog, an error): nothing is closed.
             return;
         }
         match p {
+            Pending::CopyAssets(_) => {}
             Pending::Close(i) => self.close_now(i),
             Pending::Quit => {
                 if !save {
@@ -842,6 +985,8 @@ impl JarakApp {
         }
         let c = Colors::get(&ctx);
         self.status_bar(ui, &c);
+        let mut ctrl_click = None;
+        let lang = self.lang;
         let (focused, link) = egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(c.bg_base))
             .show(ui, |ui| {
@@ -849,10 +994,11 @@ impl JarakApp {
                 let read_only = self.tab().file.read_only;
                 let t = &mut self.tabs[self.active];
                 match t.mode {
-                    Mode::Source => (
-                        view::show(ui, rect, &mut t.file.doc, &mut t.view, read_only).focused,
-                        preview::PreviewOutput::default(),
-                    ),
+                    Mode::Source => {
+                        let v = view::show(ui, rect, &mut t.file.doc, &mut t.view, read_only);
+                        ctrl_click = v.ctrl_click;
+                        (v.focused, preview::PreviewOutput::default())
+                    }
                     Mode::Preview => {
                         let r = t.rendered();
                         let doc = t.file.path.clone();
@@ -863,6 +1009,7 @@ impl JarakApp {
                             &mut t.preview,
                             t.view.zoom,
                             doc.as_deref(),
+                            lang,
                         );
                         (false, out)
                     }
@@ -870,8 +1017,9 @@ impl JarakApp {
                         let mid = rect.center().x.round();
                         let left = Rect::from_min_max(rect.min, egui::pos2(mid, rect.bottom()));
                         let right = Rect::from_min_max(egui::pos2(mid + 1.0, rect.top()), rect.max);
-                        let focused =
-                            view::show(ui, left, &mut t.file.doc, &mut t.view, read_only).focused;
+                        let v = view::show(ui, left, &mut t.file.doc, &mut t.view, read_only);
+                        ctrl_click = v.ctrl_click;
+                        let focused = v.focused;
                         // The preview follows the source's top line.
                         let r = t.rendered();
                         t.preview.scroll_to_line(&r, t.view.top_line);
@@ -883,6 +1031,7 @@ impl JarakApp {
                             &mut t.preview,
                             t.view.zoom,
                             doc.as_deref(),
+                            lang,
                         );
                         ui.painter().vline(
                             mid + 0.5,
@@ -901,6 +1050,20 @@ impl JarakApp {
                 "{} {url}",
                 self.t("Ctrl+click to open", "Ctrl+클릭으로 엽니다:")
             ));
+        } else if let Some(p) = link.reveal {
+            self.reveal(&p);
+        } else if let Some(p) = link.plain_image {
+            self.message = Some(format!(
+                "{} {}",
+                self.t(
+                    "Ctrl+click to show it in Explorer:",
+                    "Ctrl+클릭하면 탐색기에서 보여 줍니다:"
+                ),
+                p.display()
+            ));
+        }
+        if let Some(pos) = ctrl_click {
+            self.reveal_reference_at(pos);
         }
         if self.pending.is_none() {
             let preview_only = self.tab().mode == Mode::Preview;
@@ -913,7 +1076,19 @@ impl JarakApp {
         }
         self.question(&ctx, &c);
         if kim_ui::inspect::active() {
-            kim_ui::inspect::finish_frame(&ctx, "jarak", &self.audit_screen);
+            // Measure once the pictures on screen are decoded (at most 15 s after the start).
+            let loading = self
+                .tab()
+                .preview
+                .media
+                .lock()
+                .map(|m| m.loading())
+                .unwrap_or(0);
+            if loading == 0 || ctx.input(|i| i.time) > 15.0 {
+                kim_ui::inspect::finish_frame(&ctx, "jarak", &self.audit_screen);
+            } else {
+                ctx.request_repaint();
+            }
         }
     }
 
@@ -1178,19 +1353,50 @@ impl JarakApp {
             return;
         }
         let name = self.tab().file.title();
-        let title = format!(
-            "{} {name}?",
-            self.t("Save changes to", "변경 내용을 저장할까요:")
-        );
-        let body = self.t(
-            "Your changes are lost if you don't save them.",
-            "저장하지 않으면 변경 내용이 사라집니다.",
-        );
-        let (save, dont, cancel) = (
-            self.t("Save", "저장").to_string(),
-            self.t("Don't save", "저장 안 함").to_string(),
-            self.t("Cancel", "취소").to_string(),
-        );
+        let copy = match &self.pending {
+            Some(Pending::CopyAssets(list)) => Some(list.len()),
+            _ => None,
+        };
+        let (title, body) = match copy {
+            Some(n) => (
+                format!(
+                    "{} {n}",
+                    self.t(
+                        "Copy the document's images to the new folder? Images:",
+                        "문서의 이미지를 새 폴더로 복사할까요? 이미지:"
+                    )
+                ),
+                self.t(
+                    "Its image references are relative; without the images they show as missing. Existing files are never replaced.",
+                    "이미지 참조는 상대 경로라서 이미지가 없으면 '찾을 수 없음'으로 보입니다. 기존 파일은 절대 덮어쓰지 않습니다.",
+                )
+                .to_string(),
+            ),
+            None => (
+                format!(
+                    "{} {name}?",
+                    self.t("Save changes to", "변경 내용을 저장할까요:")
+                ),
+                self.t(
+                    "Your changes are lost if you don't save them.",
+                    "저장하지 않으면 변경 내용이 사라집니다.",
+                )
+                .to_string(),
+            ),
+        };
+        let (save, dont, cancel) = if copy.is_some() {
+            (
+                self.t("Copy", "복사").to_string(),
+                self.t("Don't copy", "복사 안 함").to_string(),
+                String::new(),
+            )
+        } else {
+            (
+                self.t("Save", "저장").to_string(),
+                self.t("Don't save", "저장 안 함").to_string(),
+                self.t("Cancel", "취소").to_string(),
+            )
+        };
         let mut choice: Option<Option<bool>> = None;
         egui::Modal::new(egui::Id::unique("jarak-unsaved")).show(ctx, |ui| {
             ui.set_width(size::DIALOG_WIDTH);
@@ -1200,7 +1406,11 @@ impl JarakApp {
                     .color(c.text_primary),
             );
             ui.add_space(space::S);
-            ui.label(RichText::new(body).size(font::BODY).color(c.text_secondary));
+            ui.label(
+                RichText::new(&body)
+                    .size(font::BODY)
+                    .color(c.text_secondary),
+            );
             ui.add_space(space::L);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.add(kim_ui::Button::primary(&save)).clicked() {
@@ -1209,7 +1419,7 @@ impl JarakApp {
                 if ui.add(kim_ui::Button::secondary(&dont)).clicked() {
                     choice = Some(Some(false));
                 }
-                if ui.add(kim_ui::Button::secondary(&cancel)).clicked() {
+                if !cancel.is_empty() && ui.add(kim_ui::Button::secondary(&cancel)).clicked() {
                     choice = Some(None);
                 }
             });
@@ -1230,6 +1440,65 @@ impl eframe::App for JarakApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         JarakApp::ui(self, ui);
     }
+}
+
+/// The images a document saved from `old` to `new` refers to that exist next to `old` and not
+/// yet next to `new` (source, destination); empty when the folder did not change.
+pub fn assets_to_copy(text: &str, old: &Path, new: &Path) -> Vec<(PathBuf, PathBuf)> {
+    let same = |a: &Path, b: &Path| {
+        a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+    };
+    match (old.parent(), new.parent()) {
+        (Some(a), Some(b)) if !same(a, b) => {}
+        _ => return Vec::new(),
+    }
+    if !jarak_core::markdown::is_markdown_path(new) {
+        return Vec::new();
+    }
+    let mut out: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for r in jarak_core::assets::references(text) {
+        let (Some(from), Some(to)) = (
+            jarak_core::assets::resolve(old, &r.url),
+            jarak_core::assets::resolve(new, &r.url),
+        ) else {
+            continue;
+        };
+        if from.is_file() && !to.exists() && !out.iter().any(|(f, _)| same(f, &from)) {
+            out.push((from, to));
+        }
+    }
+    out
+}
+
+/// Copies `from` to `to` without replacing anything: `Ok(true)` copied, `Ok(false)` the same
+/// bytes are there already, `AlreadyExists` a different file has the name.
+pub fn copy_new(from: &Path, to: &Path) -> std::io::Result<bool> {
+    let bytes = std::fs::read(from)?;
+    if to.exists() {
+        return if std::fs::read(to)? == bytes {
+            Ok(false)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "a different file has the name",
+            ))
+        };
+    }
+    if let Some(d) = to.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
+    use std::io::Write as _;
+    if let Err(e) = f.write_all(&bytes).and_then(|()| f.sync_all()) {
+        drop(f);
+        // Only the file this call created (and could not fill) is removed.
+        let _ = std::fs::remove_file(to);
+        return Err(e);
+    }
+    Ok(true)
 }
 
 /// Today's local date for asset names (year, month, day).

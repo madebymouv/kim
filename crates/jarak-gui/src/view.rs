@@ -172,6 +172,8 @@ struct Laid {
 pub struct ViewOutput {
     /// The view has keyboard focus.
     pub focused: bool,
+    /// The document position of a Ctrl+click (an image reference there is shown in Explorer).
+    pub ctrl_click: Option<usize>,
 }
 
 /// The id of the text view (focus, IME).
@@ -414,8 +416,11 @@ pub fn show(
     // The scrollbar.
     paint_scrollbar(ui, rect, bar_w, lines, state, &c);
     // Mouse: clicks, drags, double and triple clicks, the wheel.
-    mouse(ui, &resp, &laid, doc, state, &m, text_rect);
-    ViewOutput { focused }
+    let ctrl_click = mouse(ui, &resp, &laid, doc, state, &m, text_rect);
+    ViewOutput {
+        focused,
+        ctrl_click,
+    }
 }
 
 fn x_of(l: &Laid, off: usize) -> f32 {
@@ -580,7 +585,7 @@ fn mouse(
     state: &mut ViewState,
     m: &Metrics,
     text_rect: Rect,
-) {
+) -> Option<usize> {
     let (shift, ctrl, scroll, time) = ui.input(|i| {
         (
             i.modifiers.shift,
@@ -619,9 +624,7 @@ fn mouse(
             }
         }
     }
-    let Some(p) = resp.interact_pointer_pos() else {
-        return;
-    };
+    let p = resp.interact_pointer_pos()?;
     let pos = hit(laid, doc, p);
     let pressed = ui.input(|i| i.pointer.primary_pressed());
     if pressed {
@@ -657,7 +660,7 @@ fn mouse(
             }
         }
         state.preedit.clear();
-        return;
+        return (ctrl && !shift && n == 1).then_some(pos);
     }
     if let Some(Drag::Text { anchor, unit }) = state.drag
         && resp.dragged()
@@ -705,6 +708,7 @@ fn mouse(
     if resp.drag_stopped() {
         state.drag = None;
     }
+    None
 }
 
 impl ViewState {

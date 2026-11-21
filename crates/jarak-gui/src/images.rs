@@ -280,14 +280,7 @@ pub fn decode_file(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
 
 /// Decodes image bytes (PNG, JPEG, GIF's first frame, BMP) within the limits.
 pub fn decode(data: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
-    let format = match sniff(data) {
-        Some(Kind::Png) => image::ImageFormat::Png,
-        Some(Kind::Jpeg) => image::ImageFormat::Jpeg,
-        Some(Kind::Gif) => image::ImageFormat::Gif,
-        Some(Kind::Bmp) => image::ImageFormat::Bmp,
-        Some(Kind::Webp) => return Err("WebP images are shown from Step 91 on".into()),
-        None => return Err("not an image Jarak knows".into()),
-    };
+    let format = format_of(data)?;
     let mut reader = image::ImageReader::with_format(std::io::Cursor::new(data), format);
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_SIDE);
@@ -301,6 +294,79 @@ pub fn decode(data: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
     let (w, h) = rgba.dimensions();
     check_size(w, h)?;
     Ok((w, h, rgba.into_raw()))
+}
+
+/// The decoder for `data` by its first bytes.
+fn format_of(data: &[u8]) -> Result<image::ImageFormat, String> {
+    match sniff(data) {
+        Some(Kind::Png) => Ok(image::ImageFormat::Png),
+        Some(Kind::Jpeg) => Ok(image::ImageFormat::Jpeg),
+        Some(Kind::Gif) => Ok(image::ImageFormat::Gif),
+        Some(Kind::Bmp) => Ok(image::ImageFormat::Bmp),
+        Some(Kind::Webp) => Ok(image::ImageFormat::WebP),
+        None => Err("not an image Jarak knows".into()),
+    }
+}
+
+/// A picture's size from its header (Step 91: the preview reserves its place before decoding).
+pub fn dimensions(path: &Path) -> Result<[u32; 2], String> {
+    use std::io::Read;
+    let mut head = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(64 * 1024).read_to_end(&mut head))
+        .map_err(|e| e.to_string())?;
+    let format = format_of(&head)?;
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let reader = image::ImageReader::with_format(std::io::BufReader::new(file), format);
+    let (w, h) =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reader.into_dimensions()))
+            .map_err(|_| "the image could not be read".to_string())?
+            .map_err(|e| e.to_string())?;
+    check_size(w, h)?;
+    Ok([w, h])
+}
+
+/// `rgba` (`w` × `h`) scaled down to at most `max` pixels on its longer side (unchanged when it
+/// fits): textures stay within what every graphics card takes and within the cache's budget.
+pub fn fit(w: u32, h: u32, rgba: Vec<u8>, max: u32) -> (u32, u32, Vec<u8>) {
+    if w.max(h) <= max {
+        return (w, h, rgba);
+    }
+    let Some(img) = image::RgbaImage::from_raw(w, h, rgba) else {
+        return (0, 0, Vec::new());
+    };
+    let s = f64::from(max) / f64::from(w.max(h));
+    let (nw, nh) = (
+        ((f64::from(w) * s).round() as u32).max(1),
+        ((f64::from(h) * s).round() as u32).max(1),
+    );
+    let out = image::imageops::resize(&img, nw, nh, image::imageops::FilterType::Triangle);
+    (nw, nh, out.into_raw())
+}
+
+/// The UI audit's and the e2e's picture document (Step 91): see [`write_samples`].
+pub const SAMPLE_DOC: &str = "# Pictures\n\nA wide picture, scaled down to the column:\n\n![wide](assets/wide.png)\n\nSmall ones at their size, PNG and WebP: ![small](assets/small.png) ![webp](assets/small.webp)\n\n![gone](assets/missing.png)\n\n![remote](https://example.com/r.png)\n";
+
+/// Writes the pictures [`SAMPLE_DOC`] refers to into `dir`: `wide.png` (1600 × 400),
+/// `small.png` (160 × 90) and `small.webp` (200 × 120); files that exist are kept.
+pub fn write_samples(dir: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let rgba = |w: u32, h: u32| dib_to_rgba(&sample_dib(w, h)).map(|(_, _, px)| px);
+    for (name, w, h) in [("wide.png", 1600, 400), ("small.png", 160, 90)] {
+        let p = dir.join(name);
+        if !p.exists() {
+            std::fs::write(&p, encode_png(w, h, &rgba(w, h)?)?).map_err(|e| e.to_string())?;
+        }
+    }
+    let p = dir.join("small.webp");
+    if !p.exists() {
+        let mut out = Vec::new();
+        image::codecs::webp::WebPEncoder::new_lossless(&mut out)
+            .encode(&rgba(200, 120)?, 200, 120, image::ExtendedColorType::Rgba8)
+            .map_err(|e| e.to_string())?;
+        std::fs::write(&p, out).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// A small packed 24-bit bitmap with a colour gradient (what a screenshot tool puts on the
@@ -453,6 +519,32 @@ mod tests {
         assert_eq!(sniff(b"GIF89a.."), Some(Kind::Gif));
         assert_eq!(sniff(b"RIFF\0\0\0\0WEBPVP8 "), Some(Kind::Webp));
         assert_eq!(sniff(b"hello"), None);
+    }
+
+    #[test]
+    fn large_pictures_are_scaled_down_to_the_texture_limit_keeping_the_aspect() {
+        let (w, h, px) = fit(5000, 10, vec![7u8; 5000 * 10 * 4], 4096);
+        assert_eq!((w, h, px.len()), (4096, 8, 4096 * 8 * 4));
+        let (w, h, _) = fit(30, 20, vec![0u8; 30 * 20 * 4], 4096);
+        assert_eq!((w, h), (30, 20), "small pictures are kept as they are");
+    }
+
+    #[test]
+    fn webp_pictures_decode_and_their_size_is_read_from_the_header() {
+        let rgba: Vec<u8> = vec![
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 9, 9, 9, 255, 1, 2, 3, 255, 4, 5, 6,
+            255,
+        ];
+        let mut out = Vec::new();
+        image::codecs::webp::WebPEncoder::new_lossless(&mut out)
+            .encode(&rgba, 3, 2, image::ExtendedColorType::Rgba8)
+            .unwrap();
+        assert_eq!(sniff(&out), Some(Kind::Webp));
+        assert_eq!(decode(&out).unwrap(), (3, 2, rgba));
+        let p = std::env::temp_dir().join(format!("jarak-webp-{}.webp", std::process::id()));
+        std::fs::write(&p, &out).unwrap();
+        assert_eq!(dimensions(&p).unwrap(), [3, 2]);
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]

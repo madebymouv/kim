@@ -99,3 +99,129 @@ fn preview_switch_of_a_1_mb_markdown_document() {
     assert!(first < 100.0, "first switch {first:.1} ms");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Step 91 (#110): a Markdown document with 50 screenshot-sized pictures (1920 × 1080 PNG,
+/// 8.3 MB of pixels each): the preview's frame time while scrolling through them as they decode
+/// on the worker, a keystroke in split view while pictures load, and the texture cache's size
+/// (`JARAK-FR-044`: bounded; budget `media::BUDGET`).
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn fifty_pictures_scroll_and_type_within_budget() {
+    let dir = std::env::temp_dir().join(format!("jarak-perf-img-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    let (w, h_px) = (1920u32, 1080u32);
+    let mut rgba = vec![0u8; (w * h_px * 4) as usize];
+    let mut text = String::from("# Fifty pictures\n\n");
+    for i in 0..50u32 {
+        for (k, px) in rgba.chunks_mut(4).enumerate() {
+            let (x, y) = (k as u32 % w, k as u32 / w);
+            px.copy_from_slice(&[
+                (x * 255 / w) as u8,
+                (y * 255 / h_px) as u8,
+                (i * 5) as u8,
+                255,
+            ]);
+        }
+        let png = jarak_gui::images::encode_png(w, h_px, &rgba).unwrap();
+        std::fs::write(dir.join("assets").join(format!("shot-{i:02}.png")), png).unwrap();
+        text.push_str(&format!(
+            "Picture {i}:\n\n![shot](assets/shot-{i:02}.png)\n\n"
+        ));
+    }
+    let file = dir.join("fifty.md");
+    std::fs::write(&file, &text).unwrap();
+    let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let app = JarakApp::new(Lang::En, &[file.display().to_string()], incoming);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    let key = |k: egui::Key, m: egui::Modifiers| egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: m,
+    };
+    // Preview, then page down through all fifty while they decode.
+    h.event(key(egui::Key::E, egui::Modifiers::CTRL));
+    h.step();
+    let mut frames = Vec::new();
+    let mut peak = 0usize;
+    let start = Instant::now();
+    for i in 0..400 {
+        if i % 4 == 0 {
+            h.event(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, -400.0),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Wheel,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.event(egui::Event::PointerMoved(egui::pos2(640.0, 450.0)));
+        }
+        let t = Instant::now();
+        h.step();
+        frames.push(t.elapsed().as_secs_f64() * 1000.0);
+        peak = peak.max(h.state().tab().preview.media.lock().unwrap().bytes());
+        std::thread::sleep(std::time::Duration::from_millis(4));
+    }
+    let scroll_s = start.elapsed().as_secs_f64();
+    let (decoded, evicted, bytes) = {
+        let m = h.state().tab().preview.media.lock().unwrap();
+        (m.decoded, m.evicted, m.bytes())
+    };
+    frames.sort_by(f64::total_cmp);
+    let p = |v: &[f64], q: f64| v[((v.len() as f64 - 1.0) * q) as usize];
+    println!(
+        "50 pictures (1920×1080): scroll frames p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms over {scroll_s:.1} s; decoded {decoded}, dropped {evicted}; textures now {:.1} MB, peak {:.1} MB (budget {:.0} MB)",
+        p(&frames, 0.5),
+        p(&frames, 0.95),
+        p(&frames, 1.0),
+        bytes as f64 / 1048576.0,
+        peak as f64 / 1048576.0,
+        jarak_gui::media::BUDGET as f64 / 1048576.0
+    );
+    // Split view: typing while the pictures on screen decode.
+    h.event(key(egui::Key::E, egui::Modifiers::CTRL));
+    h.step();
+    h.event(key(
+        egui::Key::E,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    ));
+    h.event(key(egui::Key::Home, egui::Modifiers::CTRL));
+    h.step();
+    let mut typing = Vec::new();
+    for i in 0..100 {
+        let t = Instant::now();
+        h.event(egui::Event::Text(
+            if i % 2 == 0 { "a" } else { "한" }.into(),
+        ));
+        h.step();
+        typing.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    typing.sort_by(f64::total_cmp);
+    println!(
+        "keystroke in split view with pictures: p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms",
+        p(&typing, 0.5),
+        p(&typing, 0.95),
+        p(&typing, 1.0)
+    );
+    assert!(
+        p(&frames, 0.95) < 16.0,
+        "scroll p95 {:.2} ms",
+        p(&frames, 0.95)
+    );
+    assert!(
+        p(&typing, 0.95) < 16.0,
+        "typing p95 {:.2} ms",
+        p(&typing, 0.95)
+    );
+    // On screen at most a few 8 MB pictures: the cache stays near its budget.
+    assert!(
+        peak <= jarak_gui::media::BUDGET + 4 * 8_294_400,
+        "peak {peak}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

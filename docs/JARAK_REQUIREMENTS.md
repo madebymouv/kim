@@ -15,10 +15,12 @@ in Step 88; Step 87 implemented files and encodings in `jarak-core` and `jarak i
 Step 89 implemented `JARAK-FR-040`, `JARAK-FR-041` and `JARAK-FR-046` and measured
 `JARAK-NFR-005` ([JARAK_ARCHITECTURE §11](JARAK_ARCHITECTURE.md)); Step 90 implemented
 `JARAK-FR-042`, `JARAK-FR-043`, `JARAK-SEC-004`, `JARAK-SEC-005` and the first half of
-`JARAK-FR-044` (local images in the preview; off-thread decoding, WebP and placeholders polish
-in Step 91) — the MVP journey of §5 passes on the real desktop
-([JARAK_ARCHITECTURE §12](JARAK_ARCHITECTURE.md)); each implementing Step updates the rows it
-delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
+`JARAK-FR-044` — the MVP journey of §5 passes on the real desktop
+([JARAK_ARCHITECTURE §12](JARAK_ARCHITECTURE.md)); Step 91 completed `JARAK-FR-044` (decoding off
+the UI thread into a bounded cache, WebP, placeholders with the path) and implemented
+`JARAK-FR-045` (reveal from the reference, `jarak assets list/rename`, Save As offers to copy
+the pictures) ([JARAK_ARCHITECTURE §13](JARAK_ARCHITECTURE.md)); each implementing Step updates
+the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 

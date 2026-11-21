@@ -2,7 +2,7 @@
 
 Status: **current** (Step 85: crates, CLI foundation, window shell, single instance, Kim
 integration; Step 86: the text model, §8; Step 87: files and encodings, §9; Step 88: the editor
-window, §10; Step 89: Markdown, §11; Step 90: Ctrl+V images, §12) · Owner: mouv · Decision:
+window, §10; Step 89: Markdown, §11; Step 90: Ctrl+V images, §12; Step 91: pictures and assets, §13) · Owner: mouv · Decision:
 [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)
 
@@ -336,7 +336,7 @@ file stayed byte-identical, the window closed with exit 0 (screenshot reviewed).
   GIF's first frame, BMP, with the same limits) into a texture cached per document and reloaded
   when the file changes; drawn at its pixel size, at most the column's width. A paragraph with
   text and images shows the text runs and the pictures in order; a missing or refused image
-  shows a labelled frame. Decoding is still on the UI thread (Step 91 moves it off).
+  shows a labelled frame. (Step 91 moved decoding off the UI thread, §13.)
 
 Tests: `assets` 3 (portable names, the next free number never overwriting, references resolving
 only inside the folder); `images` 7 (24-bit bottom-up and 32-bit top-down DIBs, alpha and the
@@ -357,3 +357,81 @@ screenshot tool does); Ctrl+V → `assets/journey-20261122-001.png` and the refe
 Ctrl+E → the picture in the preview; closed (exit 0); reopened in a new process → Ctrl+E shows
 it. The first run showed a 3-pixel strip at the picture's left edge — Windows' synthesized
 `CF_DIBV5` repeats the masks after the header — fixed and re-run (screenshot reviewed).
+
+## 13. Pictures in the preview and the assets of a document (Step 91)
+
+- **Decoding off the UI thread** (`media.rs`, `JARAK-FR-044`): the preview asks
+  `Media::get` for a picture every frame and gets an answer at once — the texture, "loading"
+  (with the picture's size as soon as a worker thread read its header, so the layout does not
+  jump) or the reason it is not shown. One worker thread per document (started on the first
+  picture, ended with the document) reads the header, decodes with the limits of §12 (PNG,
+  JPEG, GIF's first frame, BMP and now WebP, all pure Rust) and scales a picture larger than
+  4096 pixels on a side down to fit; the window is woken when a result is ready. A file is looked
+  at again at most once a second and decoded again when it changed.
+- **A bounded cache**: decoded textures are kept up to 128 MB (`media::BUDGET`); beyond that the
+  ones not drawn in the last frame are dropped, least recently drawn first, and decoded again
+  when they come back on screen. Pictures on screen are never dropped.
+- **Size on screen**: one image pixel per screen pixel, times the document's zoom, at most the
+  column's width, aspect kept — a screenshot shows at its true size on any display scale and
+  stays sharp (at 150 % the text is 1.5 × larger, a 360 × 180 picture still covers 360 × 180
+  screen pixels). Placeholders (loading, missing, broken, remote, outside the folder, unsaved
+  document) are frames with a label in the user's language and the reference.
+- **No network**: a remote picture (`http(s)://`, `data:`) is never fetched; its frame says so.
+  Jarak has no network code; an opt-in to load remote pictures is not offered (a decision of this
+  Step: local-first, `JARAK-SEC-005`).
+- **Navigation** (`JARAK-FR-045`): hovering a local picture shows its file and size (at the
+  pointer); Ctrl+click shows it selected in Explorer (`explorer.exe /select,"…"` — Explorer only
+  shows it, nothing is run); a plain click says how. In the source, Ctrl+click inside an image
+  reference does the same (Step 96 gives Ctrl+click elsewhere a second caret).
+- **Save As to another folder** offers to copy the pictures the document refers to (those next to
+  the old location that the new folder lacks): a question with Copy / Don't copy; copying never
+  replaces a file (same bytes: skipped; other bytes: kept and named in the message); the
+  originals stay.
+- **Assets on the command line** (`jarak-core::assets`): `jarak assets list <doc.md>` lists the
+  document's image references (found with format and size, missing, remote, outside the folder)
+  and the orphans — files in `assets/` (four levels deep) that no Markdown file of the folder
+  refers to; nothing is deleted. `jarak assets rename <doc.md> <asset> <new-name>` renames the file
+  (`MoveFileExW` without replace: an existing file is never replaced, `asset_exists`) and
+  rewrites exactly the bytes of the document's references to it (inline and reference
+  definitions, `%20` for spaces, encoding and line endings kept, atomic save); it refuses an
+  asset other Markdown files of the folder use (`asset_shared`, listed in `details`), a document
+  that opens read-only and a reference it cannot locate exactly; `--dry-run` shows the change. If
+  the document cannot be saved, the file gets its old name back. The GUI entries for the list
+  and the rename come with the command palette (Step 92).
+- **Preview end**: scrolling stops when the document's end reaches the bottom of the view (before,
+  the last block could scroll away and leave an empty page — found in the real check).
+
+Tests: `assets` 6 (references with the exact bytes of their destinations, inline, `<…>`,
+escaped, reference definitions; orphans across the folder's Markdown files; a rename that moves
+the file and rewrites only references, its refusals, the never-replacing move); `images` 9 (+ the
+scale-down to the texture limit, WebP decode and header size); `media` 3 (answers "loading" at
+once and decodes on the worker; the cache drops pictures off screen to stay within its budget and
+brings them back with their size known; a changed file is decoded again); window flows 3 new (the
+preview reveals a picture on Ctrl+click through the pointer and labels a missing one with its
+path, the source reveals a reference, the document stays untouched; Save As to another folder
+offers the copy and never replaces files; the preview never scrolls past the end) + `copy_new`;
+CLI unit tests and a smoke run (list, dry run, refused onto an existing name, rename with CRLF
+kept). Golden examples `cli-envelope-v1/jarak-assets-list.json`, `jarak-asset-exists.json`,
+`jarak-assets-rename-dry-run.json`. UI audit view `images` (45 runs, 0 failures; 100 % … 200 %
+screenshots reviewed). e2e `step91_jarak_images_assets.rs` (the release window's picture view
+with a geometry check of the three pictures, `jarak assets list/rename` through the real CLI, the
+renamed picture in a new window's preview; first focused run PASS).
+
+**Measured** (release): 50 screenshot-sized pictures (1920 × 1080) in one document, headless:
+scroll frames p50 0.14 ms, p95 3.12 ms, max 7.48 ms while all 50 decode; textures peak 126.6 MB
+(budget 128 MB), 34 dropped and decoded again; a keystroke in split view with pictures p95
+0.41 ms. First preview switch of 1 MB Markdown 46.7 ms after the end-of-document clamp (budget
+100). Real window on this PC: working set 92 MB in the source, 121 MB in the preview after
+scrolling through all 50 (peak 143 MB, private bytes 294 MB including the graphics driver's
+texture memory), CPU 0 ms in 3 idle seconds after scrolling.
+
+**Real desktop** (test-started windows, a sandboxed profile, the maintainer's windows untouched):
+the 50-picture document scrolled to its end and back with the wheel (the pointer over the
+pictures; screenshots reviewed: the last picture ends at the bottom); Ctrl+click on a picture
+opened one Explorer window on `assets` with the file selected, which the test closed (only that
+window); `small.md` at UI scale 100 % and 150 % (`KIM_UI_ZOOM`): the 360 × 180 picture covers
+360 × 180 screen pixels, the missing one is labelled. The real check found the empty page at the
+end and the hover text placed at the bottom of the whole preview (now at the pointer). Windows
+display scaling itself was not changed (it would rescale the maintainer's open windows): the
+150 % checks use Jarak's own UI scale, which is the same pixels-per-point path — a real 150 %
+display is **not tested**.

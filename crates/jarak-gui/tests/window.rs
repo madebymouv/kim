@@ -67,7 +67,8 @@ fn key(h: &mut Harness<'static, JarakApp>, key: egui::Key, modifiers: egui::Modi
         repeat: false,
         modifiers,
     });
-    h.run();
+    // The image decoder (a real thread) may wake the window a few more times.
+    let _ = h.try_run();
 }
 
 fn text(h: &mut Harness<'static, JarakApp>, s: &str) {
@@ -310,6 +311,46 @@ impl jarak_gui::preview::Opener for Recorder {
         self.0.lock().unwrap().push(url.to_string());
         true
     }
+    fn reveal(&self, path: &std::path::Path) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("reveal:{}", path.display()));
+        true
+    }
+}
+
+/// Runs frames until the preview drew `n` decoded pictures (the decoder is a real thread).
+fn wait_pictures(h: &mut Harness<'static, JarakApp>, n: usize) {
+    let t = std::time::Instant::now();
+    loop {
+        h.step();
+        let m = h.state().tab().preview.media.lock().unwrap();
+        if (m.ready().len() >= n && m.loading() == 0) || t.elapsed().as_secs() > 20 {
+            break;
+        }
+        drop(m);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let _ = h.try_run();
+}
+
+/// A click at `p` with `m` held, through the pointer (hover, press, release).
+fn click_at(h: &mut Harness<'static, JarakApp>, p: egui::Pos2, m: egui::Modifiers) {
+    h.event(egui::Event::ModifiersChanged(m));
+    h.event(egui::Event::PointerMoved(p));
+    h.run();
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: m,
+        });
+    }
+    h.run();
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    h.run();
 }
 
 #[test]
@@ -479,25 +520,10 @@ fn the_mvp_journey_paste_a_screenshot_save_preview_and_reopen() {
     // The preview shows the image.
     key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
     h.run();
-    let ready = |h: &Harness<'static, JarakApp>| {
-        h.state()
-            .tab()
-            .preview
-            .images
-            .lock()
-            .unwrap()
-            .values()
-            .any(|e| {
-                matches!(
-                    e,
-                    jarak_gui::preview::ImgEntry::Ready { size: [64, 48], .. }
-                )
-            })
-    };
-    assert!(
-        ready(&h),
-        "{:?}",
-        h.state().tab().preview.images.lock().unwrap()
+    wait_pictures(&mut h, 1);
+    assert_eq!(
+        h.state().tab().preview.media.lock().unwrap().ready(),
+        vec![[64, 48]]
     );
     // A second paste gets the next number; nothing is overwritten.
     key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
@@ -510,9 +536,11 @@ fn the_mvp_journey_paste_a_screenshot_save_preview_and_reopen() {
     // Reopen: the document and both images are intact.
     let (mut h2, _) = app_clip(&[doc.to_str().unwrap()], Arc::default());
     key(&mut h2, egui::Key::E, egui::Modifiers::CTRL);
-    h2.run();
-    assert!(ready(&h2));
-    assert_eq!(h2.state().tab().preview.images.lock().unwrap().len(), 2);
+    wait_pictures(&mut h2, 2);
+    assert_eq!(
+        h2.state().tab().preview.media.lock().unwrap().ready(),
+        vec![[64, 48], [64, 48]]
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -568,6 +596,228 @@ fn images_paste_only_into_markdown_and_text_wins_when_both_are_there() {
     key(&mut h, egui::Key::V, egui::Modifiers::CTRL);
     assert_eq!(doc_text(&h), "the text");
     assert!(assets_of(&d).is_empty());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_preview_reveals_a_picture_on_ctrl_click_and_labels_missing_ones() {
+    use jarak_gui::images::encode_png;
+    let d = temp("reveal");
+    std::fs::create_dir_all(d.join("assets")).unwrap();
+    std::fs::write(
+        d.join("assets").join("a.png"),
+        encode_png(40, 30, &[0x60u8; 40 * 30 * 4]).unwrap(),
+    )
+    .unwrap();
+    let doc = d.join("n.md");
+    std::fs::write(
+        &doc,
+        "# N\n\n![a](assets/a.png)\n\n![b](assets/missing.png)\n\n![r](https://example.com/r.png)\n\nsee ![a](assets/a.png) inline\n",
+    )
+    .unwrap();
+    let before = std::fs::read(&doc).unwrap();
+    let rec = Arc::new(Recorder::default());
+    let (a, _) = app_with(&[doc.to_str().unwrap()], Arc::default());
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(960.0, 640.0))
+        .build_ui_state(
+            |ui, app: &mut JarakApp| app.ui(ui),
+            a.with_opener(rec.clone()),
+        );
+    h.run();
+    // Source: Ctrl+click inside a reference shows the file; elsewhere it does nothing.
+    let at = doc_text(&h).find("assets/a.png").unwrap() + 2;
+    assert!(h.state_mut().reveal_reference_at(at));
+    assert!(!h.state_mut().reveal_reference_at(1));
+    assert_eq!(
+        *rec.0.lock().unwrap(),
+        vec![format!(
+            "reveal:{}",
+            d.join("assets").join("a.png").display()
+        )]
+    );
+    rec.0.lock().unwrap().clear();
+    // Preview: the picture (twice: on its own and inside a paragraph), the missing one labelled
+    // with its path, the remote one never loaded.
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    wait_pictures(&mut h, 1);
+    let failed = h.state().tab().preview.media.lock().unwrap().failed();
+    assert_eq!(failed.len(), 1, "{failed:?}");
+    assert!(failed[0].contains("missing.png"), "{failed:?}");
+    let pics = h.state().tab().preview.pictures();
+    assert_eq!(pics.len(), 3, "two drawn, one missing frame: {pics:?}");
+    let (r, _) = pics[0].clone();
+    assert!(
+        (r.width() - 40.0).abs() < 0.5 && (r.height() - 30.0).abs() < 0.5,
+        "{r:?}"
+    );
+    // A plain click explains; Ctrl+click shows it in Explorer.
+    click_at(&mut h, r.center(), egui::Modifiers::NONE);
+    assert!(rec.0.lock().unwrap().is_empty());
+    assert!(
+        h.query_by_label_contains("Ctrl+click to show it in Explorer")
+            .is_some()
+    );
+    // Windows sets both Ctrl and the command modifier.
+    let ctrl = egui::Modifiers {
+        ctrl: true,
+        command: true,
+        ..Default::default()
+    };
+    click_at(&mut h, r.center(), ctrl);
+    assert_eq!(
+        *rec.0.lock().unwrap(),
+        vec![format!(
+            "reveal:{}",
+            d.join("assets").join("a.png").display()
+        )]
+    );
+    assert_eq!(
+        std::fs::read(&doc).unwrap(),
+        before,
+        "nothing rewrote the document"
+    );
+    assert!(!h.state().tab().file.doc.is_dirty());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn save_as_to_another_folder_offers_to_copy_the_images_and_never_replaces_files() {
+    use jarak_gui::images::encode_png;
+    let d = temp("copy-assets");
+    let (a_dir, b_dir) = (d.join("a"), d.join("b"));
+    std::fs::create_dir_all(a_dir.join("assets")).unwrap();
+    std::fs::create_dir_all(b_dir.join("assets")).unwrap();
+    let px = |v: u8| encode_png(4, 4, &[v; 64]).unwrap();
+    std::fs::write(a_dir.join("assets").join("one.png"), px(1)).unwrap();
+    std::fs::write(a_dir.join("assets").join("two.png"), px(2)).unwrap();
+    // Already in the new folder with other bytes: never replaced.
+    std::fs::write(b_dir.join("assets").join("two.png"), px(9)).unwrap();
+    let doc = a_dir.join("n.md");
+    std::fs::write(
+        &doc,
+        "![](assets/one.png)\n![](assets/two.png)\n![](assets/none.png)\n",
+    )
+    .unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    // The scripted dialog answers from the end of its list.
+    dialogs.save.lock().unwrap().push(b_dir.join("again.md"));
+    dialogs.save.lock().unwrap().push(b_dir.join("n.md"));
+    let (a, _) = app_with(&[doc.to_str().unwrap()], dialogs);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(960.0, 640.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), a);
+    h.run();
+    key(
+        &mut h,
+        egui::Key::S,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    // Only one.png is offered (two.png has a file of that name there, none.png does not exist).
+    assert_eq!(
+        h.state().pending,
+        Some(Pending::CopyAssets(vec![(
+            a_dir.join("assets").join("one.png"),
+            b_dir.join("assets").join("one.png")
+        )]))
+    );
+    assert!(
+        h.query_by_label_contains("Copy the document's images")
+            .is_some()
+    );
+    h.get_by_label("Copy").click();
+    h.run();
+    assert_eq!(h.state().pending, None);
+    assert_eq!(
+        std::fs::read(b_dir.join("assets").join("one.png")).unwrap(),
+        px(1)
+    );
+    assert_eq!(
+        std::fs::read(b_dir.join("assets").join("two.png")).unwrap(),
+        px(9),
+        "kept"
+    );
+    assert!(
+        a_dir.join("assets").join("one.png").exists(),
+        "the originals stay"
+    );
+    // The same folder again: nothing to offer.
+    key(
+        &mut h,
+        egui::Key::S,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(h.state().pending, None);
+    assert_eq!(h.state().tab().file.title(), "again.md");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn copying_never_replaces_a_different_file() {
+    let d = temp("copy-new");
+    std::fs::write(d.join("src.png"), b"one").unwrap();
+    std::fs::write(d.join("other.png"), b"two").unwrap();
+    assert!(jarak_gui::copy_new(&d.join("src.png"), &d.join("sub").join("dst.png")).unwrap());
+    assert!(
+        !jarak_gui::copy_new(&d.join("src.png"), &d.join("sub").join("dst.png")).unwrap(),
+        "same bytes"
+    );
+    let e = jarak_gui::copy_new(&d.join("src.png"), &d.join("other.png")).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(std::fs::read(d.join("other.png")).unwrap(), b"two");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_preview_never_scrolls_past_the_end_of_the_document() {
+    use jarak_gui::images::encode_png;
+    let d = temp("end");
+    std::fs::create_dir_all(d.join("assets")).unwrap();
+    std::fs::write(
+        d.join("assets").join("a.png"),
+        encode_png(400, 300, &vec![0x60u8; 400 * 300 * 4]).unwrap(),
+    )
+    .unwrap();
+    let mut text = String::new();
+    for i in 0..8 {
+        text.push_str(&format!("P{i}\n\n![a](assets/a.png)\n\n"));
+    }
+    let doc = d.join("n.md");
+    std::fs::write(&doc, text).unwrap();
+    let (a, _) = app_with(&[doc.to_str().unwrap()], Arc::default());
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(960.0, 640.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), a);
+    h.run();
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    wait_pictures(&mut h, 1);
+    h.event(egui::Event::PointerMoved(egui::pos2(480.0, 300.0)));
+    for _ in 0..60 {
+        h.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -500.0),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+    }
+    let _ = h.try_run();
+    // The last picture is on screen, ending near the bottom of the view.
+    let pics = h.state().tab().preview.pictures();
+    let last = pics.last().expect("the end of the document is on screen");
+    assert!(
+        last.0.bottom() > 400.0 && last.0.bottom() < 640.0,
+        "{pics:?}"
+    );
+    // End does the same.
+    key(&mut h, egui::Key::Home, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::End, egui::Modifiers::NONE);
+    let pics = h.state().tab().preview.pictures();
+    assert!(
+        pics.last().is_some_and(|p| p.0.bottom() > 400.0),
+        "{pics:?}"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 

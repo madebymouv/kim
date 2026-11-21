@@ -352,6 +352,14 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | --- | --- | --- |
 | `file_not_found` | 3 | The named file does not exist (`jarak info`). Nothing was created. |
 | `file_too_large` | 5 | The file is larger than Jarak opens (1 GiB by default); nothing was read beyond its size. |
+| `asset_not_found` | 3 | Step 91: `jarak assets rename` of an asset the document does not refer to, or whose file does not exist. Nothing was changed. |
+| `asset_exists` | 7 | Step 91: a file with the new name exists; it is never replaced. Nothing was changed. |
+| `asset_shared` | 7 | Step 91: other Markdown files of the folder refer to the asset too; `details` list them (`{"document": …}`). Nothing was changed. |
+| `document_read_only` | 7 | Step 91: the document opens read-only in Jarak (binary, or an encoding that cannot reproduce every byte), so its references are not rewritten. Nothing was changed. |
+| `reference_unlocated` | 7 | Step 91: a reference to the asset cannot be located exactly in the text (rename it by hand). Nothing was changed. |
+
+Examples: `examples/cli-envelope-v1/jarak-assets-list.json`, `jarak-assets-rename-dry-run.json`,
+`jarak-asset-exists.json`.
 
 ## 7. Output streams and the `--json` envelope
 

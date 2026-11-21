@@ -16,7 +16,7 @@ const HELP: &str = "\
 Jarak (자락): a native text editor for plain text, code and Markdown — the command line.
 
 This CLI never opens a window except `jarak open`, never runs in the background, never uses the
-network and never changes a file.
+network and changes a file only when a command says so (`jarak assets rename`).
 
 Usage: jarak [OPTIONS] <COMMAND>
 
@@ -26,6 +26,13 @@ Commands:
   info          A file's encoding, byte-order mark, line endings, size and line count, and
                 whether Jarak can save it unchanged (read-only); --fallback <encoding> reads
                 text that is neither UTF-8 nor UTF-16 in that code page
+  assets list <doc.md>
+                The images a Markdown document refers to (found, missing, remote) and the
+                orphaned files in its assets folder that no Markdown file there refers to
+                (read-only; nothing is deleted)
+  assets rename <doc.md> <asset> <new-name>
+                Renames an asset and rewrites the document's references to it; never replaces a
+                file, refuses an asset other documents use; --dry-run shows the change
   paths         Where Jarak keeps its settings, session and recovery files (read-only)
   version       Jarak's version and the contract and schema versions it speaks (read-only)
   capabilities  Jarak's capabilities document: its commands and what each may change (read-only)
@@ -33,14 +40,15 @@ Commands:
 
 Options:
       --json      Print exactly one JSON document on stdout instead of human-readable text
-      --dry-run   Show what would happen and change nothing (open)
+      --dry-run   Show what would happen and change nothing (open, assets rename)
   -q, --quiet     Print only results and errors
   -v, --verbose   Print extra diagnostics on stderr
       --no-input  Never ask questions (Jarak's CLI never asks)
   -h, --help      Print help
   -V, --version   Print version
 
-Exit codes: 0 ok · 1 failure (I/O, permission) · 2 usage · 3 not found
+Exit codes: 0 ok · 1 failure (I/O, permission) · 2 usage · 3 not found · 5 too large ·
+7 conflict (a file exists, an asset is shared, the document is read-only)
 ";
 
 /// A failure with its stable error code (CLI_CONTRACT §6) and exit code (§5).
@@ -50,15 +58,24 @@ struct Fail {
     exit: u8,
     message: String,
     hint: Option<String>,
+    details: Vec<Value>,
 }
 
 impl Fail {
+    fn new(code: &'static str, exit: u8, message: impl Into<String>) -> Fail {
+        Fail {
+            code,
+            exit,
+            message: message.into(),
+            hint: None,
+            details: Vec::new(),
+        }
+    }
+
     fn usage(message: impl Into<String>) -> Fail {
         Fail {
-            code: "usage",
-            exit: 2,
-            message: message.into(),
             hint: Some("see `jarak --help`".into()),
+            ..Fail::new("usage", 2, message)
         }
     }
 }
@@ -119,11 +136,13 @@ fn run(args: &[String]) -> ExitCode {
         print!("{HELP}");
         return ExitCode::SUCCESS;
     }
-    let command = words
-        .first()
-        .copied()
-        .filter(|c| matches!(*c, "open" | "info" | "paths" | "version" | "capabilities"))
-        .unwrap_or("jarak");
+    let command = match (words.first().copied(), words.get(1).copied()) {
+        (Some("assets"), Some("list")) => "assets.list",
+        (Some("assets"), Some("rename")) => "assets.rename",
+        (Some(c @ ("open" | "info" | "paths" | "version" | "capabilities")), _) => c,
+        _ => "jarak",
+    };
+    let skip = if command.starts_with("assets.") { 2 } else { 1 };
     let result = if let Some(flag) = unknown {
         Err(Fail::usage(format!("unknown option `{flag}`")))
     } else if let Some(flag) = missing_value {
@@ -133,18 +152,21 @@ fn run(args: &[String]) -> ExitCode {
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
-        Err(Fail::usage(match words.first() {
-            Some(w) => format!("unknown command `{w}`"),
-            None => "no command given".into(),
+        Err(Fail::usage(match (words.first(), words.get(1)) {
+            (Some(&"assets"), Some(w)) => format!("unknown command `assets {w}` (list, rename)"),
+            (Some(&"assets"), None) => "`jarak assets` needs list or rename".into(),
+            (Some(w), _) => format!("unknown command `{w}`"),
+            (None, _) => "no command given".into(),
         }))
     } else if g.new_window && command != "open" {
         Err(Fail::usage("--new-window belongs to `jarak open`"))
-    } else if g.dry_run && command != "open" {
+    } else if g.dry_run && !matches!(command, "open" | "assets.rename") {
         Err(Fail::usage(format!(
-            "`jarak {command}` changes nothing; --dry-run belongs to `jarak open`"
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open` and `jarak assets rename`",
+            command.replace('.', " ")
         )))
     } else {
-        dispatch(command, &words[1..], &g)
+        dispatch(command, &words[skip..], &g)
     };
     finish(command, &g, result)
 }
@@ -178,17 +200,15 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "paths" => paths(),
         "open" => open(rest, g),
         "info" => info(rest, g.fallback.as_deref()),
+        "assets.list" => assets_list(rest),
+        "assets.rename" => assets_rename(rest, g),
         _ => unreachable!("checked in run"),
     }
 }
 
 fn paths() -> Result<Done, Fail> {
-    let p = Paths::from_env().ok_or_else(|| Fail {
-        code: "io",
-        exit: 1,
-        message: "APPDATA or LOCALAPPDATA is not set".into(),
-        hint: None,
-    })?;
+    let p = Paths::from_env()
+        .ok_or_else(|| Fail::new("io", 1, "APPDATA or LOCALAPPDATA is not set"))?;
     let data = json!({
         "config": p.config,
         "local": p.local,
@@ -209,7 +229,7 @@ fn paths() -> Result<Done, Fail> {
 
 /// `jarak info <file>`: what Jarak would open, without opening a window or changing anything.
 fn info(rest: &[&str], fallback: Option<&str>) -> Result<Done, Fail> {
-    use jarak_core::file::{self, OpenError};
+    use jarak_core::file;
     let [arg] = rest else {
         return Err(Fail::usage("`jarak info` takes one file"));
     };
@@ -222,34 +242,7 @@ fn info(rest: &[&str], fallback: Option<&str>) -> Result<Done, Fail> {
         })?,
         None => file::system_encoding(),
     };
-    let d = file::read(&path, fallback, file::DEFAULT_SIZE_LIMIT).map_err(|e| match e {
-        OpenError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => Fail {
-            code: "file_not_found",
-            exit: 3,
-            message: format!("{} does not exist", path.display()),
-            hint: None,
-        },
-        OpenError::Directory => Fail::usage(format!("{} is a folder", path.display())),
-        OpenError::TooLarge { size, limit } => Fail {
-            code: "file_too_large",
-            exit: 5,
-            message: format!(
-                "{} has {size} bytes; Jarak opens up to {limit}",
-                path.display()
-            ),
-            hint: None,
-        },
-        OpenError::Io(e) => Fail {
-            code: if e.kind() == std::io::ErrorKind::PermissionDenied {
-                "permission_denied"
-            } else {
-                "io"
-            },
-            exit: 1,
-            message: format!("cannot read {}: {e}", path.display()),
-            hint: None,
-        },
-    })?;
+    let d = read_file(&path, fallback)?;
     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let lines = if d.text.is_empty() {
         0
@@ -290,6 +283,267 @@ fn info(rest: &[&str], fallback: Option<&str>) -> Result<Done, Fail> {
     Ok((data, text))
 }
 
+/// Reads a file for a command, with the CLI's errors.
+fn read_file(
+    path: &Path,
+    fallback: jarak_core::file::TextEncoding,
+) -> Result<jarak_core::file::Decoded, Fail> {
+    use jarak_core::file::{self, OpenError};
+    file::read(path, fallback, file::DEFAULT_SIZE_LIMIT).map_err(|e| match e {
+        OpenError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => Fail::new(
+            "file_not_found",
+            3,
+            format!("{} does not exist", path.display()),
+        ),
+        OpenError::Directory => Fail::usage(format!("{} is a folder", path.display())),
+        OpenError::TooLarge { size, limit } => Fail::new(
+            "file_too_large",
+            5,
+            format!(
+                "{} has {size} bytes; Jarak opens up to {limit}",
+                path.display()
+            ),
+        ),
+        OpenError::Io(e) => Fail::new(
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                "permission_denied"
+            } else {
+                "io"
+            },
+            1,
+            format!("cannot read {}: {e}", path.display()),
+        ),
+    })
+}
+
+/// A Markdown document named on the command line, read.
+fn markdown_doc(arg: &str) -> Result<(PathBuf, jarak_core::file::Decoded), Fail> {
+    let path = absolute(Path::new(arg));
+    if !jarak_core::markdown::is_markdown_path(&path) {
+        return Err(Fail::usage(format!(
+            "{} is not a Markdown file (.md, .markdown, .mdown, .mkd)",
+            path.display()
+        )));
+    }
+    let d = read_file(&path, jarak_core::file::system_encoding())?;
+    Ok((path, d))
+}
+
+/// The path of an asset relative to the document's folder, with forward slashes.
+fn shown(doc: &Path, p: &Path) -> String {
+    doc.parent()
+        .and_then(|d| p.strip_prefix(d).ok())
+        .unwrap_or(p)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+/// `jarak assets list <doc.md>`: the document's images and the folder's orphaned assets.
+fn assets_list(rest: &[&str]) -> Result<Done, Fail> {
+    use jarak_core::assets;
+    let [arg] = rest else {
+        return Err(Fail::usage("`jarak assets list` takes one Markdown file"));
+    };
+    let (path, d) = markdown_doc(arg)?;
+    let mut refs = Vec::new();
+    let mut lines = Vec::new();
+    let (mut found, mut missing, mut remote) = (0, 0, 0);
+    for r in assets::references(&d.text) {
+        let lower = r.url.trim().to_ascii_lowercase();
+        let is_remote = lower.contains("://") || lower.starts_with("data:");
+        let local = assets::resolve(&path, &r.url);
+        let meta = local
+            .as_deref()
+            .and_then(|p| std::fs::metadata(p).ok())
+            .filter(|m| m.is_file());
+        let format = meta
+            .as_ref()
+            .and(local.as_deref())
+            .and_then(|p| assets::image_format(&assets::file_head(p)));
+        let state = if is_remote {
+            remote += 1;
+            "remote, never loaded".to_string()
+        } else if local.is_none() {
+            missing += 1;
+            "outside the document's folder (not shown)".to_string()
+        } else if let Some(m) = &meta {
+            found += 1;
+            format!("{}, {} bytes", format.unwrap_or("not an image"), m.len())
+        } else {
+            missing += 1;
+            "missing".to_string()
+        };
+        lines.push(format!("  line {:<5} {}  ({state})", r.line + 1, r.url));
+        refs.push(json!({
+            "reference": r.url,
+            "line": r.line + 1,
+            "remote": is_remote,
+            "path": local,
+            "exists": meta.is_some(),
+            "bytes": meta.as_ref().map(std::fs::Metadata::len),
+            "format": format,
+            "rewritable": r.span.is_some(),
+        }));
+    }
+    let orphans = assets::orphans(&path);
+    let orphan_json: Vec<Value> = orphans
+        .iter()
+        .map(|p| {
+            json!({
+                "path": p,
+                "name": shown(&path, p),
+                "bytes": std::fs::metadata(p).map(|m| m.len()).ok(),
+            })
+        })
+        .collect();
+    let mut text = format!(
+        "{}: {} image reference{} ({found} found, {missing} missing, {remote} remote), {} orphaned asset{}",
+        path.display(),
+        refs.len(),
+        if refs.len() == 1 { "" } else { "s" },
+        orphans.len(),
+        if orphans.len() == 1 { "" } else { "s" },
+    );
+    for l in &lines {
+        text.push('\n');
+        text.push_str(l);
+    }
+    if !orphans.is_empty() {
+        text.push_str(
+            "\norphans (no Markdown file in this folder refers to them; nothing is deleted):",
+        );
+        for p in &orphans {
+            text.push_str(&format!("\n  {}", shown(&path, p)));
+        }
+    }
+    let data = json!({
+        "document": path,
+        "assets_dir": path.parent().map(|p| p.join(assets::ASSET_DIR)),
+        "references": refs,
+        "found": found,
+        "missing": missing,
+        "remote": remote,
+        "orphans": orphan_json,
+    });
+    Ok((data, text))
+}
+
+/// `jarak assets rename <doc.md> <asset> <new-name>`: renames the file (never replacing one)
+/// and rewrites the document's references in place (its encoding and line endings kept).
+fn assets_rename(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::assets::{self, RenameError};
+    let [arg, old, new] = rest else {
+        return Err(Fail::usage(
+            "`jarak assets rename` takes a Markdown file, the asset and the new name",
+        ));
+    };
+    let (path, d) = markdown_doc(arg)?;
+    if d.read_only() {
+        return Err(Fail {
+            hint: Some("`jarak info` says why".into()),
+            ..Fail::new(
+                "document_read_only",
+                7,
+                format!(
+                    "{} opens read-only in Jarak; nothing was changed",
+                    path.display()
+                ),
+            )
+        });
+    }
+    let plan = assets::plan_rename(&path, &d.text, old, new).map_err(|e| {
+        let msg = format!("{e}; nothing was changed");
+        match e {
+            RenameError::NotReferenced(_) | RenameError::Missing(_) => {
+                Fail::new("asset_not_found", 3, msg)
+            }
+            RenameError::BadName(_) => Fail::usage(msg),
+            RenameError::Exists(_) => Fail {
+                hint: Some("choose another name".into()),
+                ..Fail::new("asset_exists", 7, msg)
+            },
+            RenameError::Shared(v) => Fail {
+                hint: Some("rename it by hand in every document, or keep the name".into()),
+                details: v.iter().map(|p| json!({ "document": p })).collect(),
+                ..Fail::new("asset_shared", 7, msg)
+            },
+            RenameError::Unlocated(_) => Fail::new("reference_unlocated", 7, msg),
+        }
+    })?;
+    let mut data = json!({
+        "document": path,
+        "from": plan.from,
+        "to": plan.to,
+        "reference": plan.reference,
+        "lines": plan.lines.iter().map(|l| l + 1).collect::<Vec<_>>(),
+        "dry_run": g.dry_run,
+        "renamed": false,
+    });
+    let what = format!(
+        "{} -> {} and {} reference{} on line{} {}",
+        shown(&path, &plan.from),
+        shown(&path, &plan.to),
+        plan.lines.len(),
+        if plan.lines.len() == 1 { "" } else { "s" },
+        if plan.lines.len() == 1 { "" } else { "s" },
+        plan.lines
+            .iter()
+            .map(|l| (l + 1).to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if g.dry_run {
+        return Ok((
+            data,
+            format!("dry run, nothing changed: would rename {what}"),
+        ));
+    }
+    let bytes = jarak_core::file::encode(&plan.text, d.format).map_err(|e| {
+        Fail::new(
+            "document_read_only",
+            7,
+            format!("cannot encode the new text ({e:?}); nothing was changed"),
+        )
+    })?;
+    assets::move_no_replace(&plan.from, &plan.to).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            Fail::new(
+                "asset_exists",
+                7,
+                format!("{} exists already; nothing was changed", plan.to.display()),
+            )
+        } else {
+            Fail::new(
+                "io",
+                1,
+                format!(
+                    "cannot rename {}: {e}; nothing was changed",
+                    plan.from.display()
+                ),
+            )
+        }
+    })?;
+    if let Err(e) = jarak_core::file::save_atomic(&path, &bytes) {
+        // Put the file back: the document still refers to the old name.
+        let back = assets::move_no_replace(&plan.to, &plan.from);
+        return Err(Fail::new(
+            "io",
+            1,
+            format!(
+                "cannot save {}: {e}; {}",
+                path.display(),
+                if back.is_ok() {
+                    "the asset keeps its old name".to_string()
+                } else {
+                    format!("the asset is now {}", plan.to.display())
+                }
+            ),
+        ));
+    }
+    data["renamed"] = json!(true);
+    Ok((data, format!("renamed {what}")))
+}
+
 /// `jarak-gui.exe` next to this program.
 fn gui_exe() -> Option<PathBuf> {
     let p = std::env::current_exe().ok()?.with_file_name(GUI_EXE);
@@ -316,10 +570,12 @@ fn open(rest: &[&str], g: &Global) -> Result<Done, Fail> {
         });
     }
     let gui = gui_exe().ok_or_else(|| Fail {
-        code: "not_installed",
-        exit: 3,
-        message: format!("{GUI_EXE} is not next to jarak.exe"),
         hint: Some("reinstall Jarak with Kim (`kim install jarak`)".into()),
+        ..Fail::new(
+            "not_installed",
+            3,
+            format!("{GUI_EXE} is not next to jarak.exe"),
+        )
     })?;
     let listed: Vec<Value> = targets
         .iter()
@@ -358,12 +614,8 @@ fn open(rest: &[&str], g: &Global) -> Result<Done, Fail> {
             format!("dry run, nothing started: would open {what} in Jarak"),
         ));
     }
-    let pid = start_detached(&gui, &argv).map_err(|e| Fail {
-        code: "io",
-        exit: 1,
-        message: format!("cannot start {}: {e}", gui.display()),
-        hint: None,
-    })?;
+    let pid = start_detached(&gui, &argv)
+        .map_err(|e| Fail::new("io", 1, format!("cannot start {}: {e}", gui.display())))?;
     data["started"] = json!(true);
     data["pid"] = json!(pid);
     Ok((data, format!("opened {what} in Jarak")))
@@ -418,7 +670,7 @@ fn finish(command: &str, g: &Global, result: Result<Done, Fail>) -> ExitCode {
                         "exit_code": f.exit,
                         "message": f.message,
                         "hint": f.hint,
-                        "details": [],
+                        "details": f.details,
                     },
                 });
                 println!("{doc}");
@@ -451,12 +703,24 @@ mod tests {
             .iter()
             .map(|c| c["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, ["capabilities", "version", "paths", "open", "info"]);
-        // Only `open` may open a window, and it has a dry run (CLI_CONTRACT §4).
+        assert_eq!(
+            names,
+            [
+                "capabilities",
+                "version",
+                "paths",
+                "open",
+                "info",
+                "assets.list",
+                "assets.rename"
+            ]
+        );
+        // Only `open` may open a window; the commands that change something have a dry run
+        // (CLI_CONTRACT §4).
         for c in doc["commands"].as_array().unwrap() {
             let open = c["name"] == "open";
             assert_eq!(c["opens_window"], open, "{c}");
-            assert_eq!(c["dry_run"], open, "{c}");
+            assert_eq!(c["dry_run"], c["effect"] == "write", "{c}");
         }
     }
 

@@ -146,6 +146,14 @@ impl Rendered {
     }
 }
 
+/// A Markdown file by its extension (`.md`, `.markdown`, `.mdown`, `.mkd`).
+pub fn is_markdown_path(p: &std::path::Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|e| matches!(e.as_str(), "md" | "markdown" | "mdown" | "mkd"))
+}
+
 fn options() -> Options {
     Options::ENABLE_TABLES
         | Options::ENABLE_FOOTNOTES

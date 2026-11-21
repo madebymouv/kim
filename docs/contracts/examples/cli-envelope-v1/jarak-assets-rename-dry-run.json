@@ -1,0 +1,17 @@
+{
+  "command": "assets.rename",
+  "data": {
+    "document": "C:\\Users\\me\\notes\\notes.md",
+    "dry_run": true,
+    "from": "C:\\Users\\me\\notes\\assets\\shot.png",
+    "lines": [
+      3
+    ],
+    "reference": "assets/login%20screen.png",
+    "renamed": false,
+    "to": "C:\\Users\\me\\notes\\assets\\login screen.png"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

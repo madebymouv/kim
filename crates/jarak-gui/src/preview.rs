@@ -9,11 +9,15 @@
 //!   it, and back.
 //! - Links open only with Ctrl+click (never a plain click or hover), and only web and mail
 //!   links.
-//! - Step 90: an image on a paragraph of its own is drawn from its local file (relative to the
-//!   document, never outside its folder, never from the network), at its pixel size and at most
-//!   the column's width; a missing or refused image shows a labelled frame. A paragraph with
-//!   text and images shows the text runs and the pictures in order (an image inside a link or
-//!   emphasis is still a labelled placeholder until Step 91).
+//! - Images (Steps 90–91, `JARAK-FR-044`): a picture is drawn from its local file (relative to
+//!   the document, never outside its folder, never from the network) at one image pixel per
+//!   screen pixel times the document's zoom, at most the column's width, aspect kept. Decoding
+//!   runs on a worker thread into a bounded cache ([`crate::media`]); until it is ready a frame of
+//!   the picture's size says "loading". A missing, broken, remote or refused image shows a
+//!   labelled frame with its path. A paragraph with text and images shows the text runs and the
+//!   pictures in order; an image inside a link or emphasis is a labelled placeholder.
+//! - Hovering a local picture shows its file and size; Ctrl+click shows it in Explorer
+//!   (`JARAK-FR-045`); a plain click only says so.
 
 use eframe::egui::{
     self, Color32, CornerRadius, FontFamily, FontId, Galley, Pos2, Rect, Sense, Stroke, Vec2,
@@ -22,36 +26,18 @@ use eframe::egui::{
 use jarak_core::markdown::{self, Align, Block, Inline, Rendered};
 use kim_design::{font, radius, size, space};
 use kim_ui::Colors;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-/// A local image the preview loaded (or could not).
-#[derive(Clone)]
-pub enum ImgEntry {
-    Ready {
-        tex: egui::TextureHandle,
-        size: [u32; 2],
-        modified: Option<std::time::SystemTime>,
-    },
-    Failed(String, Option<std::time::SystemTime>),
-}
-
-impl std::fmt::Debug for ImgEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ImgEntry::Ready { size, .. } => write!(f, "Ready({}x{})", size[0], size[1]),
-            ImgEntry::Failed(why, _) => write!(f, "Failed({why})"),
-        }
-    }
-}
-
-/// Loaded images by file, shared by the frames of one document.
-pub type ImageCache = Arc<Mutex<HashMap<PathBuf, ImgEntry>>>;
+use crate::media::{Look as MediaLook, Media};
 
 /// Opens a link the user Ctrl+clicked (the program asks Windows; tests record it).
 pub trait Opener: Send + Sync {
     fn open_url(&self, url: &str) -> bool;
+    /// Shows a local file selected in Explorer (`JARAK-FR-045`); never runs it.
+    fn reveal(&self, _path: &Path) -> bool {
+        false
+    }
 }
 
 /// Opens nothing (tests, and before the program installs the real one).
@@ -100,6 +86,34 @@ impl Opener for ShellOpener {
             r as usize > 32
         }
     }
+
+    /// `explorer.exe /select,"<file>"`: Explorer opens the folder with the file selected.
+    #[allow(unsafe_code)]
+    fn reveal(&self, path: &Path) -> bool {
+        if !path.is_file() {
+            return false;
+        }
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::UI::Shell::ShellExecuteW;
+            use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+            let w = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+            let (verb, exe) = (w("open"), w("explorer.exe"));
+            let params = w(&format!("/select,\"{}\"", path.display()));
+            // SAFETY: NUL-terminated strings that live across the call; no parent window.
+            let r = unsafe {
+                ShellExecuteW(
+                    std::ptr::null_mut(),
+                    verb.as_ptr(),
+                    exe.as_ptr(),
+                    params.as_ptr(),
+                    std::ptr::null(),
+                    SW_SHOWNORMAL,
+                )
+            };
+            r as usize > 32
+        }
+    }
 }
 
 /// The preview's state for one document.
@@ -112,8 +126,10 @@ pub struct PreviewState {
     pub top_px: f32,
     /// Links on screen this frame (for Ctrl+click and the pointer).
     links: Vec<(Rect, String)>,
-    /// Images loaded for this document (Step 90).
-    pub images: ImageCache,
+    /// Local pictures on screen this frame: where, the file and its hover text.
+    hot: Vec<(Rect, PathBuf, String)>,
+    /// The document's pictures (Step 91: decoded off the UI thread, bounded).
+    pub media: Arc<Mutex<Media>>,
 }
 
 impl PreviewState {
@@ -135,6 +151,11 @@ impl PreviewState {
         self.top_px = 0.0;
     }
 
+    /// The local pictures on screen in the last frame (area and file).
+    pub fn pictures(&self) -> Vec<(Rect, PathBuf)> {
+        self.hot.iter().map(|(r, p, _)| (*r, p.clone())).collect()
+    }
+
     /// The source line of the top block (for switching back to the source).
     pub fn top_line(&self, r: &Rendered) -> Option<usize> {
         r.blocks.get(self.top_block).map(|b| b.lines.start)
@@ -149,68 +170,59 @@ struct Style {
     width: f32,
     ctx: egui::Context,
     doc: Option<PathBuf>,
-    images: ImageCache,
+    media: Arc<Mutex<Media>>,
+    lang: kim_design::Lang,
 }
 
 /// What an image reference shows.
 enum Img {
     Ready(egui::TextureId, [u32; 2]),
+    Loading(Option<[u32; 2]>),
     /// Why it is not shown (missing, refused, remote).
     Not(String),
 }
 
 impl Style {
-    /// The image `url` of the document: loaded once per file (and again when the file changes).
-    fn image(&self, url: &str) -> Img {
+    /// The image `url` of the document and its local file (when it has one).
+    fn image(&self, url: &str) -> (Img, Option<PathBuf>) {
         let lower = url.trim().to_ascii_lowercase();
-        if lower.starts_with("http://") || lower.starts_with("https://") {
-            return Img::Not(format!("remote image not loaded: {url}"));
+        let t = |en: &str, ko: &str| self.lang.pick(en, ko).to_string();
+        if lower.contains("://") || lower.starts_with("data:") {
+            let why = t("remote image, never loaded:", "원격 이미지, 불러오지 않음:");
+            return (Img::Not(format!("{why} {url}")), None);
         }
         let Some(doc) = &self.doc else {
-            return Img::Not(format!("save the document to show {url}"));
+            let why = t("save the document to show", "문서를 저장하면 표시합니다:");
+            return (Img::Not(format!("{why} {url}")), None);
         };
         let Some(path) = jarak_core::assets::resolve(doc, url) else {
-            return Img::Not(format!("image outside the document's folder: {url}"));
+            return (
+                Img::Not(format!(
+                    "{} {url}",
+                    t(
+                        "outside the document's folder, not shown:",
+                        "문서 폴더 밖이라 표시하지 않음:"
+                    )
+                )),
+                None,
+            );
         };
-        let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
-        let Ok(mut cache) = self.images.lock() else {
-            return Img::Not(url.to_string());
+        let Ok(mut m) = self.media.lock() else {
+            return (Img::Not(url.to_string()), None);
         };
-        let fresh = match cache.get(&path) {
-            Some(ImgEntry::Ready { modified: m, .. } | ImgEntry::Failed(_, m)) => *m == modified,
-            None => false,
+        let img = match m.get(&self.ctx, &path) {
+            MediaLook::Ready(id, size) => Img::Ready(id, size),
+            MediaLook::Loading(size) => Img::Loading(size),
+            MediaLook::Failed(why) if why == crate::media::NOT_FOUND => Img::Not(format!(
+                "{} {url}",
+                t("image not found:", "이미지를 찾을 수 없음:")
+            )),
+            MediaLook::Failed(why) => Img::Not(format!(
+                "{} {url} ({why})",
+                t("cannot show", "표시할 수 없음:")
+            )),
         };
-        if !fresh {
-            let entry = if modified.is_none() {
-                ImgEntry::Failed(format!("image not found: {url}"), None)
-            } else {
-                match crate::images::decode_file(&path) {
-                    Ok((w, h, rgba)) => {
-                        let img = egui::ColorImage::from_rgba_unmultiplied(
-                            [w as usize, h as usize],
-                            &rgba,
-                        );
-                        let tex = self.ctx.load_texture(
-                            format!("jarak-img:{}", path.display()),
-                            img,
-                            egui::TextureOptions::LINEAR,
-                        );
-                        ImgEntry::Ready {
-                            tex,
-                            size: [w, h],
-                            modified,
-                        }
-                    }
-                    Err(e) => ImgEntry::Failed(format!("{url}: {e}"), modified),
-                }
-            };
-            cache.insert(path.clone(), entry);
-        }
-        match cache.get(&path) {
-            Some(ImgEntry::Ready { tex, size, .. }) => Img::Ready(tex.id(), *size),
-            Some(ImgEntry::Failed(why, _)) => Img::Not(why.clone()),
-            None => Img::Not(url.to_string()),
-        }
+        (img, Some(path))
     }
 }
 
@@ -273,6 +285,8 @@ enum Piece {
     Box(Rect, Color32),
     Check(Rect, bool, Color32, Color32),
     Image(Rect, egui::TextureId),
+    /// A local picture's area: its file and hover text (Ctrl+click shows it in Explorer).
+    Hot(Rect, PathBuf, String),
 }
 
 /// A laid-out block: what to paint and its height.
@@ -488,41 +502,78 @@ fn lay(ui: &egui::Ui, b: &Block, st: &Style, x: f32, width: f32, out: &mut Vec<P
                         out.push(p);
                         y += h + between;
                     }
-                    Seg::Image(url, alt) => match st.image(url) {
-                        Img::Ready(id, [w, h]) => {
-                            // Its pixel size on screen, at most the column's width.
-                            let natural = Vec2::new(w as f32, h as f32) / ppp;
-                            let scale = (width / natural.x).min(1.0);
-                            let size = natural * scale;
-                            out.push(Piece::Image(Rect::from_min_size(Pos2::new(x, y), size), id));
-                            y += size.y + between;
-                        }
-                        Img::Not(why) => {
-                            let label = if alt.is_empty() {
-                                why
-                            } else {
-                                format!("{alt} — {why}")
-                            };
+                    Seg::Image(url, alt) => {
+                        let (img, path) = st.image(url);
+                        // One image pixel per screen pixel times the zoom, at most the column.
+                        let fit = |[w, h]: [u32; 2]| {
+                            let natural = Vec2::new(w as f32, h as f32) / ppp * st.zoom;
+                            natural * (width / natural.x.max(1.0)).min(1.0)
+                        };
+                        let (rect, label, tip) = match img {
+                            Img::Ready(id, px) => {
+                                let r = Rect::from_min_size(Pos2::new(x, y), fit(px));
+                                out.push(Piece::Image(r, id));
+                                (r, None, format!("{} × {} px", px[0], px[1]))
+                            }
+                            Img::Loading(px) => {
+                                let size = px.map_or(Vec2::new(width, st.body * 6.0), fit);
+                                let r = Rect::from_min_size(Pos2::new(x, y), size);
+                                out.push(Piece::Fill(r, c.bg_raised, 0.0));
+                                let tip =
+                                    px.map_or(String::new(), |p| format!("{} × {} px", p[0], p[1]));
+                                (
+                                    r,
+                                    Some((
+                                        st.lang
+                                            .pick("loading image…", "이미지 불러오는 중…")
+                                            .to_string(),
+                                        c.border_subtle,
+                                    )),
+                                    tip,
+                                )
+                            }
+                            Img::Not(why) => {
+                                let label = if alt.is_empty() {
+                                    why
+                                } else {
+                                    format!("{alt} — {why}")
+                                };
+                                let r = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, 0.0));
+                                (r, Some((label, c.border_strong)), String::new())
+                            }
+                        };
+                        let mut rect = rect;
+                        if let Some((label, edge)) = label {
                             let j = LayoutJob::simple(
                                 label,
                                 st.prop(st.body * 0.9),
                                 c.text_muted,
-                                width - space::L * st.zoom,
+                                (rect.width() - space::L * st.zoom).max(40.0),
                             );
                             let g = ui.fonts_mut(|f| f.layout_job(j));
-                            let h = g.rect.height() + space::L * st.zoom;
-                            out.push(Piece::Box(
-                                Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, h)),
-                                c.border_strong,
-                            ));
-                            out.push(Piece::Text(
-                                Pos2::new(x + space::S * st.zoom, y + space::S * st.zoom),
-                                g,
-                                Vec::new(),
-                            ));
-                            y += h + between;
+                            let need = g.rect.height() + space::L * st.zoom;
+                            if rect.height() < need {
+                                rect.set_height(need);
+                            }
+                            out.push(Piece::Box(rect, edge));
+                            if g.rect.width() + space::S * st.zoom <= rect.width() {
+                                out.push(Piece::Text(
+                                    Pos2::new(x + space::S * st.zoom, y + space::S * st.zoom),
+                                    g,
+                                    Vec::new(),
+                                ));
+                            }
                         }
-                    },
+                        if let Some(p) = path {
+                            let tip = if tip.is_empty() {
+                                p.display().to_string()
+                            } else {
+                                format!("{}\n{tip}", p.display())
+                            };
+                            out.push(Piece::Hot(rect, p, tip));
+                        }
+                        y += rect.height() + between;
+                    }
                 }
             }
             y + gap - between
@@ -746,6 +797,7 @@ fn offset(p: Piece, dy: f32) -> Piece {
         Piece::Box(r, c) => Piece::Box(r.translate(d), c),
         Piece::Check(r, on, a, b) => Piece::Check(r.translate(d), on, a, b),
         Piece::Image(r, id) => Piece::Image(r.translate(d), id),
+        Piece::Hot(r, p, t) => Piece::Hot(r.translate(d), p, t),
     }
 }
 
@@ -762,6 +814,10 @@ pub struct PreviewOutput {
     pub open: Option<String>,
     /// A link the user clicked without Ctrl (the window says how to open it).
     pub plain_click: Option<String>,
+    /// A local picture the user Ctrl+clicked (shown in Explorer).
+    pub reveal: Option<PathBuf>,
+    /// A local picture clicked without Ctrl.
+    pub plain_image: Option<PathBuf>,
 }
 
 /// Draws `r` into `rect`.
@@ -772,6 +828,7 @@ pub fn show(
     state: &mut PreviewState,
     zoom: f32,
     doc: Option<&Path>,
+    lang: kim_design::Lang,
 ) -> PreviewOutput {
     let c = Colors::get(ui.ctx());
     let painter = ui.painter_at(rect);
@@ -790,8 +847,12 @@ pub fn show(
         width,
         ctx: ui.ctx().clone(),
         doc: doc.map(Path::to_path_buf),
-        images: state.images.clone(),
+        media: state.media.clone(),
+        lang,
     };
+    if let Ok(mut m) = state.media.lock() {
+        m.begin_frame(ui.ctx());
+    }
     // The wheel scrolls by block.
     let scroll = if resp.hovered() {
         ui.input(|i| {
@@ -821,7 +882,31 @@ pub fn show(
         }
     }
     state.top_block = state.top_block.min(r.blocks.len().saturating_sub(1));
+    // Never past the end: when the document's end is on screen with blank space under it, move
+    // up until its last block ends at the bottom of the view (or the document starts at the top).
+    let view_h = rect.height() - pad * 2.0;
+    let mut below = -state.top_px;
+    let mut k = state.top_block;
+    while k < r.blocks.len() && below < view_h {
+        below += layout_block(ui, &r.blocks[k].block, &st, x).height;
+        k += 1;
+    }
+    let mut need = view_h - below;
+    while need > 0.5 {
+        if state.top_px >= need {
+            state.top_px -= need;
+            break;
+        }
+        need -= state.top_px;
+        state.top_px = 0.0;
+        if state.top_block == 0 {
+            break;
+        }
+        state.top_block -= 1;
+        state.top_px = layout_block(ui, &r.blocks[state.top_block].block, &st, x).height;
+    }
     state.links.clear();
+    state.hot.clear();
     let mut y = rect.top() + pad - state.top_px;
     let mut i = state.top_block;
     let mut shown = 0usize;
@@ -893,6 +978,11 @@ pub fn show(
                         );
                     }
                 }
+                Piece::Hot(r2, path, tip) => {
+                    state
+                        .hot
+                        .push((r2.translate(Vec2::new(0.0, y)), path.clone(), tip.clone()));
+                }
                 Piece::Check(r2, on, edge, fill) => {
                     let r2 = r2.translate(Vec2::new(0.0, y));
                     if *on {
@@ -949,13 +1039,34 @@ pub fn show(
     {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         let url = url.clone();
-        resp.clone()
-            .on_hover_text(format!("{url}\nCtrl+click to open"));
+        resp.clone().on_hover_text_at_pointer(format!(
+            "{url}\n{}",
+            lang.pick("Ctrl+click to open", "Ctrl+클릭으로 엽니다")
+        ));
         if resp.clicked() {
             if ui.input(|i| i.modifiers.command) {
                 out.open = Some(url);
             } else {
                 out.plain_click = Some(url);
+            }
+        }
+    } else if let Some(p) = ui.input(|i| i.pointer.hover_pos())
+        && let Some((_, path, tip)) = state.hot.iter().find(|(r2, _, _)| r2.contains(p))
+    {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        let path = path.clone();
+        resp.clone().on_hover_text_at_pointer(format!(
+            "{tip}\n{}",
+            lang.pick(
+                "Ctrl+click to show it in Explorer",
+                "Ctrl+클릭하면 탐색기에서 보여 줍니다"
+            )
+        ));
+        if resp.clicked() {
+            if ui.input(|i| i.modifiers.command) {
+                out.reveal = Some(path);
+            } else {
+                out.plain_image = Some(path);
             }
         }
     }
