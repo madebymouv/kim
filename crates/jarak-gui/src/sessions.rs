@@ -28,6 +28,8 @@ impl JarakApp {
         match Session::load(&files.file) {
             Ok(s) => {
                 self.recent = s.recent.clone();
+                self.find_history = s.find_history.clone();
+                self.replace_history = s.replace_history.clone();
                 if files.restore {
                     self.restore(&s, &files.recovery);
                 }
@@ -48,6 +50,8 @@ impl JarakApp {
     pub fn session_now(&self) -> (Session, Vec<(String, String)>) {
         let mut s = Session {
             recent: self.recent.clone(),
+            find_history: self.find_history.clone(),
+            replace_history: self.replace_history.clone(),
             workspace: self.workspace.as_ref().map(|w| w.root.clone()),
             ..Session::default()
         };

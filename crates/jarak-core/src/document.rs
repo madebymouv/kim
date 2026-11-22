@@ -42,6 +42,19 @@ impl Eol {
     }
 }
 
+/// A range that moves with the edits (Step 94): a mark of Mark All, a styled token, a bookmark.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Marker {
+    pub start: usize,
+    pub end: usize,
+    /// 0 the Mark All mark, 1–5 the token styles, [`BOOKMARK`] a bookmarked line (empty range at
+    /// the line's start).
+    pub kind: u8,
+}
+
+/// The marker kind of a bookmarked line.
+pub const BOOKMARK: u8 = 200;
+
 /// The text, the carets and the undo history of one open document.
 #[derive(Debug, Clone)]
 pub struct Document {
@@ -49,6 +62,8 @@ pub struct Document {
     sel: Selection,
     history: History,
     saved: u64,
+    /// Step 94: marks, styled tokens and bookmarks, kept in place by every edit.
+    markers: Vec<Marker>,
     /// Columns per tab stop (display and vertical moves).
     pub tab_width: usize,
     /// What Enter inserts.
@@ -76,6 +91,7 @@ impl Document {
             sel: Selection::point(0),
             history: History::default(),
             saved: 0,
+            markers: Vec::new(),
             tab_width: 4,
             eol,
         }
@@ -145,11 +161,104 @@ impl Document {
 
     // ---- editing ---------------------------------------------------------------------------
 
-    fn apply(text: &mut Rope, e: &Edit) {
+    /// Applies one edit to the text and moves the markers with it.
+    fn apply_edit(&mut self, e: &Edit) {
         let n = e.removed.chars().count();
-        debug_assert_eq!(text.slice(e.at..e.at + n).to_string(), e.removed);
-        text.remove(e.at..e.at + n);
-        text.insert(e.at, &e.inserted);
+        debug_assert_eq!(self.text.slice(e.at..e.at + n).to_string(), e.removed);
+        self.text.remove(e.at..e.at + n);
+        self.text.insert(e.at, &e.inserted);
+        if !self.markers.is_empty() {
+            self.shift_markers(e.at, n, e.inserted.chars().count());
+        }
+    }
+
+    /// Markers after an edit at `at` that removed `removed` and inserted `inserted` characters:
+    /// positions before it stay, positions after move by the difference, positions inside the
+    /// removed text go to its start; a mark or style that became empty goes (bookmarks stay).
+    fn shift_markers(&mut self, at: usize, removed: usize, inserted: usize) {
+        let end = at + removed;
+        // `start_side`: text inserted exactly at a marker's start pushes it on (the marker does
+        // not grow over it); at its end it stays outside.
+        let map = |p: usize, start_side: bool| {
+            if p < at || (p == at && !(start_side && removed == 0)) {
+                p
+            } else if p >= end {
+                p - removed + inserted
+            } else {
+                at
+            }
+        };
+        for m in &mut self.markers {
+            let s = map(m.start, true);
+            let e = if m.end == m.start {
+                s
+            } else {
+                map(m.end, false)
+            };
+            m.start = s;
+            m.end = e.max(s);
+        }
+        self.markers
+            .retain(|m| m.kind == BOOKMARK || m.end > m.start);
+    }
+
+    /// The markers (marks, styled tokens, bookmarks), in the order they were added.
+    pub fn markers(&self) -> &[Marker] {
+        &self.markers
+    }
+
+    /// Adds markers (positions clamped to the text).
+    pub fn add_markers(&mut self, list: impl IntoIterator<Item = Marker>) {
+        let len = self.len_chars();
+        self.markers.extend(list.into_iter().map(|m| Marker {
+            start: m.start.min(len),
+            end: m.end.min(len).max(m.start.min(len)),
+            kind: m.kind,
+        }));
+    }
+
+    /// Removes the markers `keep` says no to.
+    pub fn retain_markers(&mut self, keep: impl Fn(&Marker) -> bool) {
+        self.markers.retain(|m| keep(m));
+    }
+
+    /// The lines with a bookmark (Step 94 sets them from Mark All; Step 101 adds the commands).
+    pub fn bookmarked_lines(&self) -> Vec<usize> {
+        let mut v: Vec<usize> = self
+            .markers
+            .iter()
+            .filter(|m| m.kind == BOOKMARK)
+            .map(|m| self.text.char_to_line(m.start.min(self.len_chars())))
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// Bookmarks `lines` (once each).
+    pub fn bookmark_lines(&mut self, lines: impl IntoIterator<Item = usize>) {
+        let have = self.bookmarked_lines();
+        let last = self.text.len_lines().saturating_sub(1);
+        let mut lines: Vec<usize> = lines.into_iter().map(|l| l.min(last)).collect();
+        lines.sort_unstable();
+        lines.dedup();
+        let add: Vec<Marker> = lines
+            .into_iter()
+            .filter(|l| have.binary_search(l).is_err())
+            .map(|l| {
+                let p = self.text.line_to_char(l);
+                Marker {
+                    start: p,
+                    end: p,
+                    kind: BOOKMARK,
+                }
+            })
+            .collect();
+        self.markers.extend(add);
+        let mut seen = std::collections::HashSet::new();
+        let text = &self.text;
+        self.markers
+            .retain(|m| m.kind != BOOKMARK || seen.insert(text.char_to_line(m.start)));
     }
 
     /// Replaces `parts` (ascending, one per range of the selection, possibly overlapping after a
@@ -168,7 +277,7 @@ impl Document {
                 removed: self.text.slice(*from..*to).to_string(),
                 inserted: ins.clone(),
             };
-            Self::apply(&mut self.text, &e);
+            self.apply_edit(&e);
             edits.push(e);
         }
         let mut delta: isize = 0;
@@ -461,7 +570,7 @@ impl Document {
                 removed: self.text.slice(*from..*to).to_string(),
                 inserted: ins.clone(),
             };
-            Self::apply(&mut self.text, &e);
+            self.apply_edit(&e);
             edits.push(e);
         }
         // A position moves by the insertions at line starts at or before it.
@@ -490,7 +599,7 @@ impl Document {
                 removed: self.text.slice(*from..*to).to_string(),
                 inserted: ins.clone(),
             };
-            Self::apply(&mut self.text, &e);
+            self.apply_edit(&e);
             edits.push(e);
         }
         // A position inside a removed run lands at its start; after it, it moves back by it.
@@ -522,7 +631,7 @@ impl Document {
         };
         let entry = entry.clone();
         for e in entry.edits.iter().rev() {
-            Self::apply(&mut self.text, &e.inverse());
+            self.apply_edit(&e.inverse());
         }
         self.sel = entry.before;
         true
@@ -535,7 +644,7 @@ impl Document {
         };
         let entry = entry.clone();
         for e in &entry.edits {
-            Self::apply(&mut self.text, e);
+            self.apply_edit(e);
         }
         self.sel = entry.after;
         true

@@ -359,8 +359,12 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `document_read_only` | 7 | Step 91: the document opens read-only in Jarak (binary, or an encoding that cannot reproduce every byte), so its references are not rewritten. Nothing was changed. |
 | `reference_unlocated` | 7 | Step 91: a reference to the asset cannot be located exactly in the text (rename it by hand). Nothing was changed. |
 
+Step 94: `jarak find <file> <text>` lists the matches of a text (`--extended` escapes such as `\n`
+and `\xNN`, or `--regex`) with their line and column; a pattern that does not compile is `usage`
+(exit 2) with the reason, and search options on another command are `usage` too. It reads only.
+
 Examples: `examples/cli-envelope-v1/jarak-assets-list.json`, `jarak-assets-rename-dry-run.json`,
-`jarak-asset-exists.json`.
+`jarak-asset-exists.json`, `jarak-find.json`.
 
 ## 7. Output streams and the `--json` envelope
 

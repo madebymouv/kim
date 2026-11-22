@@ -34,6 +34,10 @@ Commands:
   assets rename <doc.md> <asset> <new-name>
                 Renames an asset and rewrites the document's references to it; never replaces a
                 file, refuses an asset other documents use; --dry-run shows the change
+  find <file> <text>
+                The matches of <text> in a file with their line and column (read-only);
+                --extended (\\n \\t \\xNN escapes) or --regex, --match-case, --whole-word,
+                --dot-all, --count (only the number)
   paths         Where Jarak keeps its settings, session and recovery files (read-only)
   version       Jarak's version and the contract and schema versions it speaks (read-only)
   capabilities  Jarak's capabilities document: its commands and what each may change (read-only)
@@ -90,6 +94,10 @@ struct Global {
     new_window: bool,
     /// `jarak info --fallback <label>`: the legacy encoding instead of the system's.
     fallback: Option<String>,
+    /// Step 94: `jarak find` options.
+    search: jarak_core::search::Query,
+    count: bool,
+    search_flags: bool,
 }
 
 fn main() -> ExitCode {
@@ -123,6 +131,30 @@ fn run(args: &[String]) -> ExitCode {
             "-v" | "--verbose" => g.verbose = true,
             "--no-input" => {}
             "--new-window" => g.new_window = true,
+            "--regex" => {
+                g.search.mode = jarak_core::search::Mode::Regex;
+                g.search_flags = true;
+            }
+            "--extended" => {
+                g.search.mode = jarak_core::search::Mode::Extended;
+                g.search_flags = true;
+            }
+            "--match-case" => {
+                g.search.match_case = true;
+                g.search_flags = true;
+            }
+            "--whole-word" => {
+                g.search.whole_word = true;
+                g.search_flags = true;
+            }
+            "--dot-all" => {
+                g.search.dot_all = true;
+                g.search_flags = true;
+            }
+            "--count" => {
+                g.count = true;
+                g.search_flags = true;
+            }
             "-h" | "--help" => help = true,
             "-V" | "--version" => version = true,
             s if s.starts_with('-') && s.len() > 1 => unknown = unknown.or(Some(s)),
@@ -140,7 +172,7 @@ fn run(args: &[String]) -> ExitCode {
     let command = match (words.first().copied(), words.get(1).copied()) {
         (Some("assets"), Some("list")) => "assets.list",
         (Some("assets"), Some("rename")) => "assets.rename",
-        (Some(c @ ("open" | "info" | "paths" | "version" | "capabilities")), _) => c,
+        (Some(c @ ("open" | "info" | "find" | "paths" | "version" | "capabilities")), _) => c,
         _ => "jarak",
     };
     let skip = if command.starts_with("assets.") { 2 } else { 1 };
@@ -148,8 +180,12 @@ fn run(args: &[String]) -> ExitCode {
         Err(Fail::usage(format!("unknown option `{flag}`")))
     } else if let Some(flag) = missing_value {
         Err(Fail::usage(format!("{flag} needs a value")))
-    } else if g.fallback.is_some() && command != "info" {
-        Err(Fail::usage("--fallback belongs to `jarak info`"))
+    } else if g.fallback.is_some() && !matches!(command, "info" | "find") {
+        Err(Fail::usage(
+            "--fallback belongs to `jarak info` and `jarak find`",
+        ))
+    } else if g.search_flags && command != "find" {
+        Err(Fail::usage("search options belong to `jarak find`"))
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
@@ -201,6 +237,7 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "paths" => paths(),
         "open" => open(rest, g),
         "info" => info(rest, g.fallback.as_deref()),
+        "find" => find(rest, g),
         "assets.list" => assets_list(rest),
         "assets.rename" => assets_rename(rest, g),
         _ => unreachable!("checked in run"),
@@ -545,6 +582,81 @@ fn assets_rename(rest: &[&str], g: &Global) -> Result<Done, Fail> {
     Ok((data, format!("renamed {what}")))
 }
 
+/// `jarak find <file> <text>`: the matches with their line and column (read-only).
+fn find(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::file;
+    use jarak_core::search::{Haystack, Query};
+    let [arg, text] = rest else {
+        return Err(Fail::usage(
+            "`jarak find` takes a file and the text to find",
+        ));
+    };
+    let path = absolute(Path::new(arg));
+    let fallback = match g.fallback.as_deref() {
+        Some(l) => file::encoding_for_label(l)
+            .ok_or_else(|| Fail::usage(format!("unknown encoding `{l}`")))?,
+        None => file::system_encoding(),
+    };
+    let d = read_file(&path, fallback)?;
+    let q = Query {
+        text: (*text).to_string(),
+        ..g.search.clone()
+    };
+    let m = q
+        .compile()
+        .map_err(|e| Fail::usage(format!("the search `{text}` is not valid: {e}")))?;
+    let doc = jarak_core::document::Document::from_text(&d.text);
+    let h = Haystack::of(&doc);
+    let (found, _) = m.find_all(&h, None, &|| false);
+    let r = doc.text();
+    let mut matches = Vec::new();
+    let mut lines_text = Vec::new();
+    for (a, b) in found.iter().take(if g.count { 0 } else { 10_000 }) {
+        let line = r.char_to_line(*a);
+        let start = r.line_to_char(line);
+        let line_text: String = r
+            .line(line)
+            .chars()
+            .filter(|c| *c != '\n' && *c != '\r')
+            .take(300)
+            .collect();
+        let col = a - start;
+        matches.push(json!({
+            "line": line + 1,
+            "column": col + 1,
+            "length": b - a,
+            "text": r.slice(*a..*b).to_string(),
+            "line_text": line_text,
+        }));
+        lines_text.push(format!("{}:{}: {}", line + 1, col + 1, line_text));
+    }
+    let data = json!({
+        "path": path,
+        "query": text,
+        "mode": match q.mode {
+            jarak_core::search::Mode::Normal => "normal",
+            jarak_core::search::Mode::Extended => "extended",
+            jarak_core::search::Mode::Regex => "regex",
+        },
+        "match_case": q.match_case,
+        "whole_word": q.whole_word,
+        "count": found.len(),
+        "matches": matches,
+        "truncated": !g.count && found.len() > 10_000,
+    });
+    let mut text_out = format!(
+        "{}: {} match{}",
+        path.display(),
+        found.len(),
+        if found.len() == 1 { "" } else { "es" }
+    );
+    for l in lines_text {
+        text_out.push('\n');
+        text_out.push_str(&l);
+    }
+    Ok((data, text_out))
+}
+
 /// `jarak-gui.exe` next to this program.
 fn gui_exe() -> Option<PathBuf> {
     let p = std::env::current_exe().ok()?.with_file_name(GUI_EXE);
@@ -708,6 +820,7 @@ mod tests {
                 "paths",
                 "open",
                 "info",
+                "find",
                 "assets.list",
                 "assets.rename"
             ]

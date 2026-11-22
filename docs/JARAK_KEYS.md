@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92; tabs and views since Step 93) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`
+Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -49,6 +49,28 @@ checks each label against the key handling, `crates/jarak-gui/src/keys.rs`).
 
 The mouse: click, drag, double-click (word), triple-click (line), the wheel; Ctrl+wheel zooms.
 Ctrl+click on an image reference shows the image in Explorer.
+
+## Find, replace and mark
+
+| Keys | Command |
+| --- | --- |
+| Ctrl+F | Find (the find panel; a selected text on one line becomes the text to find) |
+| Ctrl+H | Replace |
+| F3 / Shift+F3 | Find next / previous (also in the panel's boxes) |
+| Enter / Shift+Enter | In the find box: find next / previous (the box keeps the focus) |
+| Ctrl+F3 / Ctrl+Shift+F3 | Select the word at the caret (or take the selection) and find the next / previous one |
+| Ctrl+Alt+F3 / Ctrl+Alt+Shift+F3 | Find the word under the caret (match case, whole word), the find box untouched |
+| Ctrl+Alt+I | Incremental search bar (Enter / Shift+Enter next / previous, Esc closes) |
+| Up / Down | In the find box: the find history |
+| Esc | Close the find panel |
+| Alt+A, Alt+R | In the panel: Replace All, Replace (Replace page) |
+| Alt+T, Alt+M | In the panel: Count, Mark All (Mark page) |
+| Alt+C, Alt+W | In the panel: match case, whole word |
+
+Marks, bookmarks of marked lines and the five token styles (*Style all occurrences of the token*,
+*Style one token*, *Clear style*, *Jump to the next / previous styled text*, *Copy the styled
+text*) are in the palette and the Search menu. A selected word highlights its other occurrences on
+screen (smart highlighting).
 
 ## View and Markdown
 

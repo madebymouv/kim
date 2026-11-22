@@ -135,6 +135,11 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "views",
                 "side",
                 "documents",
+                // Step 94: find, replace, mark (with bookmarks and a style), incremental search.
+                "find",
+                "replace",
+                "mark",
+                "incremental",
             ],
         ),
     ];

@@ -30,6 +30,7 @@ Follows [CLI_CONTRACT](CLI_CONTRACT.md): human output or one `--json` envelope, 
 | `jarak version [--json]` | read | Version, CLI contract 1, JSON schema 1 |
 | `jarak paths [--json]` | read | The per-user files below; creates nothing |
 | `jarak info <file> [--fallback <encoding>] [--json]` | read | Encoding, BOM, line endings (with counts), size, lines, characters, binary, lossless and read-only — what the window would open (§9); `file_not_found` (exit 3), `file_too_large` (exit 5), a folder is `usage` |
+| `jarak find <file> <text> [--extended\|--regex] [--match-case] [--whole-word] [--dot-all] [--count] [--fallback <encoding>] [--json]` | read | Step 94: the matches with line, column (characters, from 1), length and the line's text, at most 10 000 listed (`truncated`); `--count` gives only the count; the same search as the window's find panel (§16); a pattern that does not compile is `usage` |
 | `jarak open [<file>[:<line>[:<column>]]...] [--new-window] [--dry-run] [--json]` | write, opens a window | Starts `jarak-gui.exe` next to `jarak.exe` (detached, no console) with absolute targets, or a running window takes them; `not_installed` (exit 3) when the window program is missing; a folder is a `usage` error |
 
 `file:line:column` (`jarak-core::target`): an argument that names an existing file is that
@@ -572,3 +573,65 @@ and opened elsewhere). UI audit views `tabs`, `views`, `side`, `documents` (95 r
 after the overlap fix). e2e `step93_jarak_tabs_views_session.rs` (two release-window runs with a
 session in the sandbox: both tab bars, `session.json` naming the clone in both views, the same
 bars after the restart; first focused run PASS).
+
+## 16. Find, replace and mark (Step 94)
+
+`JARAK-FR-070`…`JARAK-FR-072`, matrix rows `SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`,
+`MARK-01`…`MARK-08` (supported) and `AUTO-10` (partial).
+
+- **The search** (`jarak-core::search`): a `Query` (text, mode, match case, whole word, `.` matches
+  newline) compiles to one `regex::Regex` for every mode: Normal escapes the text, Extended first
+  turns `\n \r \t \0 \\ \xNN \uNNNN` into characters, Regular expression uses it as written. The
+  text the search scans (`Haystack`: the document as one `String` with a char/byte map) is made
+  once per history state and kept on the tab, so F3 again or typing in the find box do not copy
+  the document. `find` looks forward or backward from the caret, wraps (and says so) and stays in
+  a range ("in selection"); `find_all` counts with a cancel check (Count stops after 5 s, Mark All
+  after 10 s, Replace All after 30 s, and says so).
+- **Regular expressions** use the Rust `regex` crate (linear time, no catastrophic backtracking),
+  not Notepad++'s Boost syntax. The differences: no look-around (`(?=…)`, `(?<=…)`), no
+  back-references in the pattern (`\1` inside it) and no possessive or atomic groups — a pattern
+  using them is refused with the reason, never searched differently; `\b \w \d \s` and classes are
+  Unicode-aware; `(?i)`, `(?m)`, `(?s)` work inline; `^`/`$` match at every line end including
+  CRLF ones; `.` never matches `\r` or `\n` unless *`.` matches newline* is on. In the replacement,
+  `\1`…`\9` and `$1`, `${name}` insert groups, `$0` the match, and `\n \r \t \\` are characters.
+- **Replace All** (`search::replace_all`) is one undo step. Up to 20 000 replacements are one edit
+  of many ranges; more rebuild the text once and replace the document's text in a single edit (the
+  rope is rebuilt, not edited 832 204 times). Measured (release, `replace_all_on_50_mb`): a 50 MB
+  document with 832 204 matches — the haystack 24 ms, Count 125 ms, Replace All 347 ms, undo 87 ms,
+  a regex Replace All 609 ms.
+- **Markers** (`Document::markers`): ranges with a kind (0 the marks of Mark All, 1–5 the token
+  styles, 200 bookmarks) that every edit, undo and redo moves; text typed at a marker's start
+  pushes it on, never grows it. They are not text: the file never changes because of them, and
+  they are not saved (bookmark persistence comes with Step 101). The view draws the kinds on the
+  lines on screen (Mark red, styles blue/amber/green/accent/pink at 35 %) and bookmarks as dots in
+  the gutter; at most 200 000 marks per command.
+- **The find panel** (`find.rs`): a non-modal popover at the editor's top right with the pages
+  Find, Replace and Mark, built from kim-ui components (segmented, text field, checkbox,
+  buttons), with Notepad++'s Alt mnemonics. Enter keeps the focus in the find box; F3 works there
+  too; Esc closes and gives the focus back to the view. Highlight all paints the find text's
+  matches on screen while the Find or Replace page is open. On Windows an Alt+letter chord also
+  arrives as the letter's text; the window drops that text when it comes with the chord, so no
+  shortcut types its letter (AltGr still types).
+- **Incremental search** (Ctrl+Alt+I): a bar above the status bar; each change searches from where
+  it started, Enter / Shift+Enter step, the count is shown below 16 MB.
+- **Smart highlighting** (`AUTO-10`, partial): a selected word (letters, digits, `_`, under 200
+  characters) highlights its whole-word, same-case occurrences on screen; its options come with
+  the settings window (Step 110).
+- **History**: 20 entries each for find and replace, newest first, Up / Down in the find box,
+  kept in the session (`find_history`, `replace_history` in `jarak-session-v1`).
+- **`jarak find`** (§2) runs the same search on a file from the command line.
+
+Tests: `search` 10 (each mode and option, wrap and range, one undo step in every mode, the bulk
+path, the haystack cache, markers through edits/undo/redo, CRLF anchors; the 50 MB measurement is
+ignored by default); window flows 9 new (every option and mode with F3, Enter and Shift+Enter;
+Replace and Replace All in every mode and in the selection with one undo; Mark All with bookmarks,
+clear and copy; Ctrl+F3 and Ctrl+Alt+F3; the incremental bar, highlight all and smart
+highlighting; token styles; the history in the session; the Alt mnemonics; Alt letters never
+typing). UI audit views `find`, `replace`, `mark`, `incremental` (115 runs, 0 failures). e2e
+`step94_jarak_find_replace_mark.rs` (`jarak find` in every mode with a usage error, the release
+window's Mark and Replace pages, the file untouched, the history in the session). Real desktop
+(r94): Ctrl+F, Enter, Shift+Enter, Esc, Tab into the replace box, Alt+W and Alt+A (whole-word
+Replace All left `concat` alone), Ctrl+Z / Ctrl+Y, a Korean search, the Mark page with Alt+M, the
+incremental bar and select-and-find-next, checked byte for byte on disk; F3 itself was tested only
+headless because F1/F3 are the global hotkeys of the maintainer's Noeul on that PC (one stray F3
+made a pin, closed again by its ID).

@@ -51,6 +51,9 @@ pub struct ViewState {
     pub keep_escape: bool,
     /// Step 93: which view draws it (0 main, 1 second): its widget id.
     pub salt: u8,
+    /// Step 94: styled ranges (marks, token styles) with their colours, and bookmarked lines.
+    pub styled: Vec<(usize, usize, Color32)>,
+    pub bookmarks: Vec<usize>,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -80,6 +83,8 @@ impl Default for ViewState {
             marks: Vec::new(),
             keep_escape: false,
             salt: 0,
+            styled: Vec::new(),
+            bookmarks: Vec::new(),
             drag: None,
             clicks: None,
         }
@@ -341,6 +346,9 @@ pub fn show(
         if l.line == caret_line && sel.len() == 1 && sel.primary().is_empty() {
             painter.rect_filled(row_rect, CornerRadius::ZERO, c.bg_raised);
         }
+        for (a, b, col) in &state.styled {
+            paint_selection(&painter, l, &Range::new(*a, *b), doc, &m, *col);
+        }
         for (a, b) in &state.marks {
             paint_selection(&painter, l, &Range::new(*a, *b), doc, &m, c.accent_soft);
         }
@@ -367,6 +375,14 @@ pub fn show(
     let gutter_rect = Rect::from_min_max(rect.min, egui::pos2(text_rect.left(), rect.bottom()));
     painter.rect_filled(gutter_rect, CornerRadius::ZERO, c.bg_base);
     for l in &laid {
+        if state.bookmarks.binary_search(&l.line).is_ok() {
+            // A bookmark: a dot at the gutter's left edge.
+            painter.circle_filled(
+                egui::pos2(rect.left() + m.char_w * 0.7, l.origin.y + m.row / 2.0),
+                (m.row * 0.22).max(3.0),
+                c.accent,
+            );
+        }
         let n = (l.line + 1).to_string();
         let col = if l.line == caret_line {
             c.text_secondary

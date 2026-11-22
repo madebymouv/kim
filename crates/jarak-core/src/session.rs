@@ -97,6 +97,11 @@ pub struct Session {
     /// Recently closed and opened files, newest first.
     #[serde(default)]
     pub recent: Vec<PathBuf>,
+    /// Step 94: the find and replace boxes' histories, newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub find_history: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replace_history: Vec<String>,
 }
 
 impl Default for Session {
@@ -109,6 +114,8 @@ impl Default for Session {
             second: None,
             workspace: None,
             recent: Vec::new(),
+            find_history: Vec::new(),
+            replace_history: Vec::new(),
         }
     }
 }

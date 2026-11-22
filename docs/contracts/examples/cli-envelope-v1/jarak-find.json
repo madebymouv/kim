@@ -1,0 +1,38 @@
+{
+  "command": "find",
+  "data": {
+    "count": 3,
+    "match_case": false,
+    "matches": [
+      {
+        "column": 5,
+        "length": 3,
+        "line": 1,
+        "line_text": "the cat sat",
+        "text": "cat"
+      },
+      {
+        "column": 6,
+        "length": 3,
+        "line": 2,
+        "line_text": "on a Cat mat. cat",
+        "text": "Cat"
+      },
+      {
+        "column": 15,
+        "length": 3,
+        "line": 2,
+        "line_text": "on a Cat mat. cat",
+        "text": "cat"
+      }
+    ],
+    "mode": "normal",
+    "path": "C:\\Users\\me\\notes\\notes.txt",
+    "query": "cat",
+    "truncated": false,
+    "whole_word": true
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

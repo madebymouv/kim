@@ -1584,6 +1584,354 @@ fn a_session_saved_to_a_file_opens_again_elsewhere() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+fn sel_text(h: &Harness<'static, JarakApp>) -> String {
+    h.state().tab().file.doc.selected_text()
+}
+
+fn sel_range(h: &Harness<'static, JarakApp>) -> (usize, usize) {
+    let r = h.state().tab().file.doc.selection().primary();
+    (r.from(), r.to())
+}
+
+#[test]
+fn the_find_panel_finds_with_every_option_and_f3_repeats() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "Cat cat concat\nthe cat. CAT");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::F, egui::Modifiers::CTRL);
+    assert!(h.state().find.open);
+    text(&mut h, "cat");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(sel_range(&h), (0, 3), "any case by default");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(sel_range(&h), (4, 7), "Enter again: the box kept the focus");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::SHIFT);
+    assert_eq!(sel_range(&h), (0, 3), "Shift+Enter: the previous one");
+    key(&mut h, egui::Key::F3, egui::Modifiers::NONE);
+    assert_eq!(sel_range(&h), (4, 7));
+    // Match case and whole word.
+    h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Match case")
+        .click();
+    h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Whole word")
+        .click();
+    h.run();
+    key(&mut h, egui::Key::F3, egui::Modifiers::NONE);
+    assert_eq!(sel_range(&h), (19, 22), "not in concat, not CAT");
+    key(&mut h, egui::Key::F3, egui::Modifiers::NONE);
+    assert_eq!(sel_range(&h), (4, 7), "wrapped around");
+    assert!(h.query_all_by_label_contains("Wrapped").next().is_some());
+    key(&mut h, egui::Key::F3, egui::Modifiers::SHIFT);
+    assert_eq!(sel_range(&h), (19, 22), "Shift+F3 goes back");
+    // Count.
+    h.get_by_label("Count").click();
+    h.run();
+    assert!(h.query_all_by_label_contains("Matches: 2").next().is_some());
+    // Regular expressions and a bad pattern.
+    assert!(h.query_by_label("Regular expression").is_some());
+    h.state_mut().find.mode = jarak_core::search::Mode::Regex;
+    h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Whole word")
+        .click();
+    h.run();
+    h.state_mut().find.find = "c[a-z]t\\.".into();
+    h.get_by_label("Find Next").click();
+    h.run();
+    assert_eq!(sel_text(&h), "cat.");
+    h.state_mut().find.find = "(".into();
+    h.get_by_label("Find Next").click();
+    h.run();
+    assert!(
+        h.state()
+            .find
+            .status
+            .as_deref()
+            .unwrap()
+            .contains("unclosed")
+    );
+    // Esc closes the panel; F3 still works.
+    h.state_mut().find.find = "CAT".into();
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(!h.state().find.open);
+    key(&mut h, egui::Key::F3, egui::Modifiers::NONE);
+    assert_eq!(sel_text(&h), "CAT");
+}
+
+#[test]
+fn replace_and_replace_all_in_every_mode_and_in_the_selection() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "a=1 b=22 c=333");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::H, egui::Modifiers::CTRL);
+    assert_eq!(h.state().find.page, jarak_gui::find::Page::Replace);
+    {
+        let f = &mut h.state_mut().find;
+        f.find = "=".into();
+        f.replace = ": ".into();
+    }
+    // Replace: the first press selects, the next replaces and moves on.
+    h.get_all_by_label("Replace").last().unwrap().click();
+    h.run();
+    assert_eq!(sel_text(&h), "=");
+    h.get_all_by_label("Replace").last().unwrap().click();
+    h.run();
+    assert_eq!(doc_text(&h), "a: 1 b=22 c=333");
+    // Replace All with regex groups: one undo step.
+    {
+        let f = &mut h.state_mut().find;
+        f.mode = jarak_core::search::Mode::Regex;
+        f.find = r"(\w)=(\d+)".into();
+        f.replace = r"\2-$1".into();
+    }
+    h.get_by_label("Replace All").click();
+    h.run();
+    assert_eq!(doc_text(&h), "a: 1 22-b 333-c");
+    assert!(
+        h.query_all_by_label_contains("Replaced: 2")
+            .next()
+            .is_some()
+    );
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "a: 1 b=22 c=333", "one undo step");
+    // Extended mode and in selection.
+    {
+        let f = &mut h.state_mut().find;
+        f.mode = jarak_core::search::Mode::Extended;
+        f.find = " ".into();
+        f.replace = r"\t".into();
+        f.in_selection = true;
+    }
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(0, 9),
+        ));
+    h.get_by_label("Replace All").click();
+    h.run();
+    assert_eq!(
+        doc_text(&h),
+        "a:\t1\tb=22 c=333",
+        "only inside the selection"
+    );
+}
+
+#[test]
+fn mark_all_bookmarks_lines_clears_and_copies_marks() {
+    let clip = Arc::new(jarak_gui::clipboard::MemoryClipboard::default());
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_clipboard(clip.clone()));
+    text(&mut h, "TODO one\nnothing\nTODO two TODO\n");
+    h.state_mut().open_find(jarak_gui::find::Page::Mark);
+    h.state_mut().find.find = "TODO".into();
+    h.run();
+    h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Bookmark the lines")
+        .click();
+    h.get_by_label("Mark All").click();
+    h.run();
+    let d = &h.state().tab().file.doc;
+    assert_eq!(d.markers().iter().filter(|m| m.kind == 0).count(), 3);
+    assert_eq!(d.bookmarked_lines(), vec![0, 2]);
+    assert_eq!(
+        h.state().tab().view.bookmarks,
+        vec![0, 2],
+        "drawn in the gutter"
+    );
+    assert!(
+        h.state().tab().view.styled.len() >= 3,
+        "drawn behind the text"
+    );
+    // Marks move with edits.
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, ">>");
+    let first = h
+        .state()
+        .tab()
+        .file
+        .doc
+        .markers()
+        .iter()
+        .filter(|m| m.kind == 0)
+        .map(|m| m.start)
+        .min();
+    assert_eq!(first, Some(2));
+    h.get_by_label("Copy marked").click();
+    h.run();
+    assert_eq!(
+        jarak_gui::clipboard::Clipboard::get_text(clip.as_ref()).as_deref(),
+        Some("TODO\r\nTODO\r\nTODO")
+    );
+    h.get_by_label("Clear marks").click();
+    h.run();
+    assert!(
+        h.state()
+            .tab()
+            .file
+            .doc
+            .markers()
+            .iter()
+            .all(|m| m.kind != 0)
+    );
+    assert_eq!(
+        h.state().tab().file.doc.bookmarked_lines(),
+        vec![0, 2],
+        "bookmarks stay"
+    );
+}
+
+#[test]
+fn ctrl_f3_takes_the_word_and_ctrl_alt_f3_leaves_the_find_box() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "alpha beta alpha alphabet");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::F3, egui::Modifiers::CTRL);
+    assert_eq!(h.state().find.find, "alpha");
+    assert_eq!(sel_range(&h), (11, 16));
+    h.state_mut().find.find = "zzz".into();
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    let ca = egui::Modifiers {
+        ctrl: true,
+        alt: true,
+        command: true,
+        ..Default::default()
+    };
+    key(&mut h, egui::Key::F3, ca);
+    assert_eq!(sel_range(&h), (11, 16), "whole word: not alphabet");
+    assert_eq!(h.state().find.find, "zzz", "the find box is untouched");
+    key(&mut h, egui::Key::F3, ca);
+    assert_eq!(sel_range(&h), (0, 5), "wrapped, never alphabet");
+}
+
+#[test]
+fn incremental_search_highlight_all_and_smart_highlighting() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "one two one three one");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    let ca = egui::Modifiers {
+        ctrl: true,
+        alt: true,
+        command: true,
+        ..Default::default()
+    };
+    key(&mut h, egui::Key::I, ca);
+    assert!(h.state().incremental.is_some());
+    text(&mut h, "on");
+    assert_eq!(sel_range(&h), (0, 2), "the first match as it is typed");
+    text(&mut h, "e t");
+    assert_eq!(
+        sel_range(&h),
+        (0, 5),
+        "\"one t\" from where it started: one t[wo]"
+    );
+    // The matches on screen are highlighted.
+    assert!(!h.state().tab().view.marks.is_empty());
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state().incremental.is_none());
+    // Smart highlighting: a selected word marks its other occurrences.
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(4, 7),
+        ));
+    h.run();
+    h.run();
+    assert_eq!(
+        h.state().tab().view.marks,
+        Vec::<(usize, usize)>::new(),
+        "two appears once"
+    );
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(0, 3),
+        ));
+    h.run();
+    h.run();
+    assert_eq!(h.state().tab().view.marks, vec![(8, 11), (18, 21)]);
+}
+
+#[test]
+fn token_styles_jump_copy_and_clear() {
+    use jarak_gui::find::StyleCmd;
+    let clip = Arc::new(jarak_gui::clipboard::MemoryClipboard::default());
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_clipboard(clip.clone()));
+    text(&mut h, "red green red blue red");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    h.state_mut().style(StyleCmd::All(1));
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(4, 9),
+        ));
+    h.state_mut().style(StyleCmd::One(3));
+    h.run();
+    let kinds: Vec<u8> = h
+        .state()
+        .tab()
+        .file
+        .doc
+        .markers()
+        .iter()
+        .map(|m| m.kind)
+        .collect();
+    assert_eq!(kinds.iter().filter(|k| **k == 1).count(), 3);
+    assert_eq!(kinds.iter().filter(|k| **k == 3).count(), 1);
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    h.state_mut().style(StyleCmd::Next);
+    assert_eq!(sel_text(&h), "green");
+    h.state_mut().style(StyleCmd::Next);
+    assert_eq!(sel_range(&h), (10, 13));
+    h.state_mut().style(StyleCmd::Copy);
+    assert_eq!(
+        jarak_gui::clipboard::Clipboard::get_text(clip.as_ref()).as_deref(),
+        Some("red\r\ngreen\r\nred\r\nred")
+    );
+    h.state_mut().style(StyleCmd::Clear(1));
+    assert_eq!(h.state().tab().file.doc.markers().len(), 1);
+    h.state_mut().style(StyleCmd::Clear(0));
+    assert!(h.state().tab().file.doc.markers().is_empty());
+}
+
+#[test]
+fn the_find_history_walks_with_the_arrows_and_lives_in_the_session() {
+    use jarak_gui::sessions::SessionFiles;
+    let d = temp("find-history");
+    let sf = SessionFiles {
+        file: d.join("session.json"),
+        recovery: d.join("recovery"),
+        restore: true,
+    };
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_session(sf.clone()));
+    text(&mut h, "x y z");
+    for w in ["x", "y", "z"] {
+        h.state_mut().find.find = w.into();
+        key(&mut h, egui::Key::F3, egui::Modifiers::NONE);
+    }
+    assert_eq!(h.state().find_history, ["z", "y", "x"]);
+    key(&mut h, egui::Key::F, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::ArrowUp, egui::Modifiers::NONE);
+    assert_eq!(h.state().find.find, "z");
+    key(&mut h, egui::Key::ArrowUp, egui::Modifiers::NONE);
+    assert_eq!(h.state().find.find, "y");
+    h.state_mut().save_session();
+    drop(h);
+    let (b, _) = app_with(&[], Arc::default());
+    let h2 = harness(b.with_session(sf));
+    assert_eq!(h2.state().find_history, ["z", "y", "x"]);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn the_gear_says_honestly_that_settings_come_later() {
     let (a, _) = app_with(&[], Arc::default());
@@ -1592,4 +1940,85 @@ fn the_gear_says_honestly_that_settings_come_later() {
     h.run();
     assert!(h.state().settings_note);
     assert!(h.query_by_label_contains("Step 105").is_some());
+}
+
+#[test]
+fn the_find_panel_has_notepad_plus_plus_alt_mnemonics() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "x=1 X=2 x=3");
+    key(&mut h, egui::Key::H, egui::Modifiers::CTRL);
+    {
+        let f = &mut h.state_mut().find;
+        f.find = "x".into();
+        f.replace = "y".into();
+    }
+    key(&mut h, egui::Key::C, egui::Modifiers::ALT);
+    assert!(h.state().find.match_case, "Alt+C: match case");
+    key(&mut h, egui::Key::T, egui::Modifiers::ALT);
+    assert_eq!(
+        h.state().find.status.as_deref(),
+        Some("Matches: 2"),
+        "Alt+T: count"
+    );
+    key(&mut h, egui::Key::A, egui::Modifiers::ALT);
+    assert_eq!(doc_text(&h), "y=1 X=2 y=3", "Alt+A: replace all");
+    assert!(!h.state().menu_bar, "Alt+letter does not open the menu bar");
+    key(&mut h, egui::Key::W, egui::Modifiers::ALT);
+    assert!(h.state().find.whole_word, "Alt+W: whole word");
+    h.state_mut().find.page = jarak_gui::find::Page::Mark;
+    h.state_mut().find.find = "y".into();
+    h.run();
+    key(&mut h, egui::Key::M, egui::Modifiers::ALT);
+    assert_eq!(
+        h.state().tab().file.doc.markers().len(),
+        2,
+        "Alt+M: mark all"
+    );
+}
+
+/// On Windows an Alt+letter chord also arrives as the letter's text (found in the real window):
+/// it never types, in the find panel's boxes or in the document; AltGr still types.
+fn alt_chord(h: &mut Harness<'static, JarakApp>, k: egui::Key, letter: &str, m: egui::Modifiers) {
+    // Both in one frame, as egui-winit delivers one key press.
+    let events = &mut h.input_mut().events;
+    events.push(egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: m,
+    });
+    events.push(egui::Event::Text(letter.into()));
+    let _ = h.try_run();
+}
+
+#[test]
+fn alt_letters_never_type_their_letter_but_altgr_does() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "x=1 X=2");
+    key(&mut h, egui::Key::H, egui::Modifiers::CTRL);
+    {
+        let f = &mut h.state_mut().find;
+        f.find = "x".into();
+        f.replace = "y".into();
+    }
+    alt_chord(&mut h, egui::Key::W, "w", egui::Modifiers::ALT);
+    alt_chord(&mut h, egui::Key::A, "a", egui::Modifiers::ALT);
+    assert_eq!(h.state().find.find, "x", "the find box got no letter");
+    assert_eq!(h.state().find.replace, "y", "the replace box got no letter");
+    assert_eq!(doc_text(&h), "y=1 y=2", "Alt+A replaced all (whole word)");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    let wrap = h.state().tab().view.wrap;
+    alt_chord(&mut h, egui::Key::Z, "z", egui::Modifiers::ALT);
+    assert_eq!(doc_text(&h), "y=1 y=2", "Alt+Z typed nothing");
+    assert_ne!(h.state().tab().view.wrap, wrap, "Alt+Z toggled the wrap");
+    let altgr = egui::Modifiers {
+        ctrl: true,
+        alt: true,
+        ..Default::default()
+    };
+    alt_chord(&mut h, egui::Key::E, "€", altgr);
+    assert!(doc_text(&h).contains('€'), "AltGr types: {}", doc_text(&h));
 }

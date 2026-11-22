@@ -33,6 +33,9 @@ pub enum Run {
     RestoreSession,
     SessionSave,
     SessionLoad,
+    /// Step 94: 0 the Mark page, 1 Mark All, 2 clear marks, 3 copy marked text, 4 count.
+    FindCmd(u8),
+    Style(crate::find::StyleCmd),
 }
 
 /// The menu an entry belongs to.
@@ -40,6 +43,7 @@ pub enum Run {
 pub enum Menu {
     File,
     Edit,
+    Search,
     Selection,
     Go,
     View,
@@ -48,9 +52,10 @@ pub enum Menu {
 }
 
 impl Menu {
-    pub const ALL: [Menu; 7] = [
+    pub const ALL: [Menu; 8] = [
         Menu::File,
         Menu::Edit,
+        Menu::Search,
         Menu::Selection,
         Menu::Go,
         Menu::View,
@@ -63,6 +68,7 @@ impl Menu {
         match self {
             Menu::File => ("File", "파일"),
             Menu::Edit => ("Edit", "편집"),
+            Menu::Search => ("Search", "찾기"),
             Menu::Selection => ("Selection", "선택"),
             Menu::Go => ("Go", "이동"),
             Menu::View => ("View", "보기"),
@@ -433,6 +439,228 @@ pub fn entries() -> Vec<Entry> {
             menu: M::Markdown,
         },
     ];
+    use crate::find::StyleCmd as S;
+    v.extend([
+        act("search.find", "Find…", "찾기…", A::Find, M::Search),
+        act(
+            "search.replace",
+            "Replace…",
+            "바꾸기…",
+            A::Replace,
+            M::Search,
+        ),
+        act(
+            "search.next",
+            "Find next",
+            "다음 찾기",
+            A::FindNext,
+            M::Search,
+        ),
+        act(
+            "search.previous",
+            "Find previous",
+            "이전 찾기",
+            A::FindPrevious,
+            M::Search,
+        ),
+        act(
+            "search.select-next",
+            "Select and find next",
+            "선택해서 다음 찾기",
+            A::SelectFindNext,
+            M::Search,
+        ),
+        act(
+            "search.select-previous",
+            "Select and find previous",
+            "선택해서 이전 찾기",
+            A::SelectFindPrevious,
+            M::Search,
+        ),
+        act(
+            "search.word-next",
+            "Find the word under the caret (next)",
+            "커서 단어 다음 찾기",
+            A::VolatileNext,
+            M::Search,
+        ),
+        act(
+            "search.word-previous",
+            "Find the word under the caret (previous)",
+            "커서 단어 이전 찾기",
+            A::VolatilePrevious,
+            M::Search,
+        ),
+        act(
+            "search.incremental",
+            "Incremental search",
+            "점진적 찾기",
+            A::Incremental,
+            M::Search,
+        ),
+        run(
+            "search.count",
+            "Count the matches",
+            "찾은 개수 세기",
+            Run::FindCmd(4),
+            M::Search,
+        ),
+        run("search.mark", "Mark…", "표시…", Run::FindCmd(0), M::Search),
+        run(
+            "search.mark-all",
+            "Mark all",
+            "모두 표시",
+            Run::FindCmd(1),
+            M::Search,
+        ),
+        run(
+            "search.clear-marks",
+            "Clear all marks",
+            "모든 표시 지우기",
+            Run::FindCmd(2),
+            M::Search,
+        ),
+        run(
+            "search.copy-marked",
+            "Copy the marked text",
+            "표시한 텍스트 복사",
+            Run::FindCmd(3),
+            M::Search,
+        ),
+        run(
+            "search.style-1",
+            "Style all occurrences of the token: style 1",
+            "토큰 모두 스타일: 1",
+            Run::Style(S::All(1)),
+            M::Search,
+        ),
+        run(
+            "search.style-2",
+            "Style all occurrences of the token: style 2",
+            "토큰 모두 스타일: 2",
+            Run::Style(S::All(2)),
+            M::Search,
+        ),
+        run(
+            "search.style-3",
+            "Style all occurrences of the token: style 3",
+            "토큰 모두 스타일: 3",
+            Run::Style(S::All(3)),
+            M::Search,
+        ),
+        run(
+            "search.style-4",
+            "Style all occurrences of the token: style 4",
+            "토큰 모두 스타일: 4",
+            Run::Style(S::All(4)),
+            M::Search,
+        ),
+        run(
+            "search.style-5",
+            "Style all occurrences of the token: style 5",
+            "토큰 모두 스타일: 5",
+            Run::Style(S::All(5)),
+            M::Search,
+        ),
+        run(
+            "search.style-one-1",
+            "Style one token: style 1",
+            "토큰 하나 스타일: 1",
+            Run::Style(S::One(1)),
+            M::Search,
+        ),
+        run(
+            "search.style-one-2",
+            "Style one token: style 2",
+            "토큰 하나 스타일: 2",
+            Run::Style(S::One(2)),
+            M::Search,
+        ),
+        run(
+            "search.style-one-3",
+            "Style one token: style 3",
+            "토큰 하나 스타일: 3",
+            Run::Style(S::One(3)),
+            M::Search,
+        ),
+        run(
+            "search.style-one-4",
+            "Style one token: style 4",
+            "토큰 하나 스타일: 4",
+            Run::Style(S::One(4)),
+            M::Search,
+        ),
+        run(
+            "search.style-one-5",
+            "Style one token: style 5",
+            "토큰 하나 스타일: 5",
+            Run::Style(S::One(5)),
+            M::Search,
+        ),
+        run(
+            "search.clear-style-1",
+            "Clear style 1",
+            "스타일 1 지우기",
+            Run::Style(S::Clear(1)),
+            M::Search,
+        ),
+        run(
+            "search.clear-style-2",
+            "Clear style 2",
+            "스타일 2 지우기",
+            Run::Style(S::Clear(2)),
+            M::Search,
+        ),
+        run(
+            "search.clear-style-3",
+            "Clear style 3",
+            "스타일 3 지우기",
+            Run::Style(S::Clear(3)),
+            M::Search,
+        ),
+        run(
+            "search.clear-style-4",
+            "Clear style 4",
+            "스타일 4 지우기",
+            Run::Style(S::Clear(4)),
+            M::Search,
+        ),
+        run(
+            "search.clear-style-5",
+            "Clear style 5",
+            "스타일 5 지우기",
+            Run::Style(S::Clear(5)),
+            M::Search,
+        ),
+        run(
+            "search.clear-styles",
+            "Clear all styles",
+            "모든 스타일 지우기",
+            Run::Style(S::Clear(0)),
+            M::Search,
+        ),
+        run(
+            "search.styled-next",
+            "Jump to the next styled text",
+            "다음 스타일 텍스트로",
+            Run::Style(S::Next),
+            M::Search,
+        ),
+        run(
+            "search.styled-previous",
+            "Jump to the previous styled text",
+            "이전 스타일 텍스트로",
+            Run::Style(S::Previous),
+            M::Search,
+        ),
+        run(
+            "search.copy-styled",
+            "Copy the styled text",
+            "스타일 텍스트 복사",
+            Run::Style(S::Copy),
+            M::Search,
+        ),
+    ]);
     for c in COMMANDS {
         let menu = if c.id.starts_with("select.") {
             M::Selection

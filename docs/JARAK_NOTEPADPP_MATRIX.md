@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -185,28 +185,28 @@ palette, the headless CLI) follow in §2.
 | AUTO-07 | Auto-indent (keep / smart per language) | planned | `JARAK-FR-096` | 100 | T | — |
 | AUTO-08 | Brace highlighting | planned | `JARAK-FR-096` | 100 | T | — |
 | AUTO-09 | HTML/XML tag matching highlight | planned | `JARAK-FR-096` | 100 | T | — |
-| AUTO-10 | Smart highlighting of the selected word (with options) | planned | `JARAK-FR-071` | 94 | T | — |
+| AUTO-10 | Smart highlighting of the selected word (with options) | partial | `JARAK-FR-071` | 94 | T | Step 94: a selected word (letters, digits, `_`) highlights its other whole-word, same-case occurrences on screen (`incremental_search_highlight_all_and_smart_highlighting`); the options (case, whole word, the find panel's settings) come with the settings window, Step 110 |
 
 ### SRCH — Search menu: find and replace in the document (sources S, U)
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| SRCH-01 | Find dialog (Ctrl+F) | planned | `JARAK-FR-070` | 94 | T, M | — |
-| SRCH-02 | Replace dialog (Ctrl+H) | planned | `JARAK-FR-070` | 94 | T, M | — |
-| SRCH-03 | Search mode Normal | planned | `JARAK-FR-070` | 94 | T | — |
-| SRCH-04 | Search mode Extended (\n \r \t \0 \x \u escapes) | planned | `JARAK-FR-070` | 94 | T | — |
-| SRCH-05 | Search mode Regular expression (and '. matches newline') | planned | `JARAK-FR-070` | 94 | T | — |
-| SRCH-06 | Options: match case, whole word, wrap around, backward direction | planned | `JARAK-FR-070` | 94 | T | — |
-| SRCH-07 | In selection | planned | `JARAK-FR-070` | 94 | T | — |
-| SRCH-08 | Find Next / Find Previous (F3, Shift+F3) | planned | `JARAK-FR-070` | 94 | T | — |
-| SRCH-09 | Select and Find Next / Previous (Ctrl+F3) | planned | `JARAK-FR-072` | 94 | T | — |
-| SRCH-10 | Find (volatile) next / previous of the word under the caret | planned | `JARAK-FR-072` | 94 | T | — |
-| SRCH-11 | Count matches | planned | `JARAK-FR-070` | 94 | T | — |
-| SRCH-12 | Replace / Replace All (one undo step) | planned | `JARAK-FR-070` | 94 | T | — |
+| SRCH-01 | Find dialog (Ctrl+F) | supported | `JARAK-FR-070` | 94 | T, M | Step 94: Ctrl+F opens a non-modal find panel at the editor's top right (Find, Replace and Mark pages, kim-ui components), Enter / Shift+Enter, Esc (`the_find_panel_finds_with_every_option_and_f3_repeats`, UI audit `find`, real desktop r94) |
+| SRCH-02 | Replace dialog (Ctrl+H) | supported | `JARAK-FR-070` | 94 | T, M | Step 94: Ctrl+H opens the panel on Replace, Tab moves to the replace box (`replace_and_replace_all_in_every_mode_and_in_the_selection`, UI audit `replace`, real desktop r94) |
+| SRCH-03 | Search mode Normal | supported | `JARAK-FR-070` | 94 | T | Step 94: `search::tests`, window tests, `jarak find` (e2e step94) |
+| SRCH-04 | Search mode Extended (\n \r \t \0 \x \u escapes) | supported | `JARAK-FR-070` | 94 | T | Step 94: `\n \r \t \0 \\ \xNN \uNNNN` (`search::tests::extended_mode_understands_escapes`, the Replace All window test, `jarak find --extended` in e2e step94) |
+| SRCH-05 | Search mode Regular expression (and '. matches newline') | supported | `JARAK-FR-070` | 94 | T | Step 94: Rust `regex` syntax (no look-around or back-references, linear time; JARAK_ARCHITECTURE §16), `^`/`$` at CRLF line ends, `\1`/`$1` in the replacement, `. matches newline` (`search::tests`, window tests, e2e step94) |
+| SRCH-06 | Options: match case, whole word, wrap around, backward direction | supported | `JARAK-FR-070` | 94 | T | Step 94: match case, whole word, wrap around (with a "wrapped" status), backward (`the_find_panel_finds_with_every_option_and_f3_repeats`, real desktop: whole-word Replace All left `concat` alone) |
+| SRCH-07 | In selection | supported | `JARAK-FR-070` | 94 | T | Step 94: Find, Count, Replace All and Mark All inside the selection (`replace_and_replace_all_in_every_mode_and_in_the_selection`, `search::tests`) |
+| SRCH-08 | Find Next / Find Previous (F3, Shift+F3) | supported | `JARAK-FR-070` | 94 | T | Step 94: F3 / Shift+F3, also inside the panel's boxes (window tests); the real desktop used the palette's Find next / previous because F3 is another program's global hotkey on the test PC |
+| SRCH-09 | Select and Find Next / Previous (Ctrl+F3) | supported | `JARAK-FR-072` | 94 | T | Step 94: Ctrl+F3 / Ctrl+Shift+F3 take the selection or the word at the caret into the find box (`ctrl_f3_takes_the_word_and_ctrl_alt_f3_leaves_the_find_box`, real desktop via the palette command) |
+| SRCH-10 | Find (volatile) next / previous of the word under the caret | supported | `JARAK-FR-072` | 94 | T | Step 94: Ctrl+Alt+F3 / Ctrl+Alt+Shift+F3, match case and whole word, the find box untouched (`ctrl_f3_takes_the_word_and_ctrl_alt_f3_leaves_the_find_box`) |
+| SRCH-11 | Count matches | supported | `JARAK-FR-070` | 94 | T | Step 94: Count (Alt+T) in the panel and `jarak find --count` (window tests, e2e step94; 832 204 matches in 50 MB counted in 125 ms) |
+| SRCH-12 | Replace / Replace All (one undo step) | supported | `JARAK-FR-070` | 94 | T | Step 94: Replace selects then replaces; Replace All (Alt+A) is one undo step: 832 204 replacements in a 50 MB document in 347 ms, undone in 87 ms (`search::tests::replace_all_on_50_mb`, release); real desktop Ctrl+Z / Ctrl+Y |
 | SRCH-13 | Find All in current document (results panel) | planned | `JARAK-FR-073` | 95 | T | — |
 | SRCH-14 | Find All / Replace All in all opened documents | planned | `JARAK-FR-074` | 95 | T | — |
-| SRCH-15 | Incremental search bar (Ctrl+Alt+I) | planned | `JARAK-FR-072` | 94 | T | — |
-| SRCH-16 | Search history (find/replace combo history) | planned | `JARAK-FR-072` | 94 | T | — |
+| SRCH-15 | Incremental search bar (Ctrl+Alt+I) | supported | `JARAK-FR-072` | 94 | T | Step 94: Ctrl+Alt+I, the first match from where it started as you type, Enter / Shift+Enter, the count, Esc (`incremental_search_highlight_all_and_smart_highlighting`, UI audit `incremental`, real desktop) |
+| SRCH-16 | Search history (find/replace combo history) | supported | `JARAK-FR-072` | 94 | T | Step 94: 20 entries each for find and replace, Up / Down in the find box, kept in the session (`the_find_history_walks_with_the_arrows_and_lives_in_the_session`, e2e step94, schema `jarak-session-v1`) |
 | SRCH-17 | Find dialog transparency on losing focus | planned | `JARAK-FR-070` | 110 | M | — |
 | SRCH-18 | Go to line / offset (Ctrl+G) | planned | `JARAK-FR-103` | 99 | T | — |
 | SRCH-19 | Go to matching brace / select all between matching braces | planned | `JARAK-FR-096` | 99 | T | — |
@@ -216,14 +216,14 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| MARK-01 | Mark All with the Mark dialog (optionally bookmark the lines) | planned | `JARAK-FR-071` | 94 | T | — |
-| MARK-02 | Purge marks before each search / clear all marks | planned | `JARAK-FR-071` | 94 | T | — |
-| MARK-03 | Copy marked text | planned | `JARAK-FR-071` | 94 | T | — |
-| MARK-04 | Style all occurrences of the token (five styles) | planned | `JARAK-FR-071` | 94 | T | — |
-| MARK-05 | Style one token | planned | `JARAK-FR-071` | 94 | T | — |
-| MARK-06 | Clear a style / all styles | planned | `JARAK-FR-071` | 94 | T | — |
-| MARK-07 | Jump up / down to the next styled occurrence | planned | `JARAK-FR-071` | 94 | T | — |
-| MARK-08 | Copy styled text | planned | `JARAK-FR-071` | 94 | T | — |
+| MARK-01 | Mark All with the Mark dialog (optionally bookmark the lines) | supported | `JARAK-FR-071` | 94 | T | Step 94: the Mark page's Mark All (Alt+M) with "Bookmark the lines" (dots in the gutter); the bookmark commands are Step 101 (`mark_all_bookmarks_lines_clears_and_copies_marks`, UI audit `mark`, e2e step94, real desktop) |
+| MARK-02 | Purge marks before each search / clear all marks | supported | `JARAK-FR-071` | 94 | T | Step 94: "Clear marks first" and Clear marks; marks move with edits and undo (`mark_all_bookmarks_lines_clears_and_copies_marks`) |
+| MARK-03 | Copy marked text | supported | `JARAK-FR-071` | 94 | T | Step 94: Copy marked joins the marked texts with the document's line ending (`mark_all_bookmarks_lines_clears_and_copies_marks`) |
+| MARK-04 | Style all occurrences of the token (five styles) | supported | `JARAK-FR-071` | 94 | T | Step 94: palette *Style all occurrences of the token: style 1…5* (`token_styles_jump_copy_and_clear`, UI audit `mark`) |
+| MARK-05 | Style one token | supported | `JARAK-FR-071` | 94 | T | Step 94: *Style one token: style 1…5* (`token_styles_jump_copy_and_clear`) |
+| MARK-06 | Clear a style / all styles | supported | `JARAK-FR-071` | 94 | T | Step 94: *Clear style 1…5*, *Clear all styles* (`token_styles_jump_copy_and_clear`) |
+| MARK-07 | Jump up / down to the next styled occurrence | supported | `JARAK-FR-071` | 94 | T | Step 94: *Jump to the next / previous styled text*, wrapping (`token_styles_jump_copy_and_clear`) |
+| MARK-08 | Copy styled text | supported | `JARAK-FR-071` | 94 | T | Step 94: *Copy the styled text* (`token_styles_jump_copy_and_clear`) |
 | MARK-09 | Toggle bookmark (Ctrl+F2) | planned | `JARAK-FR-100` | 101 | T | — |
 | MARK-10 | Next / previous bookmark (F2, Shift+F2) | planned | `JARAK-FR-100` | 101 | T | — |
 | MARK-11 | Clear all bookmarks | planned | `JARAK-FR-100` | 101 | T | — |

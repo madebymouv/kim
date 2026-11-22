@@ -34,5 +34,7 @@
   "workspace": "C:\\Users\\me\\notes",
   "recent": [
     "C:\\Users\\me\\notes\\old.md"
-  ]
+  ],
+  "find_history": ["TODO", "\\bfn\\b"],
+  "replace_history": ["DONE"]
 }

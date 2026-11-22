@@ -12,7 +12,9 @@
     "active": { "type": "integer", "minimum": 0 },
     "second": { "$ref": "#/$defs/second" },
     "workspace": { "type": "string", "minLength": 1 },
-    "recent": { "type": "array", "items": { "type": "string", "minLength": 1 }, "maxItems": 20 }
+    "recent": { "type": "array", "items": { "type": "string", "minLength": 1 }, "maxItems": 20 },
+    "find_history": { "type": "array", "items": { "type": "string", "minLength": 1 }, "maxItems": 20 },
+    "replace_history": { "type": "array", "items": { "type": "string" }, "maxItems": 20 }
   },
   "additionalProperties": false,
   "$defs": {

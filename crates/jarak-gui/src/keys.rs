@@ -44,6 +44,20 @@ pub enum Action {
     MoveTabRight,
     /// Ctrl+Shift+T: the last closed file again.
     ReopenClosed,
+    /// Step 94: Ctrl+F / Ctrl+H, the find panel.
+    Find,
+    Replace,
+    /// F3 / Shift+F3.
+    FindNext,
+    FindPrevious,
+    /// Ctrl+F3 / Ctrl+Shift+F3: select the word and find it.
+    SelectFindNext,
+    SelectFindPrevious,
+    /// Ctrl+Alt+F3 / Ctrl+Alt+Shift+F3: the word under the caret, the find box untouched.
+    VolatileNext,
+    VolatilePrevious,
+    /// Ctrl+Alt+I: the incremental search bar.
+    Incremental,
 }
 
 /// The action for `key` with `m` held, if any.
@@ -101,6 +115,20 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::S) => Some(A::SaveAs),
         (true, Key::P) if shift => Some(A::Palette),
         (false, Key::F8) => Some(A::FocusOther),
+        (false, Key::F3) => Some(if shift { A::FindPrevious } else { A::FindNext }),
+        (true, Key::F3) if m.alt => Some(if shift {
+            A::VolatilePrevious
+        } else {
+            A::VolatileNext
+        }),
+        (true, Key::F3) => Some(if shift {
+            A::SelectFindPrevious
+        } else {
+            A::SelectFindNext
+        }),
+        (true, Key::I) if m.alt && !shift => Some(A::Incremental),
+        (true, Key::F) if !shift && !m.alt => Some(A::Find),
+        (true, Key::H) if !shift && !m.alt => Some(A::Replace),
         (true, Key::PageUp) if shift => Some(A::MoveTabLeft),
         (true, Key::PageDown) if shift => Some(A::MoveTabRight),
         (true, Key::T) if shift => Some(A::ReopenClosed),
@@ -203,6 +231,15 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::MoveTabLeft => "Ctrl+Shift+PageUp",
         A::MoveTabRight => "Ctrl+Shift+PageDown",
         A::ReopenClosed => "Ctrl+Shift+T",
+        A::Find => "Ctrl+F",
+        A::Replace => "Ctrl+H",
+        A::FindNext => "F3",
+        A::FindPrevious => "Shift+F3",
+        A::SelectFindNext => "Ctrl+F3",
+        A::SelectFindPrevious => "Ctrl+Shift+F3",
+        A::VolatileNext => "Ctrl+Alt+F3",
+        A::VolatilePrevious => "Ctrl+Alt+Shift+F3",
+        A::Incremental => "Ctrl+Alt+I",
     })
 }
 
@@ -271,6 +308,15 @@ mod tests {
             Action::MoveTabLeft,
             Action::MoveTabRight,
             Action::ReopenClosed,
+            Action::Find,
+            Action::Replace,
+            Action::FindNext,
+            Action::FindPrevious,
+            Action::SelectFindNext,
+            Action::SelectFindPrevious,
+            Action::VolatileNext,
+            Action::VolatilePrevious,
+            Action::Incremental,
         ]);
         for a in actions {
             let label = key_label(a).expect("every action has keys");

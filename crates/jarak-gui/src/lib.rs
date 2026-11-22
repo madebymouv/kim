@@ -13,6 +13,7 @@
 
 pub mod clipboard;
 pub mod docops;
+pub mod find;
 pub mod handoff;
 pub mod images;
 pub mod keys;
@@ -79,6 +80,8 @@ pub struct Tab {
     /// Which views show it, and the other view's state of a clone.
     pub pane: views::Pane,
     pub alt: Option<Box<views::PaneState>>,
+    /// Step 94: the text the search scans, for one history state.
+    pub(crate) hay: Option<jarak_core::search::Haystack>,
     pub file: FileDocument,
     pub view: ViewState,
     pub mode: Mode,
@@ -97,6 +100,7 @@ impl Tab {
             id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             pane: views::Pane::Main,
             alt: None,
+            hay: None,
             file,
             view: ViewState::default(),
             mode: Mode::Source,
@@ -388,6 +392,17 @@ pub struct JarakApp {
     pub workspace: Option<workspace::Workspace>,
     pub side: Option<workspace::Side>,
     pub docs_dialog: Option<workspace::DocsDialog>,
+    /// Step 94: the find panel, its histories and the incremental search bar.
+    pub find: find::FindPanel,
+    pub find_history: Vec<String>,
+    pub replace_history: Vec<String>,
+    pub incremental: Option<find::Incremental>,
+    /// Where the documents were drawn last (the find panel goes at its top right).
+    central: Rect,
+    /// The theme's colours of the frame.
+    colors: Colors,
+    /// When an Alt+letter chord came (its text is dropped).
+    alt_text: Option<f64>,
 }
 
 /// The assets dialog's content.
@@ -596,11 +611,55 @@ impl JarakApp {
     /// IME switch and search marks.
     fn vim_frame(&mut self) {
         let i = self.active;
+        // Step 94: the find highlights, the styled markers and the bookmarks on screen (of
+        // every view's active document).
+        let search = self.search_marks();
+        let c = self.colors;
+        for pane in [views::PaneId::Main, views::PaneId::Second] {
+            if pane == views::PaneId::Second && self.second.is_none() {
+                continue;
+            }
+            let k = self.active_of(pane);
+            let t = &mut self.tabs[k];
+            let r = t.file.doc.text();
+            let first = t.view.top_line.min(r.len_lines().saturating_sub(1));
+            let last = (first + t.view.page_lines + 2).min(r.len_lines());
+            let (a, b) = (
+                r.line_to_char(first),
+                if last < r.len_lines() {
+                    r.line_to_char(last)
+                } else {
+                    r.len_chars()
+                },
+            );
+            t.view.styled = t
+                .file
+                .doc
+                .markers()
+                .iter()
+                .filter(|m| find::drawn(m) && m.end > a && m.start < b)
+                .take(5000)
+                .map(|m| (m.start, m.end, find::style_color(&c, m.kind)))
+                .collect();
+            let mut marks: Vec<usize> = t
+                .file
+                .doc
+                .markers()
+                .iter()
+                .filter(|m| {
+                    m.kind == jarak_core::document::BOOKMARK && m.start >= a && m.start <= b
+                })
+                .map(|m| r.char_to_line(m.start))
+                .collect();
+            marks.sort_unstable();
+            marks.dedup();
+            t.view.bookmarks = marks;
+        }
         if self.editing != Editing::Vim {
             let v = &mut self.tabs[i].view;
             v.block_caret = false;
             v.ime = true;
-            v.marks.clear();
+            v.marks = search;
             v.keep_escape = false;
             return;
         }
@@ -637,7 +696,9 @@ impl JarakApp {
         v.ime = mode.is_insert() && !prompt;
         v.overwrite = false;
         v.keep_escape = true;
-        v.marks = marks.unwrap_or_default();
+        let mut all = marks.unwrap_or_default();
+        all.extend(search);
+        v.marks = all;
     }
 
     /// Runs a palette or menu entry.
@@ -677,6 +738,14 @@ impl JarakApp {
                 self.docs_dialog = Some(workspace::DocsDialog::default());
             }
             palette::Run::RestoreSession => self.toggle_restore(),
+            palette::Run::FindCmd(k) => match k {
+                0 => self.open_find(find::Page::Mark),
+                1 => self.mark_all(),
+                2 => self.clear_marks(),
+                3 => self.copy_marked(),
+                _ => self.count_matches(),
+            },
+            palette::Run::Style(cmd) => self.style(cmd),
             palette::Run::SessionSave => self.save_session_as(),
             palette::Run::SessionLoad => self.load_session_from(),
         }
@@ -830,6 +899,38 @@ impl JarakApp {
             }
         }
         self.open_assets();
+    }
+
+    /// On Windows an Alt+letter chord also arrives as the letter's text (in the same frame, or
+    /// the next): that text is dropped before any widget sees it, so a shortcut (Alt+Z, the find
+    /// panel's mnemonics) never types its letter. Only letters and digits (what Windows turns into
+    /// text) and only within 0.1 s; AltGr (Ctrl+Alt) still types, and so do Alt+numpad codes
+    /// (their character comes with Alt's release).
+    fn drop_alt_text(&mut self, ctx: &egui::Context) {
+        ctx.input_mut(|i| {
+            let chord = i.events.iter().any(|e| {
+                matches!(e, egui::Event::Key { key, pressed: true, modifiers: m, .. }
+                if m.alt && !m.ctrl && !m.command && {
+                    let n = key.name();
+                    n.len() == 1 && n.chars().all(|c| c.is_ascii_alphanumeric())
+                })
+            });
+            if chord {
+                self.alt_text = Some(i.time);
+            }
+            if let Some(t) = self.alt_text {
+                if i.time - t > 0.1 {
+                    self.alt_text = None;
+                } else if let Some(k) = i
+                    .events
+                    .iter()
+                    .position(|e| matches!(e, egui::Event::Text(_)))
+                {
+                    i.events.remove(k);
+                    self.alt_text = None;
+                }
+            }
+        });
     }
 
     /// Alt pressed and released alone shows or hides the menu bar (UI-10).
@@ -1258,6 +1359,13 @@ impl JarakApp {
             workspace: None,
             side: None,
             docs_dialog: None,
+            find: find::FindPanel::default(),
+            find_history: Vec::new(),
+            replace_history: Vec::new(),
+            incremental: None,
+            central: Rect::NOTHING,
+            colors: Colors::of(kim_design::Theme::Dark),
+            alt_text: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1268,7 +1376,8 @@ impl JarakApp {
     /// `editor-wrap`, `question`, `preview`, `split`, `paste-image` (pastes a sample bitmap and
     /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy), `vim`,
     /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92), `tabs`, `views`,
-    /// `side`, `documents` (Step 93). Only used while `KIM_UI_INSPECT` is set.
+    /// `side`, `documents` (Step 93), `find`, `replace`, `mark`, `incremental` (Step 94). Only used
+    /// while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -1315,6 +1424,50 @@ impl JarakApp {
                 });
             }
             "menu-bar" => self.menu_bar = true,
+            // Step 94: the find panel's pages (highlight all, regular expressions), Mark All
+            // with bookmarks and two token styles, the incremental search bar.
+            "find" | "replace" | "mark" | "incremental" => {
+                self.find.find = "Markdown".into();
+                self.find.status = None;
+                match screen {
+                    "find" => {
+                        self.open_find(find::Page::Find);
+                        self.find.find = "Markdown".into();
+                        self.find_next(false);
+                    }
+                    "replace" => {
+                        self.open_find(find::Page::Replace);
+                        self.find.mode = jarak_core::search::Mode::Regex;
+                        self.find.find = r"\b(\w+)down\b".into();
+                        self.find.replace = r"$1up".into();
+                        self.count_matches();
+                    }
+                    "mark" => {
+                        self.open_find(find::Page::Mark);
+                        self.find.find = "Markdown".into();
+                        self.find.bookmark = true;
+                        self.mark_all();
+                        // Style 1 on a token used three times ("Step").
+                        let d = &mut self.tab_mut().file.doc;
+                        let a = d
+                            .text()
+                            .to_string()
+                            .find("Step")
+                            .map_or(0, |b| d.text().byte_to_char(b));
+                        d.set_selection(&jarak_core::selection::Selection::single(
+                            jarak_core::selection::Range::new(a, a),
+                        ));
+                        self.style(find::StyleCmd::All(1));
+                    }
+                    _ => {
+                        self.open_incremental();
+                        if let Some(b) = self.incremental.as_mut() {
+                            b.text = "Mark".into();
+                        }
+                        self.incremental_search_now();
+                    }
+                }
+            }
             // Step 93: three documents in tabs, two views with a clone, the side panel, the
             // Documents dialog (small files written next to the audit's copy).
             "tabs" | "views" | "side" | "documents" => {
@@ -1587,6 +1740,15 @@ impl JarakApp {
             Action::MoveTabLeft => self.move_tab(-1),
             Action::MoveTabRight => self.move_tab(1),
             Action::ReopenClosed => self.reopen_closed(),
+            Action::Find => self.open_find(find::Page::Find),
+            Action::Replace => self.open_find(find::Page::Replace),
+            Action::FindNext => self.find_next(false),
+            Action::FindPrevious => self.find_next(true),
+            Action::SelectFindNext => self.find_word(false, false),
+            Action::SelectFindPrevious => self.find_word(true, false),
+            Action::VolatileNext => self.find_word(false, true),
+            Action::VolatilePrevious => self.find_word(true, true),
+            Action::Incremental => self.open_incremental(),
             Action::Open => {
                 if let Some(p) = self.dialogs.open() {
                     self.open_target(&OpenTarget {
@@ -2133,10 +2295,13 @@ impl JarakApp {
             self.title = title;
         }
         let c = Colors::get(&ctx);
+        self.colors = c;
+        self.drop_alt_text(&ctx);
         self.alt_toggle(&ctx);
         self.vim_frame();
         self.menu_bar_ui(ui, &c);
         self.status_bar(ui, &c);
+        self.incremental_ui(ui, &c);
         self.side_ui(ui, &c);
         // The keyboard focus belongs to the focused view's text (after a move, a clone, F8).
         if self.second.is_some() {
@@ -2153,6 +2318,7 @@ impl JarakApp {
             .frame(egui::Frame::NONE.fill(c.bg_base))
             .show(ui, |ui| {
                 let rect = ui.max_rect();
+                self.central = rect;
                 self.draw_views(ui, rect, &c)
             })
             .inner;
@@ -2207,6 +2373,8 @@ impl JarakApp {
         }
         self.assets_ui(&ctx, &c);
         self.docs_dialog_ui(&ctx, &c);
+        let central = self.central;
+        self.find_ui(&ctx, &c, central);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
