@@ -983,6 +983,10 @@ opacity = 100            # 50–100 %; High Contrast is always opaque
 motion = "system"        # system (Windows' "Show animations") | reduced | full
 bold_is_bright = true    # bold ANSI 0–7 drawn in their bright colours
 minimum_contrast = 4.5   # #98 T4: text below this contrast (WCAG) is moved toward white/black; 1.0: off
+color_scheme = "kim"     # #98 T4: the terminal's colours — kim (the theme's), a bundled scheme
+                         # (Campbell, Campbell Powershell, Vintage, One Half Dark, One Half Light,
+                         # Solarized Dark, Solarized Light, Tango Dark, Tango Light) or one of
+                         # yours in schemes\*.json (Windows Terminal's format); High Contrast wins
 
 [terminal]
 default_profile = ""     # the profile Ctrl+T, + and `subak new` start ("" = the Host's shell)
@@ -1542,4 +1546,25 @@ SSH profiles (`ssh = "user@host:port"`, [ADR 0067](adr/0067-ssh-through-windows-
 appear in the New Terminal menu with the others. ssh's own questions (a new host's fingerprint, a
 password when none is saved) are answered in the pane. **Manual check (maintainer, not tested by
 the agent):** add an SSH profile, open it from `Ctrl+B N`, answer the fingerprint question.
+
+## Colour schemes (#98 T4, `PLUG-05`, `CORE-38`)
+
+`appearance.color_scheme` gives the terminal (not the tab bar or the dialogs, which keep Kim's
+theme) another set of colours: the foreground and background, the cursor, the selection and the
+sixteen ANSI colours. `kim` keeps the theme's own. Subak ships Windows Terminal's nine default
+schemes (MIT; their notice is in `THIRD-PARTY-NOTICES.txt`) and reads yours from
+`%APPDATA%\mouv\subak\schemes\*.json`:
+
+- **Format:** Windows Terminal's — `name`, `foreground`, `background`, optional `cursorColor` and
+  `selectionBackground`, and `black` … `brightWhite` as `#RRGGBB`. A file holds one scheme, a list
+  of them, or a `{"schemes": [...]}` fragment copied from a Windows Terminal `settings.json`. At
+  most 256 KiB and 200 schemes a file; colours only, nothing runs.
+- **Names** compare without case; a scheme of yours with a bundled scheme's name replaces it.
+- **Drawing:** the selection is the scheme's selection colour laid 30 % over the background (as
+  Windows Terminal draws it translucent); search matches keep Kim's colours for a dark or light
+  background; `appearance.minimum_contrast` still lifts faint text; Windows High Contrast always
+  uses the system colours.
+- **Changes** apply when the window next gets the focus (as every setting); the folder is read
+  again then. An unknown name keeps Kim's colours and says so once; `subak config set` warns too
+  and lists the names there are.
 

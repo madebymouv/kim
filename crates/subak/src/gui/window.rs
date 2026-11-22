@@ -420,6 +420,9 @@ struct App {
     prefs_read_only: bool,
     /// A one-time notice (an invalid gui.json), shown as a banner until a key is pressed.
     notice: Option<String>,
+    /// #98 T4 (`PLUG-05`): the colour scheme `appearance.color_scheme` names (`None`: the
+    /// theme's own terminal colours).
+    scheme: Option<crate::schemes::Scheme>,
     /// The pane's view (live, or its last screen).
     pane: TermView,
     /// The state screen's view.
@@ -889,11 +892,16 @@ impl App {
     }
 
     fn theme(&self) -> Theme {
-        match self.theme_name() {
-            "high-contrast" => {
-                let (w, t, h) = system_theme_colors();
-                Theme::high_contrast(w, t, h)
-            }
+        let name = self.theme_name();
+        if name == "high-contrast" {
+            let (w, t, h) = system_theme_colors();
+            return Theme::high_contrast(w, t, h);
+        }
+        // #98 T4 (`PLUG-05`): a colour scheme replaces the theme's terminal colours.
+        if let Some(s) = &self.scheme {
+            return s.theme();
+        }
+        match name {
             "kim-light" => Theme::kim_light(),
             _ => Theme::kim_dark(),
         }
@@ -2616,6 +2624,10 @@ impl App {
         self.cfg = cfg;
         self.cfg_unsaved = false;
         self.apply_settings(new);
+        if forced {
+            // A scheme file may have changed (the folder is read only when asked).
+            self.load_scheme();
+        }
         self.event(
             &json!({"event": "settings_reloaded", "state": self.cfg.state().as_str(),
             "problem": notice}),
@@ -2697,6 +2709,7 @@ impl App {
             self.pane
                 .set_word_delimiters(&self.settings.terminal.word_separators);
         }
+        let scheme_changed = a.color_scheme != b.color_scheme;
         if a.theme != b.theme || a.opacity != b.opacity {
             self.set_theme();
         }
@@ -2705,6 +2718,23 @@ impl App {
             self.ime = None;
             self.relayout();
         }
+        if scheme_changed {
+            self.load_scheme();
+        }
+    }
+
+    /// #98 T4 (`PLUG-05`): finds the colour scheme the settings name again (the bundled ones and
+    /// the schemes folder) and draws with it; an unknown name keeps Kim's colours, said once.
+    fn load_scheme(&mut self) {
+        let name = self.settings.appearance.color_scheme.clone();
+        self.scheme = crate::schemes::resolve(&name);
+        if self.scheme.is_none() && !name.eq_ignore_ascii_case(crate::schemes::KIM) {
+            self.notice = Some(format!(
+                "The colour scheme `{name}` is neither bundled nor in the schemes folder; Kim's colours are used"
+            ));
+            self.toast = None;
+        }
+        self.set_theme();
     }
 
     /// The window's opacity from the setting (High Contrast is always opaque).
@@ -7884,6 +7914,7 @@ pub fn run(o: Options) -> ExitCode {
         prefs_dir,
         prefs_read_only: loaded.read_only,
         notice: loaded.problem,
+        scheme: crate::schemes::resolve(&settings.appearance.color_scheme),
         pane: TermView::new(layout::DEFAULT_GRID.0, layout::DEFAULT_GRID.1, 0),
         state_view: TermView::new(1, 1, 0),
         renderer: Renderer::builtin(Theme::kim_dark(), RenderOptions::default()),

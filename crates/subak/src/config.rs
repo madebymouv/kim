@@ -257,6 +257,9 @@ pub struct Appearance {
     pub minimum_contrast: f32,
     /// #98 T1 (`CORE-48`): compact density (a lower tab bar).
     pub compact: bool,
+    /// #98 T4 (`PLUG-05`, `CORE-38`): the terminal's colour scheme by name (`kim`: the theme's
+    /// own colours); see [`crate::schemes`].
+    pub color_scheme: String,
 }
 
 /// `[terminal]`.
@@ -518,6 +521,7 @@ impl Default for Settings {
                 bold_is_bright: true,
                 minimum_contrast: MIN_CONTRAST.2,
                 compact: false,
+                color_scheme: crate::schemes::KIM.to_string(),
             },
             terminal: TerminalPrefs {
                 default_profile: String::new(),
@@ -658,6 +662,7 @@ impl Settings {
             ("appearance", "motion") => json!(a.motion.as_str()),
             ("appearance", "bold_is_bright") => json!(a.bold_is_bright),
             ("appearance", "minimum_contrast") => rounded(a.minimum_contrast),
+            ("appearance", "color_scheme") => json!(a.color_scheme),
             ("terminal", "default_profile") => json!(t.default_profile),
             ("terminal", "copy_on_select") => json!(t.copy_on_select),
             ("terminal", "smart_ctrl_c") => json!(t.smart_ctrl_c),
@@ -992,6 +997,12 @@ pub const KEYS: &[Key] = &[
     },
     Key {
         section: "appearance",
+        name: "color_scheme",
+        takes: "kim (the theme's colours) or a colour scheme's name (Campbell, One Half Dark, Solarized Light, … or one in the schemes folder)",
+        kind: Kind::Text,
+    },
+    Key {
+        section: "appearance",
         name: "density",
         takes: "regular or compact",
         kind: Kind::Text,
@@ -1066,6 +1077,11 @@ fn apply(s: &mut Settings, k: &Key, v: &toml::Value) -> Result<(), ()> {
         ("appearance", "bold_is_bright") => a.bold_is_bright = flag()?,
         ("appearance", "minimum_contrast") => {
             a.minimum_contrast = num(f64::from(MIN_CONTRAST.0), f64::from(MIN_CONTRAST.1))? as f32;
+        }
+        ("appearance", "color_scheme") => {
+            a.color_scheme = clean_text(text()?.trim(), 64)
+                .filter(|n| !n.is_empty())
+                .ok_or(())?;
         }
         ("terminal", "default_profile") => {
             t.default_profile = clean_text(text()?.trim(), 64).ok_or(())?;

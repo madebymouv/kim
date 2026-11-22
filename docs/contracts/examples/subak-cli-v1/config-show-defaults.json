@@ -219,6 +219,13 @@
         "value": 4.5
       },
       {
+        "default": "kim",
+        "key": "appearance.color_scheme",
+        "source": "default",
+        "takes": "kim (the theme's colours) or a colour scheme's name (Campbell, One Half Dark, Solarized Light, … or one in the schemes folder)",
+        "value": "kim"
+      },
+      {
         "default": "regular",
         "key": "appearance.density",
         "source": "default",

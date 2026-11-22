@@ -3963,3 +3963,54 @@ fn the_tab_bar_follows_the_ui_zoom_but_never_outgrows_the_text() {
         "EVIDENCE bar/tab-text/terminal-text: 100 % {bar1}/{tab1}/{font1}, 150 % {bar15}/{tab15}/{font15}, 175 % with 13 px text {bar_small}/{tab_small}/{font_small}"
     );
 }
+
+/// #98 T4 (`PLUG-05`, `CORE-38`): `appearance.color_scheme` draws the terminal with a bundled
+/// scheme (Windows Terminal's Campbell), then with the user's own scheme file from the schemes
+/// folder (read again on focus), and an unknown name keeps Kim's colours with a notice.
+#[test]
+fn colour_schemes_from_the_bundle_and_the_folder_draw_the_terminal() {
+    let host = Host::start("gui-schemes", &["--no-shell"]);
+    let ep = host.ep.clone();
+    new_standin(&ep, "one");
+    let appdata = sandbox("schemes");
+    let cfg = appdata.join("mouv").join("subak");
+    std::fs::create_dir_all(cfg.join("schemes")).unwrap();
+    let with = |name: &str| {
+        format!(
+            "config_version = 1\n\n[appearance]\ntheme = \"kim-dark\"\ncolor_scheme = \"{name}\"\n"
+        )
+    };
+    std::fs::write(cfg.join("config.toml"), with("Campbell")).unwrap();
+    let gui = Gui::start(&ep, Some("one"), &appdata);
+    gui.state("attached");
+    let d = gui.dump();
+    assert_eq!(d["theme"], "Campbell", "{}", d["theme"]);
+    let reread = || {
+        gui.cmd(&json!({"cmd": "focus", "on": false}));
+        gui.cmd(&json!({"cmd": "focus", "on": true}));
+    };
+    let mine = r##"{"name": "Mine", "foreground": "#101010", "background": "#F0E8D0",
+        "black": "#000000", "red": "#AA0000", "green": "#00AA00", "yellow": "#AA5500",
+        "blue": "#0000AA", "purple": "#AA00AA", "cyan": "#00AAAA", "white": "#AAAAAA",
+        "brightBlack": "#555555", "brightRed": "#FF5555", "brightGreen": "#55FF55",
+        "brightYellow": "#FFFF55", "brightBlue": "#5555FF", "brightPurple": "#FF55FF",
+        "brightCyan": "#55FFFF", "brightWhite": "#FFFFFF"}"##;
+    std::fs::write(cfg.join("schemes").join("mine.json"), mine).unwrap();
+    std::fs::write(cfg.join("config.toml"), with("mine")).unwrap();
+    reread();
+    let d = gui.until("the user's scheme", |d| d["theme"] == "Mine");
+    assert_eq!(d["theme"], "Mine");
+    std::fs::write(cfg.join("config.toml"), with("No Such Scheme")).unwrap();
+    reread();
+    let d = gui.until("Kim's colours again", |d| d["theme"] == "kim-dark");
+    assert!(
+        d["banner"]
+            .as_str()
+            .is_some_and(|b| b.contains("No Such Scheme")),
+        "{}",
+        d["banner"]
+    );
+    println!(
+        "EVIDENCE schemes: Campbell (bundled), Mine (schemes folder), an unknown name → kim-dark with a notice"
+    );
+}

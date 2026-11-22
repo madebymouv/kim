@@ -35,6 +35,7 @@ mod cli;
 /// `config.toml`: the window's settings and the basic shell profiles (Step 20, ADR 0051).
 /// Portable; read by the window and the `subak config`/`profile` commands, never by the Host.
 mod config;
+// #98 T4 (`PLUG-05`, `CORE-38`): colour scheme files and the bundled schemes.
 /// `subak config …` and `subak profile …` (Step 20): portable, never contacts a Host.
 mod config_cmd;
 /// Subak's keyboard shortcuts (hotkey contract; `subak hotkeys`, the window's dispatch).
@@ -52,6 +53,7 @@ mod proto;
 mod pty;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod redact;
+pub mod schemes;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod session;
 // Step 29: the durable state store (`state.json`).

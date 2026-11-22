@@ -125,8 +125,9 @@ These rules come directly from the maintainer and are mandatory.
   agents or subagents, no separate repositories per tool. Take the earliest unfinished Step (by the
   number in the issue title) whose dependencies are met; record a blocked Step's exact blocker and
   never close it. Temporary maintainer priority (2026-11-22,
-  [ADR 0102](docs/adr/0102-jarak-fourth-kim-tool.md)): the Jarak Steps 84–111 (#103–#130) come
-  first; older unfinished issues stay open and unchanged until the Jarak roadmap is done.
+  [ADR 0102](docs/adr/0102-jarak-fourth-kim-tool.md)): the Jarak Steps 84–111 (#103–#130) came
+  first and were all closed on 2026-11-23; the older unfinished issues are worked on again in this
+  order.
 - Commit messages: imperative summary, then a body that references the issue
   (`Refs #N`) and the requirement IDs touched.
 - **No pull requests** (maintainer decision, 2026-11-04).

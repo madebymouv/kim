@@ -976,7 +976,7 @@
     "schema_version": 1,
     "summary": "Pre-alpha: per-user Host with IPC v1, named Terminals (new, ls, attach, rename, kill, capture…), windows and panes, subak-gui tabs, hotkeys, settings and profiles; no split layouts or recovery yet",
     "tool": "subak",
-    "version": "0.0.6"
+    "version": "0.0.7"
   },
   "ok": true,
   "schema_version": 1,

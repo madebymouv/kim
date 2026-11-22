@@ -28,6 +28,9 @@ struct Tool {
     /// Step 111: documents from `docs/` the package carries under `docs/` (Jarak's Help opens
     /// the guide from there).
     docs: &'static [&'static str],
+    /// #98 T4: notices of bundled data that is not a crate (files of this repository), added to
+    /// `THIRD-PARTY-NOTICES.txt` (Subak's colour schemes from Windows Terminal, MIT).
+    data_notices: &'static [&'static str],
 }
 
 /// `(tool id, crates its package builds)` for every packaged tool, so `local-mirror` builds
@@ -44,6 +47,7 @@ const TOOLS: [Tool; 5] = [
         entrypoint: "kim.exe",
         summary: "Kim: the explicit catalog and installer for Kim tools (kim.exe CLI, kim-manager.exe window)",
         docs: &[],
+        data_notices: &[],
     },
     Tool {
         id: "subak",
@@ -52,6 +56,7 @@ const TOOLS: [Tool; 5] = [
         entrypoint: "subak.exe",
         summary: "Subak: a persistent Windows terminal with a detached Host (subak.exe CLI and Host, subak-gui.exe window)",
         docs: &[],
+        data_notices: &["crates/subak/src/schemes/NOTICE.txt"],
     },
     // Step 62: Noeul is packaged like the others so Kim can install it (one program: CLI,
     // resident instance, MCP adapter and interop provider).
@@ -62,6 +67,7 @@ const TOOLS: [Tool; 5] = [
         entrypoint: "noeul.exe",
         summary: "Noeul: screenshots and floating pins (noeul.exe: the resident app, its CLI, the MCP adapter and the Kim interop provider; noeul-settings.exe: the settings window, ADR 0093)",
         docs: &[],
+        data_notices: &[],
     },
     // Step 81: Ddalgak, so Kim can install it (the headless CLI with its MCP adapter and interop
     // provider, the tray app that owns the engine, and the rule editor).
@@ -72,6 +78,7 @@ const TOOLS: [Tool; 5] = [
         entrypoint: "ddalgak.exe",
         summary: "Ddalgak: key remapping and automation (ddalgak.exe: the CLI, MCP adapter and Kim interop provider; ddalgak-gui.exe: the tray app that owns the engine; ddalgak-editor.exe: the rule editor)",
         docs: &[],
+        data_notices: &[],
     },
     // Step 85 (ADR 0102): Jarak, the text editor (the headless CLI and the window).
     Tool {
@@ -87,6 +94,7 @@ const TOOLS: [Tool; 5] = [
             "JARAK_CLI.md",
             "JARAK_VIM.md",
         ],
+        data_notices: &[],
     },
 ];
 
@@ -246,10 +254,13 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
             std::fs::read(root.join("docs").join(d)).map_err(|e| format!("docs/{d}: {e}"))?,
         ));
     }
-    files.push((
-        "THIRD-PARTY-NOTICES.txt".into(),
-        notices(root, tool.crates)?.into_bytes(),
-    ));
+    let mut text = notices(root, tool.crates)?;
+    for n in tool.data_notices {
+        let body = std::fs::read_to_string(root.join(n)).map_err(|e| format!("{n}: {e}"))?;
+        text.push('\n');
+        text.push_str(&body);
+    }
+    files.push(("THIRD-PARTY-NOTICES.txt".into(), text.into_bytes()));
     let commit = out(Command::new("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(root))?

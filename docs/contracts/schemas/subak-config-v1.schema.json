@@ -26,6 +26,7 @@
         "motion": { "description": "system: follow Windows' Show animations setting; reduced: no motion; full: short transitions always.", "enum": ["system", "reduced", "full"] },
         "minimum_contrast": { "description": "#98 T4: the least contrast of text against its background (WCAG ratio); text below it is moved toward white or black. 1.0 turns it off; default 4.5 (KIM-NFR-012).", "type": "number", "minimum": 1, "maximum": 21 },
         "density": { "description": "#98 T1: regular (default) or compact (a lower tab bar).", "enum": ["regular", "compact"] },
+        "color_scheme": { "description": "#98 T4: the terminal's colour scheme by name: kim (default, the theme's own colours), one of the bundled Windows Terminal schemes (Campbell, Campbell Powershell, Vintage, One Half Dark, One Half Light, Solarized Dark, Solarized Light, Tango Dark, Tango Light) or one in the schemes folder (%APPDATA%\\mouv\\subak\\schemes\\*.json, Windows Terminal's scheme format). High Contrast always wins.", "type": "string", "minLength": 1, "maxLength": 64 },
         "bold_is_bright": { "description": "Bold text in ANSI colours 0-7 uses the bright variants (default true).", "type": "boolean" }
       },
       "additionalProperties": true

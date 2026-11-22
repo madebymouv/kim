@@ -351,7 +351,30 @@ fn set(dir: &Path, a: &Args) -> Result<Outcome, CliError> {
     };
     let l = config::load(dir);
     let edited = config::set(&l, &[(key, value)]).map_err(|e| edit_error(&l, &e))?;
-    finish(&l, &edited, a, None, "set")
+    let mut out = finish(&l, &edited, a, None, "set")?;
+    // #98 T4 (`PLUG-05`): a colour scheme that is neither bundled nor in the schemes folder is
+    // kept (the file may come later) but said, with the names there are.
+    if key.trim() == "appearance.color_scheme"
+        && !value.trim().eq_ignore_ascii_case(crate::schemes::KIM)
+        && crate::schemes::resolve(value).is_none()
+    {
+        let user = crate::schemes::user_dir()
+            .map(|d| crate::schemes::read_dir(&d).0)
+            .unwrap_or_default();
+        let names: Vec<String> = crate::schemes::all(user)
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        out.warnings.push(format!(
+            "no colour scheme `{}` is bundled or in {}; the window keeps Kim's colours until one is. Schemes: kim, {}",
+            value.trim(),
+            crate::schemes::user_dir()
+                .map(|d| d.display().to_string())
+                .unwrap_or_else(|| "the schemes folder".into()),
+            names.join(", ")
+        ));
+    }
+    Ok(out)
 }
 
 /// `subak config reset (<key>|<section>|--all)`: the keys go back to their defaults (their
