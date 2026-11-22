@@ -317,3 +317,123 @@ fn a_highlighted_keystroke_frame_in_a_10_mb_rust_file() {
     assert!(p(0.95) < 16.0, "p95 {:.2} ms", p(0.95));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Step 99 (#118): folding and the Function List in a 10 MB Rust file — the structure is found on
+/// a worker thread after a pause in typing, so keystroke frames stay within budget; then every
+/// fold folded (Alt+0) and moves through the folded text. `cargo test --release -p jarak-gui
+/// --test perf folded -- --ignored --nocapture`
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn folded_structure_of_a_10_mb_rust_file() {
+    let unit = "/* block\n   comment */\nfn main() {\n    let s = \"한글 string\"; // line comment\n    if s.is_empty() {\n        return;\n    }\n}\n";
+    let text = unit.repeat(10 * 1024 * 1024 / unit.len() + 1);
+    let dir = std::env::temp_dir().join(format!("jarak-perf-fold-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ten.rs");
+    std::fs::write(&file, &text).unwrap();
+    let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let app = JarakApp::new(Lang::En, &[format!("{}:1000", file.display())], incoming);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.state_mut().function_list = true;
+    h.run();
+    // The first structure: wait for the worker.
+    let t = Instant::now();
+    while h.state().tab().outline.folds.is_empty() {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        h.step();
+        assert!(t.elapsed().as_secs() < 30, "the structure arrives");
+    }
+    let first_ms = t.elapsed().as_secs_f64() * 1000.0;
+    let folds = h.state().tab().outline.folds.len();
+    let symbols = h.state().tab().outline.symbols.len();
+    // Typing: every keystroke frame, while the structure waits for a pause.
+    let mut times = Vec::new();
+    for _ in 0..300 {
+        let t = Instant::now();
+        h.event(egui::Event::Text("x".into()));
+        h.step();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(f64::total_cmp);
+    let p = |v: &[f64], q: f64| v[((v.len() as f64 - 1.0) * q) as usize];
+    // After the pause, the structure is found again.
+    let t = Instant::now();
+    let edited = h.state().tab().file.doc.edit_gen();
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        h.step();
+        let o = &h.state().tab().outline;
+        if o.fresh(edited, "Rust") {
+            break;
+        }
+        assert!(t.elapsed().as_secs() < 30, "found again");
+    }
+    let again_ms = t.elapsed().as_secs_f64() * 1000.0;
+    // Fold everything, then move through the folded text.
+    let t = Instant::now();
+    h.event(egui::Event::Key {
+        key: egui::Key::Num0,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::ALT,
+    });
+    h.step();
+    let fold_all_ms = t.elapsed().as_secs_f64() * 1000.0;
+    let mut moves = Vec::new();
+    for i in 0..200 {
+        let t = Instant::now();
+        h.event(egui::Event::Key {
+            key: if i % 20 < 15 {
+                egui::Key::ArrowDown
+            } else {
+                egui::Key::PageDown
+            },
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+        moves.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    moves.sort_by(f64::total_cmp);
+    // Typing with every fold folded (the folded folds follow their markers until the structure
+    // is found again).
+    let mut typing = Vec::new();
+    for _ in 0..100 {
+        let t = Instant::now();
+        h.event(egui::Event::Text("y".into()));
+        h.step();
+        typing.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    typing.sort_by(f64::total_cmp);
+    println!(
+        "folds (10 MB Rust): {folds} folds, {symbols} symbols; first structure {first_ms:.0} ms; keystroke p50 {:.2} ms p95 {:.2} ms max {:.2} ms; found again {again_ms:.0} ms after the last key; fold all {fold_all_ms:.1} ms; folded moves p95 {:.2} ms max {:.2} ms; typing with all folded p50 {:.2} ms p95 {:.2} ms",
+        p(&times, 0.5),
+        p(&times, 0.95),
+        p(&times, 1.0),
+        p(&moves, 0.95),
+        p(&moves, 1.0),
+        p(&typing, 0.5),
+        p(&typing, 0.95),
+    );
+    assert!(
+        p(&times, 0.95) < 16.0,
+        "keystroke p95 {:.2} ms",
+        p(&times, 0.95)
+    );
+    assert!(
+        p(&moves, 0.95) < 16.0,
+        "folded moves p95 {:.2} ms",
+        p(&moves, 0.95)
+    );
+    assert!(
+        p(&typing, 0.95) < 16.0,
+        "typing with all folded p95 {:.2} ms",
+        p(&typing, 0.95)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

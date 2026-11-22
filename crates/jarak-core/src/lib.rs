@@ -28,6 +28,10 @@ pub mod paths;
 pub mod search;
 pub mod selection;
 pub mod session;
+pub mod structure;
+
+/// The text type of a document (Step 99: the window hands a copy to a worker thread).
+pub use ropey::Rope;
 pub mod syntax;
 pub mod target;
 pub mod text;

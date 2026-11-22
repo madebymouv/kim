@@ -54,6 +54,9 @@ pub struct Marker {
 
 /// The marker kind of a bookmarked line.
 pub const BOOKMARK: u8 = 200;
+/// Step 99: a folded fold, an empty range at the start of its first line (it moves with edits
+/// like a bookmark).
+pub const FOLDED: u8 = 201;
 
 /// The text, the carets and the undo history of one open document.
 #[derive(Debug, Clone)]
@@ -83,6 +86,10 @@ pub struct Document {
     /// comment's open and close.
     pub comment_line: Option<String>,
     pub comment_block: Option<(String, String)>,
+    /// Step 99: the lines folded away (first, last), sorted and apart — vertical moves skip them
+    /// (the window sets them from its folds).
+    pub hidden: Vec<(usize, usize)>,
+    fold_gen: u64,
     /// Columns per tab stop (display and vertical moves).
     pub tab_width: usize,
     /// What Enter inserts.
@@ -120,6 +127,8 @@ impl Document {
             edit_log: std::collections::VecDeque::new(),
             comment_line: None,
             comment_block: None,
+            hidden: Vec::new(),
+            fold_gen: 0,
             tab_width: 4,
             eol,
         }
@@ -256,7 +265,7 @@ impl Document {
             m.end = e.max(s);
         }
         self.markers
-            .retain(|m| m.kind == BOOKMARK || m.end > m.start);
+            .retain(|m| m.kind >= BOOKMARK || m.end > m.start);
     }
 
     /// The markers (marks, styled tokens, bookmarks), in the order they were added.
@@ -290,6 +299,71 @@ impl Document {
         v.sort_unstable();
         v.dedup();
         v
+    }
+
+    /// Step 99: the first lines of the folded folds.
+    pub fn folded_lines(&self) -> Vec<usize> {
+        let n = self.len_chars();
+        let mut v: Vec<usize> = self
+            .markers
+            .iter()
+            .filter(|m| m.kind == FOLDED)
+            .map(|m| self.text.char_to_line(m.start.min(n)))
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// Step 99: folds (`on`) or unfolds the fold starting on `line`.
+    pub fn set_folded(&mut self, line: usize, on: bool) {
+        self.set_folded_many(&[line], on);
+    }
+
+    /// Step 99: folds or unfolds the folds starting on `lines` (sorted), in one pass over the
+    /// markers.
+    pub fn set_folded_many(&mut self, lines: &[usize], on: bool) {
+        let last = self.text.len_lines().saturating_sub(1);
+        let text = &self.text;
+        self.markers.retain(|m| {
+            m.kind != FOLDED
+                || lines
+                    .binary_search(&text.char_to_line(m.start).min(last))
+                    .is_err()
+        });
+        if on {
+            for &l in lines {
+                let p = self.text.line_to_char(l.min(last));
+                self.markers.push(Marker {
+                    start: p,
+                    end: p,
+                    kind: FOLDED,
+                });
+            }
+        }
+        self.fold_gen += 1;
+    }
+
+    /// Step 99: keeps the folded markers whose line `keep` accepts (folds that still exist).
+    pub fn retain_folded(&mut self, keep: impl Fn(usize) -> bool) {
+        let text = &self.text;
+        let before = self.markers.len();
+        self.markers
+            .retain(|m| m.kind != FOLDED || keep(text.char_to_line(m.start)));
+        if self.markers.len() != before {
+            self.fold_gen += 1;
+        }
+    }
+
+    /// Step 99: changes with every fold or unfold (the window lays out its folds again).
+    pub fn fold_gen(&self) -> u64 {
+        self.fold_gen
+    }
+
+    /// Step 99: the folded-away range holding `line`, if any.
+    pub fn hidden_range(&self, line: usize) -> Option<(usize, usize)> {
+        let k = self.hidden.partition_point(|(_, e)| *e < line);
+        self.hidden.get(k).copied().filter(|(s, _)| *s <= line)
     }
 
     /// Bookmarks `lines` (once each).
@@ -792,6 +866,7 @@ impl Document {
         self.block = None;
         self.occ_word = false;
         let tab = self.tab_width;
+        let hidden = self.hidden.clone();
         let text = &self.text;
         let last = text.len_lines().saturating_sub(1);
         self.sel = self.sel.map(|r| {
@@ -800,7 +875,12 @@ impl Document {
             let goal = r
                 .goal
                 .unwrap_or_else(|| text::column_of(text.line(line), r.head - start, tab));
-            let target = (line as isize + lines).clamp(0, last as isize) as usize;
+            let mut target = (line as isize + lines).clamp(0, last as isize) as usize;
+            // Step 99: past folded lines in the direction of the move (a fold to the end of the
+            // text stops the move on its first line).
+            if let Some((s, e)) = hidden_range(&hidden, target) {
+                target = if lines > 0 && e < last { e + 1 } else { s - 1 };
+            }
             if target == line {
                 return r;
             }
@@ -925,3 +1005,9 @@ pub mod multi;
 
 #[cfg(test)]
 mod tests;
+
+/// Step 99: the range of `hidden` (sorted, apart, never starting at line 0) holding `line`.
+fn hidden_range(hidden: &[(usize, usize)], line: usize) -> Option<(usize, usize)> {
+    let k = hidden.partition_point(|(_, e)| *e < line);
+    hidden.get(k).copied().filter(|(s, _)| *s <= line && *s > 0)
+}

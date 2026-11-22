@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported, `LANG-08` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -208,8 +208,8 @@ palette, the headless CLI) follow in §2.
 | SRCH-15 | Incremental search bar (Ctrl+Alt+I) | supported | `JARAK-FR-072` | 94 | T | Step 94: Ctrl+Alt+I, the first match from where it started as you type, Enter / Shift+Enter, the count, Esc (`incremental_search_highlight_all_and_smart_highlighting`, UI audit `incremental`, real desktop) |
 | SRCH-16 | Search history (find/replace combo history) | supported | `JARAK-FR-072` | 94 | T | Step 94: 20 entries each for find and replace, Up / Down in the find box, kept in the session (`the_find_history_walks_with_the_arrows_and_lives_in_the_session`, e2e step94, schema `jarak-session-v1`) |
 | SRCH-17 | Find dialog transparency on losing focus | planned | `JARAK-FR-070` | 110 | M | — |
-| SRCH-18 | Go to line / offset (Ctrl+G) | planned | `JARAK-FR-103` | 99 | T | — |
-| SRCH-19 | Go to matching brace / select all between matching braces | planned | `JARAK-FR-096` | 99 | T | — |
+| SRCH-18 | Go to line / offset (Ctrl+G) | supported | `JARAK-FR-103` | 99 | T | Step 99: Ctrl+G, a line or a character offset, a wrong entry kept with a message; a fold around the target opens (`go_to_line_and_matching_brackets_open_folds`, UI audit `goto`) |
+| SRCH-19 | Go to matching brace / select all between matching braces | supported | `JARAK-FR-096` | 99 | T | Step 99: Ctrl+B both ways and Ctrl+Alt+B, skipping brackets in strings and comments (`structure::tests`::brackets_match_both_ways_skipping_strings, `go_to_line_and_matching_brackets_open_folds`) |
 | SRCH-20 | Find characters in range (e.g. non-ASCII) | planned | `JARAK-FR-070` | 110 | T | — |
 
 ### MARK — Search → Mark, style tokens and bookmarks (sources S, U)
@@ -281,7 +281,7 @@ palette, the headless CLI) follow in §2.
 | VIEWS-08 | Tab colouring | planned | `JARAK-FR-060` | 110 | T | — |
 | VIEWS-09 | Document Map panel | planned | `JARAK-FR-102` | 101 | T, M | — |
 | VIEWS-10 | Document List panel | supported | `JARAK-FR-064` | 93 | T | Step 93: the side panel's Documents page (window test, UI audit) |
-| VIEWS-11 | Function List panel | planned | `JARAK-FR-093` | 99 | T, M | — |
+| VIEWS-11 | Function List panel | supported | `JARAK-FR-093` | 99 | T, M | Step 99: symbols per language and Markdown/HTML headings, filter, jump, next/previous symbol, rows in view only (`structure::tests`::symbols_of_each_language_family, `the_function_list_lists_filters_and_jumps_to_symbols`, headless audit, UI audit `functions`; real desktop pending) |
 | VIEWS-12 | Folder as Workspace panel | supported | `JARAK-FR-063` | 93 | T, M | Step 93: the side panel's Folder page: lazy tree, filter, Refresh (unit + window test, UI audit) |
 | VIEWS-13 | Project panels (1–3, .workspace files) | not intended | — | 110 | D | — |
 
@@ -289,12 +289,12 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| FOLD-01 | Fold all / unfold all | planned | `JARAK-FR-092` | 99 | T | — |
-| FOLD-02 | Collapse / uncollapse current level | planned | `JARAK-FR-092` | 99 | T | — |
-| FOLD-03 | Collapse / uncollapse level 1–8 | planned | `JARAK-FR-092` | 99 | T | — |
-| FOLD-04 | Fold margin with mouse folding | planned | `JARAK-FR-092` | 99 | M | — |
-| FOLD-05 | Folding by syntax for built-in languages | planned | `JARAK-FR-092` | 99 | T | — |
-| FOLD-06 | Folding of user-defined languages by markers | planned | `JARAK-FR-092` | 99 | T | — |
+| FOLD-01 | Fold all / unfold all | supported | `JARAK-FR-092` | 99 | T | Step 99: Alt+0 / Alt+Shift+0 (`folding_by_keys_and_the_margin_hides_lines_that_moves_skip`); 10 MB: fold all 74 ms, typing with all folded p95 9.23 ms |
+| FOLD-02 | Collapse / uncollapse current level | supported | `JARAK-FR-092` | 99 | T | Step 99: Ctrl+Alt+F / Ctrl+Alt+Shift+F, the innermost fold around the caret (`folding_by_keys_and_the_margin_hides_lines_that_moves_skip`) |
+| FOLD-03 | Collapse / uncollapse level 1–8 | supported | `JARAK-FR-092` | 99 | T | Step 99: Alt+1…8 / Alt+Shift+1…8 by fold level (`folding_by_keys_and_the_margin_hides_lines_that_moves_skip`) |
+| FOLD-04 | Fold margin with mouse folding | supported | `JARAK-FR-092` | 99 | M | Step 99: triangles between the line numbers and the text, a click folds/unfolds and leaves the caret (`folding_by_keys_and_the_margin_hides_lines_that_moves_skip`, headless audit; real desktop pending) |
+| FOLD-05 | Folding by syntax for built-in languages | supported | `JARAK-FR-092` | 99 | T | Step 99: brackets, indentation, sections, tags, headings and fences, block comments per language (`structure::tests`::brackets_fold_outside_strings_and_comments_with_levels, indentation_sections_markdown_and_tags_fold, `python_folds_by_indentation`) |
+| FOLD-06 | Folding of user-defined languages by markers | supported | `JARAK-FR-092` | 99 | T | Step 99: a user language's `fold` markers (`structure::tests`::indentation_sections_markdown_and_tags_fold, `syntax::tests::a_user_defined_language_from_json_highlights_and_folds`) |
 
 ### ENC — Encoding menu (sources U)
 
@@ -328,7 +328,7 @@ palette, the headless CLI) follow in §2.
 | LANG-05 | Manual language selection (Language menu) | supported | `JARAK-FR-090` | 98 | T | Step 98: the Language menu in the palette and the menu bar, the status bar names the language (`a_rust_file_is_highlighted_and_the_language_menu_changes_it`, UI audit `palette-language`) |
 | LANG-06 | Normal text (no highlighting) | supported | `JARAK-FR-090` | 98 | T | Step 98: *Language: Normal text*, and undetected files (`a_rust_file_is_highlighted_and_the_language_menu_changes_it`) |
 | LANG-07 | User Defined Language: define keywords, comments, operators, delimiters, numbers | supported | `JARAK-FR-091` | 98 | T | Step 98: JSON user languages — keywords (3 lists), comments, operators, delimiters with escapes, numbers (`syntax::tests`::a_user_defined_language_from_json_highlights_and_folds, `user_languages_load_import_from_notepad_plus_plus_and_export`) |
-| LANG-08 | User Defined Language: folding markers | partial | `JARAK-FR-091` | 98 | T | Step 98: `fold` markers in user languages and in imported UDLs, matched outside comments and strings into fold ranges (`syntax::tests`::a_user_defined_language_from_json_highlights_and_folds); folding in the window (margin, commands) is Step 99 |
+| LANG-08 | User Defined Language: folding markers | supported | `JARAK-FR-091` | 98 | T | Step 98: `fold` markers in user languages and in imported UDLs, matched outside comments and strings into fold ranges (`syntax::tests`::a_user_defined_language_from_json_highlights_and_folds); Step 99: folded in the window with the margin and the fold commands |
 | LANG-09 | Import / export of user-defined languages | supported | `JARAK-FR-091` | 98 | T | Step 98: import (Notepad++ XML → JSON, never replacing a file) and export of the current language as JSON (`syntax::tests`::a_notepad_plus_plus_udl_is_imported_and_highlights_a_sample, `user_languages_load_import_from_notepad_plus_plus_and_export`) |
 | LANG-10 | Import Notepad++ UDL XML files | supported | `JARAK-FR-091` | 98 | T | Step 98: UDL 2.x XML: name, extensions, case, comments, Keywords1–8, operators, delimiters, code folding; styles, prefixes, number and comment-folding rules are not taken (documented) (`syntax::tests`::a_notepad_plus_plus_udl_is_imported_and_highlights_a_sample) |
 | LANG-11 | Embedded languages (script and style inside HTML, PHP) | supported | `JARAK-FR-090` | 98 | T | Step 98: JavaScript in `<script>`, CSS in `<style>`, PHP blocks in PHP files, fenced code in Markdown (`syntax::tests`::html_with_script_and_style_css_xml, sql_markdown_lua_php_ruby) |

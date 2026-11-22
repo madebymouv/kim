@@ -48,6 +48,8 @@ pub enum Run {
     /// language tools (see `JarakApp::udl_tool`).
     Language(u16),
     Udl(u8),
+    /// Step 99: 0 the Function List on/off, 1 the next symbol, 2 the previous one.
+    Outline(u8),
 }
 
 /// The menu an entry belongs to.
@@ -752,6 +754,108 @@ pub fn entries() -> Vec<Entry> {
             "사용자 언어 다시 읽기",
             Run::Udl(3),
             M::Language,
+        ),
+    ]);
+    // Step 99: folding, the Function List and structure navigation.
+    v.extend([
+        act(
+            "view.fold-all",
+            "Fold all",
+            "모두 접기",
+            A::Fold(0, true),
+            M::View,
+        ),
+        act(
+            "view.unfold-all",
+            "Unfold all",
+            "모두 펼치기",
+            A::Fold(0, false),
+            M::View,
+        ),
+        act(
+            "view.fold-current",
+            "Fold the current level",
+            "현재 단계 접기",
+            A::Fold(9, true),
+            M::View,
+        ),
+        act(
+            "view.unfold-current",
+            "Unfold the current level",
+            "현재 단계 펼치기",
+            A::Fold(9, false),
+            M::View,
+        ),
+    ]);
+    const FOLD_IDS: [&str; 8] = [
+        "view.fold-level-1",
+        "view.fold-level-2",
+        "view.fold-level-3",
+        "view.fold-level-4",
+        "view.fold-level-5",
+        "view.fold-level-6",
+        "view.fold-level-7",
+        "view.fold-level-8",
+    ];
+    const UNFOLD_IDS: [&str; 8] = [
+        "view.unfold-level-1",
+        "view.unfold-level-2",
+        "view.unfold-level-3",
+        "view.unfold-level-4",
+        "view.unfold-level-5",
+        "view.unfold-level-6",
+        "view.unfold-level-7",
+        "view.unfold-level-8",
+    ];
+    for n in 1..=8u8 {
+        for (on, ids) in [(true, FOLD_IDS), (false, UNFOLD_IDS)] {
+            let a = A::Fold(n, on);
+            v.push(Entry {
+                id: ids[usize::from(n) - 1],
+                en: Cow::Owned(format!("{} level {n}", if on { "Fold" } else { "Unfold" })),
+                ko: Cow::Owned(format!("{n}단계 {}", if on { "접기" } else { "펼치기" })),
+                keys: key_label(a),
+                run: Run::Act(a),
+                menu: M::View,
+            });
+        }
+    }
+    v.extend([
+        run(
+            "view.function-list",
+            "Function list",
+            "함수 목록",
+            Run::Outline(0),
+            M::View,
+        ),
+        act("go.line", "Go to line…", "줄로 이동…", A::GoTo, M::Go),
+        act(
+            "go.matching-brace",
+            "Go to the matching bracket",
+            "짝 괄호로 이동",
+            A::MatchBrace,
+            M::Go,
+        ),
+        act(
+            "edit.select-braces",
+            "Select everything between the matching brackets",
+            "짝 괄호 사이 모두 선택",
+            A::SelectBraces,
+            M::Selection,
+        ),
+        run(
+            "go.next-symbol",
+            "Next symbol",
+            "다음 심볼",
+            Run::Outline(1),
+            M::Go,
+        ),
+        run(
+            "go.previous-symbol",
+            "Previous symbol",
+            "이전 심볼",
+            Run::Outline(2),
+            M::Go,
         ),
     ]);
     use crate::find::StyleCmd as S;

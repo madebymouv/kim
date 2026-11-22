@@ -74,6 +74,13 @@ pub enum Action {
     BlockLeft,
     BlockRight,
     ColumnEditor,
+    /// Step 99: fold (`true`) or unfold — 0 every fold (Alt+0 / Alt+Shift+0), 1–8 a level
+    /// (Alt+1…8 / Alt+Shift+1…8), 9 the current one (Ctrl+Alt+F / Ctrl+Alt+Shift+F); Ctrl+G Go to,
+    /// Ctrl+B the matching bracket, Ctrl+Alt+B select between them.
+    Fold(u8, bool),
+    GoTo,
+    MatchBrace,
+    SelectBraces,
 }
 
 /// The action for `key` with `m` held, if any.
@@ -83,6 +90,9 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
     let ctrl = m.ctrl || m.command;
     let shift = m.shift;
     if m.alt && !ctrl {
+        if let Some(n) = fold_digit(key) {
+            return Some(A::Fold(n, !shift));
+        }
         return match key {
             Key::Z if !shift => Some(A::ToggleWrap),
             Key::C if !shift => Some(A::ColumnEditor),
@@ -156,6 +166,13 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         }),
         (true, Key::I) if m.alt && !shift => Some(A::Incremental),
         (true, Key::F) if shift && !m.alt => Some(A::FindInFiles),
+        (true, Key::F) if m.alt => Some(A::Fold(9, !shift)),
+        (true, Key::G) if !shift && !m.alt => Some(A::GoTo),
+        (true, Key::B) if !shift => Some(if m.alt {
+            A::SelectBraces
+        } else {
+            A::MatchBrace
+        }),
         (true, Key::D) if shift && !m.alt => Some(A::AddNextOccurrence),
         // Step 97: Notepad++'s line and case keys.
         (true, Key::D) if !m.alt => Some(A::Cmd(C::DuplicateLine)),
@@ -211,6 +228,15 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         }),
         _ => None,
     }
+}
+
+/// Alt+0 … Alt+8 (Step 99: the fold levels).
+fn fold_digit(k: Key) -> Option<u8> {
+    Some(match k {
+        Key::Num0 => 0,
+        Key::Num9 => return None,
+        _ => digit(k)?,
+    })
 }
 
 /// Ctrl+1 … Ctrl+9.
@@ -338,6 +364,26 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::BlockLeft => "Alt+Shift+Left",
         A::BlockRight => "Alt+Shift+Right",
         A::ColumnEditor => "Alt+C",
+        A::Fold(0, true) => "Alt+0",
+        A::Fold(0, false) => "Alt+Shift+0",
+        A::Fold(9, true) => "Ctrl+Alt+F",
+        A::Fold(9, false) => "Ctrl+Alt+Shift+F",
+        A::Fold(n, true) => [
+            "Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8",
+        ][usize::from(n.clamp(1, 8)) - 1],
+        A::Fold(n, false) => [
+            "Alt+Shift+1",
+            "Alt+Shift+2",
+            "Alt+Shift+3",
+            "Alt+Shift+4",
+            "Alt+Shift+5",
+            "Alt+Shift+6",
+            "Alt+Shift+7",
+            "Alt+Shift+8",
+        ][usize::from(n.clamp(1, 8)) - 1],
+        A::GoTo => "Ctrl+G",
+        A::MatchBrace => "Ctrl+B",
+        A::SelectBraces => "Ctrl+Alt+B",
     })
 }
 
@@ -429,6 +475,17 @@ mod tests {
             Action::BlockLeft,
             Action::BlockRight,
             Action::ColumnEditor,
+            Action::Fold(0, true),
+            Action::Fold(0, false),
+            Action::Fold(1, true),
+            Action::Fold(4, false),
+            Action::Fold(8, true),
+            Action::Fold(8, false),
+            Action::Fold(9, true),
+            Action::Fold(9, false),
+            Action::GoTo,
+            Action::MatchBrace,
+            Action::SelectBraces,
         ]);
         for a in actions {
             let label = key_label(a).expect("every action has keys");

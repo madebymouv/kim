@@ -3035,3 +3035,302 @@ fn user_languages_load_import_from_notepad_plus_plus_and_export() {
     assert_eq!(jarak_core::syntax::parse_udl(&out).unwrap().name, "Simple");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 99: folding, the Function List, Go to, matching brackets ----------------------------
+
+fn drawn_lines(h: &Harness<'static, JarakApp>) -> Vec<usize> {
+    let t = h.state().tab();
+    t.view.drawn_lines(&t.file.doc)
+}
+
+fn caret_line(h: &Harness<'static, JarakApp>) -> usize {
+    let d = &h.state().tab().file.doc;
+    d.text().char_to_line(d.selection().primary().head)
+}
+
+const RUST: &str =
+    "fn main() {\n    let a = 1;\n    if a > 0 {\n        b();\n    }\n}\nfn other() {}\n";
+
+#[test]
+fn folding_by_keys_and_the_margin_hides_lines_that_moves_skip() {
+    let d = temp("fold");
+    let f = d.join("a.rs");
+    std::fs::write(&f, RUST).unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    let folds: Vec<(usize, usize, usize)> = h
+        .state()
+        .tab()
+        .outline
+        .folds
+        .iter()
+        .map(|f| (f.start, f.end, f.level))
+        .collect();
+    assert_eq!(folds, vec![(0, 5, 1), (2, 4, 2)]);
+    // Alt+0 folds everything: only the first line of main and the lines after it are drawn.
+    key(&mut h, egui::Key::Num0, egui::Modifiers::ALT);
+    h.run();
+    assert_eq!(drawn_lines(&h), vec![0, 6, 7]);
+    // Down from the folded line goes past the fold, up comes back.
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    assert_eq!(caret_line(&h), 6);
+    key(&mut h, egui::Key::ArrowUp, egui::Modifiers::NONE);
+    assert_eq!(caret_line(&h), 0);
+    // Alt+Shift+0 unfolds everything.
+    key(
+        &mut h,
+        egui::Key::Num0,
+        egui::Modifiers::ALT | egui::Modifiers::SHIFT,
+    );
+    h.run();
+    assert_eq!(drawn_lines(&h), vec![0, 1, 2, 3, 4, 5, 6, 7]);
+    // Alt+2 folds the second level only; Alt+Shift+2 opens it again.
+    key(&mut h, egui::Key::Num2, egui::Modifiers::ALT);
+    h.run();
+    assert_eq!(drawn_lines(&h), vec![0, 1, 2, 5, 6, 7]);
+    key(
+        &mut h,
+        egui::Key::Num2,
+        egui::Modifiers::ALT | egui::Modifiers::SHIFT,
+    );
+    h.run();
+    assert_eq!(drawn_lines(&h).len(), 8);
+    // A click in the fold margin beside the `if` line folds it, another opens it; the caret
+    // does not move.
+    let p = {
+        let t = h.state().tab();
+        t.view.fold_margin_of(&t.file.doc, 2).expect("drawn")
+    };
+    click_at(&mut h, p, egui::Modifiers::NONE);
+    h.run();
+    assert_eq!(
+        drawn_lines(&h),
+        vec![0, 1, 2, 5, 6, 7],
+        "the margin folded it"
+    );
+    assert_eq!(caret_line(&h), 0, "the caret stayed");
+    assert_eq!(
+        h.state().tab().outline.marks.as_slice(),
+        &[(0, false), (2, true)]
+    );
+    click_at(&mut h, p, egui::Modifiers::NONE);
+    h.run();
+    assert_eq!(drawn_lines(&h).len(), 8, "and opened it again");
+    // Ctrl+Alt+F inside the `if` folds the innermost fold around the caret and moves the caret
+    // to its first line.
+    click_at_pos(&mut h, RUST.find("b()").unwrap(), egui::Modifiers::NONE);
+    key(
+        &mut h,
+        egui::Key::F,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    h.run();
+    assert_eq!(caret_line(&h), 2);
+    assert_eq!(drawn_lines(&h), vec![0, 1, 2, 5, 6, 7]);
+    // Typing a line above keeps the fold folded where its text moved.
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, "// top");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    h.run();
+    h.run();
+    assert_eq!(h.state().tab().file.doc.folded_lines(), vec![3]);
+    assert_eq!(drawn_lines(&h), vec![0, 1, 2, 3, 6, 7, 8]);
+    // Ctrl+Alt+Shift+F on the folded line opens it.
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    assert_eq!(caret_line(&h), 3);
+    key(
+        &mut h,
+        egui::Key::F,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT | egui::Modifiers::SHIFT,
+    );
+    h.run();
+    assert!(h.state().tab().file.doc.folded_lines().is_empty());
+    assert_eq!(drawn_lines(&h).len(), 9);
+    // Folding never touched the file.
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), RUST);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn go_to_line_and_matching_brackets_open_folds() {
+    let d = temp("goto");
+    let f = d.join("a.rs");
+    std::fs::write(&f, RUST).unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    key(&mut h, egui::Key::Num0, egui::Modifiers::ALT);
+    h.run();
+    // Ctrl+G to line 4 (inside the folded main): the folds around it open.
+    key(&mut h, egui::Key::G, egui::Modifiers::CTRL);
+    h.run();
+    assert!(h.state().goto.is_some(), "the Go to dialog");
+    text(&mut h, "4");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    h.run();
+    assert!(h.state().goto.is_none());
+    assert_eq!(caret_line(&h), 3);
+    assert!(drawn_lines(&h).contains(&3), "the fold opened");
+    // Not a number: it says so and stays open; Esc closes it.
+    key(&mut h, egui::Key::G, egui::Modifiers::CTRL);
+    h.run();
+    text(&mut h, "x");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    h.run();
+    assert!(h.state().goto.is_some());
+    assert!(h.query_by_label_contains("A number").is_some());
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    h.run();
+    assert!(h.state().goto.is_none());
+    // Ctrl+B from main's `{` to its `}`, and back.
+    let open = RUST.find('{').unwrap();
+    click_at_pos(&mut h, open, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::B, egui::Modifiers::CTRL);
+    let close = RUST.find("}\nfn other").unwrap();
+    assert_eq!(h.state().tab().file.doc.selection().primary().head, close);
+    key(&mut h, egui::Key::B, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().file.doc.selection().primary().head, open);
+    // Ctrl+Alt+B selects everything between them.
+    key(
+        &mut h,
+        egui::Key::B,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    let r = h.state().tab().file.doc.selection().primary();
+    assert_eq!(
+        (r.anchor.min(r.head), r.anchor.max(r.head)),
+        (open + 1, close)
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_function_list_lists_filters_and_jumps_to_symbols() {
+    let d = temp("functions");
+    let f = d.join("notes.md");
+    std::fs::write(
+        &f,
+        "# 소개\ntext\n## 설치\nmore\n```sh\n# not a heading\n```\n## 사용법\nend\n",
+    )
+    .unwrap();
+    let fs = f.display().to_string();
+    let g = d.join("b.rs");
+    std::fs::write(&g, RUST).unwrap();
+    let gs = g.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    palette_run(&mut h, "Function list");
+    h.run();
+    assert!(h.state().function_list);
+    for row in ["소개  heading 1", "설치  heading 2", "사용법  heading 2"] {
+        assert!(h.query_by_label(row).is_some(), "{row}");
+    }
+    assert!(h.query_by_label_contains("not a heading").is_none());
+    // A click on a row goes to it.
+    h.get_by_label("사용법  heading 2").click();
+    h.run();
+    assert_eq!(caret_line(&h), 7);
+    // The filter keeps the matching rows.
+    h.state_mut().function_filter = "설치".into();
+    h.run();
+    assert!(h.query_by_label("설치  heading 2").is_some());
+    assert!(h.query_by_label("소개  heading 1").is_none());
+    h.state_mut().function_filter.clear();
+    h.run();
+    // Previous / next symbol from the caret.
+    palette_run(&mut h, "Previous symbol");
+    assert_eq!(caret_line(&h), 2);
+    palette_run(&mut h, "Next symbol");
+    assert_eq!(caret_line(&h), 7);
+    palette_run(&mut h, "Next symbol");
+    assert_eq!(caret_line(&h), 7, "none after the last");
+    // A Rust file lists its functions: the list follows the active document.
+    let (b, _) = app_with(&[gs.as_str()], Arc::default());
+    let mut h2 = harness(b);
+    h2.run();
+    palette_run(&mut h2, "Function list");
+    h2.run();
+    assert!(h2.query_by_label("main  fn").is_some());
+    assert!(h2.query_by_label("other  fn").is_some());
+    // Closing the panel.
+    h2.get_by_label("Close").click();
+    h2.run();
+    assert!(!h2.state().function_list);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn python_folds_by_indentation() {
+    let d = temp("indentfold");
+    let f = d.join("a.py");
+    std::fs::write(&f, "class A:\n    def f(self):\n        pass\n\nx = 1\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    key(&mut h, egui::Key::Num1, egui::Modifiers::ALT);
+    h.run();
+    assert_eq!(
+        drawn_lines(&h),
+        vec![0, 3, 4, 5],
+        "class A folded through `pass`"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 99: the Function List, a folded block's margin and line numbers and the Go to dialog pass
+/// the UI audit's rules, measured headless (the geometry this frame really laid out).
+#[test]
+fn the_structure_views_pass_the_ui_audit_rules() {
+    let d = temp("audit99");
+    let f = d.join("a.rs");
+    std::fs::write(&f, RUST).unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    palette_run(&mut h, "Function list");
+    key(&mut h, egui::Key::Num2, egui::Modifiers::ALT);
+    h.run();
+    for (screen, goto) in [("functions", false), ("goto", true)] {
+        if goto {
+            key(&mut h, egui::Key::G, egui::Modifiers::CTRL);
+            h.run();
+        }
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        let numbers: Vec<&str> = r
+            .components
+            .iter()
+            .filter(|c| c.id.starts_with("gutter:line#"))
+            .filter_map(|c| c.text.as_ref().map(|t| t.content.as_str()))
+            .collect();
+        assert_eq!(
+            numbers,
+            ["1", "2", "3", "6", "7", "8"],
+            "lines 4 and 5 are folded away"
+        );
+        let rows: Vec<&str> = r
+            .components
+            .iter()
+            .filter(|c| c.id.starts_with("functions:row#"))
+            .filter_map(|c| c.text.as_ref().map(|t| t.content.as_str()))
+            .collect();
+        assert_eq!(rows, ["main  fn", "other  fn"]);
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}

@@ -1270,5 +1270,6 @@ pub fn style_color(c: &Colors, kind: u8) -> egui::Color32 {
 
 /// The marker kinds the view draws (bookmarks go to the gutter).
 pub fn drawn(m: &Marker) -> bool {
-    m.kind != BOOKMARK
+    // Step 99: and the folded markers are not drawn either.
+    m.kind < BOOKMARK
 }

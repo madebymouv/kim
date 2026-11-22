@@ -118,6 +118,8 @@ pub struct Drawn {
     pub clicked: bool,
     pub link: preview::PreviewOutput,
     pub ctrl_click: Option<usize>,
+    /// Step 99: a fold margin click (the line).
+    pub fold_click: Option<usize>,
 }
 
 impl JarakApp {
@@ -623,6 +625,7 @@ impl JarakApp {
                 drawn.focused = out.focused;
                 drawn.link = out.link;
                 drawn.ctrl_click = out.ctrl_click;
+                drawn.fold_click = out.fold_click;
             } else if out.clicked || out.link != preview::PreviewOutput::default() {
                 // A click in the other view moves the focus there.
                 focus_to = Some(pane);
@@ -765,8 +768,11 @@ impl JarakApp {
         let mut d = Drawn::default();
         match t.mode {
             Mode::Source => {
+                // Step 99: the fold margin's marks of this document.
+                t.view.fold_marks = t.outline.marks.clone();
                 let v = view::show(ui, rect, &mut t.file.doc, &mut t.view, read_only);
                 d.ctrl_click = v.ctrl_click;
+                d.fold_click = v.fold_click;
                 d.focused = v.focused;
                 d.clicked = v.clicked;
             }

@@ -99,6 +99,12 @@ screen (smart highlighting).
 | Ctrl+Q | Toggle the line comment (in the document's language) |
 | Ctrl+K / Ctrl+Shift+K | Comment / uncomment the lines |
 | Ctrl+Shift+Q | Block comment (block uncomment: the palette) |
+| Alt+0 / Alt+Shift+0 | Fold all / unfold all |
+| Alt+1…8 / Alt+Shift+1…8 | Fold / unfold level 1–8 |
+| Ctrl+Alt+F / Ctrl+Alt+Shift+F | Fold / unfold the current level (the innermost fold around the caret) |
+| Click the fold margin | Fold or unfold that fold (the caret stays) |
+| Ctrl+G | Go to a line or a character offset |
+| Ctrl+B / Ctrl+Alt+B | Go to the matching bracket / select everything between them |
 
 The palette and the Edit menu have the rest: removing duplicate, consecutive duplicate and empty
 lines, reverse, randomize, the sorts (lexicographic, ignoring case, locale, integers, decimals,

@@ -90,13 +90,20 @@ impl JarakApp {
                 }
                 let r = d.text();
                 let first = t.view.top_line.min(r.len_lines().saturating_sub(1));
-                let last = (first + t.view.page_lines + 2).min(r.len_lines());
+                let rows = t.view.page_lines + 2;
                 let text_of = |i: usize| {
                     let l = r.line(i);
                     l.slice(..jarak_core::text::line_len(l)).to_string()
                 };
-                for line in first..last {
+                // Step 99: the lines on screen, past folded-away ones.
+                let mut line = first;
+                while line < r.len_lines() && toks.len() < rows {
+                    if let Some((_, e)) = d.hidden_range(line) {
+                        line = e + 1;
+                        continue;
+                    }
                     toks.push((line, hl.line(lang, line, &text_of)));
+                    line += 1;
                 }
                 name = lang.name.clone();
                 comments = comment_tokens(lang);

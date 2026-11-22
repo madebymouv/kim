@@ -154,6 +154,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 98: a highlighted Rust sample, the Language menu.
                 "syntax",
                 "palette-language",
+                // Step 99: the Function List with a folded block, the Go to dialog.
+                "functions",
+                "goto",
             ],
         ),
     ];

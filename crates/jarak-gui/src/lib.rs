@@ -21,6 +21,7 @@ pub mod images;
 pub mod keys;
 pub mod languages;
 pub mod media;
+pub mod outline;
 pub mod palette;
 pub mod preview;
 pub mod results;
@@ -95,6 +96,8 @@ pub struct Tab {
     pub(crate) hl: jarak_core::syntax::Highlighter,
     pub(crate) hl_gen: u64,
     pub(crate) hl_lang: String,
+    /// Step 99: the folds and symbols.
+    pub outline: outline::Outline,
     pub file: FileDocument,
     pub view: ViewState,
     pub mode: Mode,
@@ -118,6 +121,7 @@ impl Tab {
             hl: jarak_core::syntax::Highlighter::default(),
             hl_gen: 0,
             hl_lang: String::new(),
+            outline: outline::Outline::default(),
             file,
             view: ViewState::default(),
             mode: Mode::Source,
@@ -450,6 +454,10 @@ pub struct JarakApp {
     /// Step 98: the user-defined languages and their folder.
     pub user_langs: Vec<jarak_core::syntax::Lang>,
     pub languages_dir: Option<PathBuf>,
+    /// Step 99: the Function List (open, its filter) and the Go to dialog.
+    pub function_list: bool,
+    pub function_filter: String,
+    pub goto: Option<outline::GotoDialog>,
 }
 
 /// The assets dialog's content.
@@ -825,6 +833,8 @@ impl JarakApp {
             palette::Run::Edit(k) => self.edit_tool(k),
             palette::Run::Language(k) => self.set_language(k),
             palette::Run::Udl(k) => self.udl_tool(k),
+            palette::Run::Outline(0) => self.function_list = !self.function_list,
+            palette::Run::Outline(k) => self.symbol_step(k == 2),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1476,6 +1486,9 @@ impl JarakApp {
             hash_dialog: None,
             user_langs: Vec::new(),
             languages_dir: None,
+            function_list: false,
+            function_filter: String::new(),
+            goto: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1559,7 +1572,9 @@ impl JarakApp {
                 self.save(i);
             }
             // Step 98: a Rust sample (written next to the audit's copy) and the Language menu.
-            "syntax" => {
+            // Step 99: the same sample with the Function List open and the `if` block folded, and
+            // the Go to dialog.
+            "syntax" | "functions" | "goto" => {
                 let dir = self
                     .tab()
                     .file
@@ -1589,6 +1604,17 @@ fn main() {
 ",
                     );
                     self.open_args(&[p.display().to_string()]);
+                    if screen == "functions" {
+                        self.function_list = true;
+                        // The `if` line of `main` (line 10).
+                        self.tab_mut().file.doc.set_folded(9, true);
+                    } else if screen == "goto" {
+                        self.goto = Some(outline::GotoDialog {
+                            text: "12".into(),
+                            focus: true,
+                            ..Default::default()
+                        });
+                    }
                 }
             }
             "palette-language" => {
@@ -1991,6 +2017,15 @@ fn main() {
             Action::VolatileNext => self.find_word(false, true),
             Action::VolatilePrevious => self.find_word(true, true),
             Action::Incremental => self.open_incremental(),
+            Action::Fold(level, on) => self.fold_command(level, on),
+            Action::GoTo => {
+                self.goto = Some(outline::GotoDialog {
+                    focus: true,
+                    ..Default::default()
+                });
+            }
+            Action::MatchBrace => self.match_brace(false),
+            Action::SelectBraces => self.match_brace(true),
             Action::FindInFiles => self.open_find(find::Page::Files),
             Action::NextResult => self.result_step(false),
             Action::PreviousResult => self.result_step(true),
@@ -2579,12 +2614,14 @@ fn main() {
         self.drop_alt_text(&ctx);
         self.alt_toggle(&ctx);
         self.vim_frame();
+        self.outline_frame(&ctx);
         self.menu_bar_ui(ui, &c);
         self.status_bar(ui, &c);
         self.poll_job(&ctx);
         self.results_ui(ui, &c);
         self.incremental_ui(ui, &c);
         self.side_ui(ui, &c);
+        self.function_list_ui(ui, &c);
         // The keyboard focus belongs to the focused view's text (after a move, a clone, F8).
         if self.second.is_some() {
             let (mine, other) = if self.second_focused() {
@@ -2605,6 +2642,9 @@ fn main() {
             })
             .inner;
         let (focused, link, ctrl_click) = (drawn.focused, drawn.link, drawn.ctrl_click);
+        if let Some(line) = drawn.fold_click {
+            self.toggle_fold(line);
+        }
         let opened_link = link.open.is_some();
         if let Some(url) = link.open {
             self.open_link(&url);
@@ -2639,7 +2679,8 @@ fn main() {
             || self.docs_dialog.is_some()
             || self.preview.is_some()
             || self.column_editor_open
-            || self.hash_dialog.is_some();
+            || self.hash_dialog.is_some()
+            || self.goto.is_some();
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2675,6 +2716,7 @@ fn main() {
         self.preview_ui(&ctx, &c);
         self.column_editor_ui(&ctx, &c);
         self.hash_dialog_ui(&ctx, &c);
+        self.goto_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self

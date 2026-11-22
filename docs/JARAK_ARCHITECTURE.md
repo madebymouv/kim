@@ -887,4 +887,71 @@ exported); a highlighted keystroke-frame measurement. UI audit views `syntax`, `
 and an imported Notepad++ UDL picked by extension in the release window, the Language menu) —
 compiled; its first run waits until the maintainer is away from the PC (2026-11-22: the maintainer
 is using the mouse, keyboard and monitor, so no visible test windows), as does the real-desktop
-check.
+check. Folding with the markers: Step 99 (§21).
+
+## 21. Folding, the Function List and structure navigation (Step 99)
+
+`JARAK-FR-092`, `JARAK-FR-093`, the go-to / select-matching-bracket part of `JARAK-FR-096`, the
+go-to-line-or-offset part of `JARAK-FR-103`; matrix rows `FOLD-01`…`FOLD-06`, `VIEWS-11`,
+`SRCH-18`, `SRCH-19`, `LANG-08`.
+
+- **Structure** (`jarak-core::structure`, no UI): `outline(lang, lines, with_symbols)` lexes the
+  text once (Step 98's lexers) and returns the folds and the symbols.
+  - Folds by language: brackets `{}`/`[]` outside strings, comments and preprocessor lines (C-like
+    languages, Rust, Go, JavaScript, TypeScript, CSS, JSON, PowerShell, PHP code); indentation
+    (Python, YAML, Lua, Ruby, Shell, Batch, SQL); sections (INI, TOML); elements opened and closed
+    on different lines and multi-line comments (HTML, XML; void and self-closing elements do not
+    fold); headings to the next heading of their level or above and fenced code (Markdown); a
+    user language's `fold` markers. Multi-line block comments fold in code languages. Each fold
+    has its level (1 = outermost); plain text has none.
+  - Symbols: definitions introduced by `fn`, `def`, `class`, `function`, `func`, `struct`, `enum`,
+    `trait`, `interface`, `impl`, `mod`, `module`, `type` (Go, TypeScript, Rust), `record`,
+    `namespace` … after modifiers (`pub`, `async`, `export` …); C-like function definitions (a name,
+    its parameters and `{` on the line or the next); `name = function` / `=> {` (JavaScript,
+    TypeScript, Lua); `name() {` (Shell); Markdown and HTML headings (with their level); INI/TOML
+    sections; the outermost keys of JSON and the top-level keys of YAML; Batch labels; CSS rules;
+    SQL `create` statements. Lines in comments and strings are skipped.
+  - `matching_bracket`: the bracket at or just before the caret and its partner, skipping strings
+    and comments.
+- **Folded state** (`Document`): a folded fold is a marker (`FOLDED`) at the start of its first
+  line, so it moves with edits like a bookmark; `set_folded_many` changes many in one pass. The
+  window gives the document its hidden ranges; vertical moves (arrows, Page Up/Down) skip them.
+  Folding never changes the text or the file.
+- **The window** (`jarak-gui::outline`): each view's document has its structure found again after
+  an edit — at once up to 5 000 lines, else on a worker thread after a pause of 0.3 s in typing
+  (the text is a cheap copy of the rope), so a keystroke never waits for the whole text. Meanwhile
+  the folded folds keep their length and follow their markers; for one edit with one caret they
+  just move by the lines it added or removed. Nothing is laid out again in a frame where neither
+  the text, the folds nor the carets changed; a caret that lands inside a folded fold (a search
+  hit, Go to, an edit) opens it. Folding is per document: both views of a cloned document show the
+  same folds (Notepad++ folds each view on its own).
+- **The fold margin**: a cell between the line numbers and the text; a down-pointing triangle
+  beside an open fold's first line, a right-pointing accent one beside a folded fold, whose line is
+  underlined. A click on it folds or unfolds without moving the caret.
+- **Commands** (Notepad++'s keys; the View menu): fold all Alt+0, unfold all Alt+Shift+0, fold /
+  unfold level 1–8 Alt+1…8 / Alt+Shift+1…8, fold / unfold the current level (the innermost fold
+  around the caret; folding moves the caret to its first line) Ctrl+Alt+F / Ctrl+Alt+Shift+F.
+  Go menu: Go to… Ctrl+G (a line, or a character offset; it says where the caret is and how far the
+  text goes; a wrong entry says so and the dialog stays), the matching bracket Ctrl+B, the next /
+  previous symbol (palette). Selection: everything between the matching brackets Ctrl+Alt+B.
+- **The Function List** (View menu; a right panel): the active document's symbols indented by
+  depth, with their kind, the one around the caret highlighted, a filter (case-insensitive), a
+  click goes there; only the rows in view are laid out.
+- Not in this Step: brace and quote highlighting, auto-close and tag matching of `JARAK-FR-096`;
+  navigation history and quick open of `JARAK-FR-103`; folds kept in the session.
+
+Measured (release, 10 MB of Rust, 249 663 folds and 83 221 symbols): the first structure 452 ms on
+the worker; keystroke frames p95 0.35 ms while typing (the structure 460 ms after the last key);
+fold all 74 ms; moves through the folded text p95 1.41 ms; typing with every fold folded p95
+9.23 ms (`folded_structure_of_a_10_mb_rust_file`).
+
+Tests: `structure` 5 (bracket folds with levels outside strings and comments; indentation,
+sections, Markdown headings and fences, tags, markers, none for plain text; the symbols of every
+language family; brackets both ways; folded markers following edits and moves skipping them);
+window flows 5 (keys, the margin, levels, the current level, a fold following typing, the file
+untouched; Go to and the matching brackets opening folds; the Function List with Korean Markdown
+headings, a filter, next / previous symbol, a Rust file, closing it; Python by indentation; the
+Function List, the margin and the Go to dialog under the UI audit's rules, headless); the 10 MB
+measurement. UI audit views `functions`, `goto`; the line numbers on screen are in the geometry
+report (`gutter:line#n`). e2e `step99_jarak_folding_functions.rs` — compiled; its first run and the
+real-desktop check wait until the maintainer is away from the PC.

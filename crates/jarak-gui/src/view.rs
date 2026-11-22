@@ -63,6 +63,9 @@ pub struct ViewState {
     pub cols: usize,
     /// Step 98: the syntax tokens of the lines on screen (the window lexes them each frame).
     pub syntax: Vec<(usize, Vec<jarak_core::syntax::Token>)>,
+    /// Step 99: the fold margin's marks (each fold's first line, whether it is folded); the
+    /// folded-away lines are the document's `hidden`.
+    pub fold_marks: Arc<Vec<(usize, bool)>>,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -102,6 +105,7 @@ impl Default for ViewState {
             cell: Vec2::ZERO,
             cols: 80,
             syntax: Vec::new(),
+            fold_marks: Arc::default(),
             drag: None,
             clicks: None,
         }
@@ -277,6 +281,8 @@ pub struct ViewOutput {
     pub focused: bool,
     /// The document position of a Ctrl+click (an image reference there is shown in Explorer).
     pub ctrl_click: Option<usize>,
+    /// Step 99: a click on the fold margin of a fold's first line.
+    pub fold_click: Option<usize>,
     /// Step 93: the view was clicked or a drag started in it this frame (a view without the
     /// focus takes it then).
     pub clicked: bool,
@@ -327,7 +333,8 @@ pub fn show(
     painter.rect_filled(rect, CornerRadius::ZERO, c.bg_base);
     let lines = doc.text().len_lines();
     let digits = lines.to_string().len().max(3) as f32;
-    let gutter = (digits + 2.0) * m.char_w;
+    // Step 99: one more cell for the fold margin (between the numbers and the text).
+    let gutter = (digits + 3.0) * m.char_w;
     let bar_w = size::PROGRESS * 2.0;
     let text_rect = Rect::from_min_max(
         egui::pos2(rect.left() + gutter, rect.top()),
@@ -348,10 +355,25 @@ pub fn show(
         if caret_line < state.top_line {
             state.top_line = caret_line;
             state.top_px = 0.0;
-        } else if !state.wrap && caret_line >= state.top_line + visible_rows {
-            state.top_line = caret_line + 1 - visible_rows;
+        } else if !state.wrap
+            && visible_between(&doc.hidden, state.top_line, caret_line) >= visible_rows
+        {
+            // Step 99: the rows on screen are the lines not folded away.
+            let mut top = caret_line;
+            let mut rows = 1;
+            while top > 0 && rows < visible_rows {
+                top -= 1;
+                if doc.hidden_range(top).is_none() {
+                    rows += 1;
+                }
+            }
+            state.top_line = top;
             state.top_px = 0.0;
         }
+    }
+    // Step 99: a top line inside a fold (the scroll bar) starts after it.
+    if let Some((s, e)) = doc.hidden_range(state.top_line) {
+        state.top_line = if e + 1 < lines { e + 1 } else { s - 1 };
     }
     state.top_line = state.top_line.min(lines.saturating_sub(1));
     // Lay out the visible lines.
@@ -361,6 +383,11 @@ pub fn show(
     let mut line = state.top_line;
     let x0 = text_rect.left() + pad - if state.wrap { 0.0 } else { state.scroll_x };
     while line < lines && y < rect.bottom() {
+        // Step 99: folded-away lines are not laid out.
+        if let Some((_, e)) = doc.hidden_range(line) {
+            line = e + 1;
+            continue;
+        }
         let l = doc.text().line(line);
         let len = text::line_len(l);
         let start = doc.text().line_to_char(line);
@@ -465,19 +492,69 @@ pub fn show(
                 c.accent,
             );
         }
+        if let Ok(i) = state.fold_marks.binary_search_by_key(&l.line, |m| m.0) {
+            let folded = state.fold_marks[i].1;
+            // Step 99: in the fold margin a right-pointing triangle for a folded fold, a
+            // down-pointing one for an open one; a folded line is underlined.
+            let cx = text_rect.left() - m.char_w;
+            let cy = l.origin.y + m.row / 2.0;
+            let s = m.char_w * 0.32;
+            let pts = if folded {
+                vec![
+                    egui::pos2(cx - s * 0.6, cy - s),
+                    egui::pos2(cx + s * 0.8, cy),
+                    egui::pos2(cx - s * 0.6, cy + s),
+                ]
+            } else {
+                vec![
+                    egui::pos2(cx - s, cy - s * 0.6),
+                    egui::pos2(cx + s, cy - s * 0.6),
+                    egui::pos2(cx, cy + s * 0.8),
+                ]
+            };
+            let fill = if folded { c.accent } else { c.text_muted };
+            painter.add(egui::Shape::convex_polygon(pts, fill, Stroke::NONE));
+            if folded {
+                painter.hline(
+                    text_rect.left()..=rect.right(),
+                    l.origin.y + l.height - 0.5,
+                    Stroke::new(size::BORDER, c.accent),
+                );
+            }
+        }
         let n = (l.line + 1).to_string();
         let col = if l.line == caret_line {
             c.text_secondary
         } else {
             c.text_muted
         };
-        painter.text(
-            egui::pos2(text_rect.left() - m.char_w, l.origin.y),
+        let nr = painter.text(
+            egui::pos2(text_rect.left() - 2.0 * m.char_w, l.origin.y),
             egui::Align2::RIGHT_TOP,
-            n,
+            &n,
             m.font(),
             col,
         );
+        // Step 99: the line numbers wholly on screen are in the geometry report (folded-away
+        // lines have none).
+        if kim_ui::inspect::active() && nr.bottom() <= rect.bottom() {
+            kim_ui::inspect::record(
+                ui,
+                &format!("gutter:line#{}", l.line + 1),
+                "label",
+                nr,
+                Some(kim_ui::inspect::Painted {
+                    content: &n,
+                    rect: nr,
+                    size: m.font().size,
+                    truncated: false,
+                }),
+                false,
+                &[],
+                Some(col),
+                None,
+            );
+        }
     }
     // Carets (every range's head; the primary is the one the IME follows).
     let mut ime_rect = None;
@@ -566,12 +643,58 @@ pub fn show(
     state.cols = ((text_rect.width() - 2.0 * pad) / m.char_w)
         .floor()
         .max(1.0) as usize;
-    let ctrl_click = mouse(ui, &resp, &laid, doc, state, &m, text_rect);
+    // Step 99: a click in the fold margin of a fold's first line folds or unfolds it (and does
+    // not move the caret).
+    let margin_line = |p: Pos2| {
+        (p.x < text_rect.left() && p.x >= text_rect.left() - 2.0 * m.char_w)
+            .then(|| {
+                laid.iter()
+                    .find(|l| p.y >= l.origin.y && p.y < l.origin.y + l.height)
+                    .map(|l| l.line)
+            })
+            .flatten()
+            .filter(|ln| state.fold_marks.binary_search_by_key(ln, |m| m.0).is_ok())
+    };
+    let fold_click = if resp.clicked()
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        margin_line(p)
+    } else {
+        None
+    };
+    // A press that began on a triangle neither moves the caret nor starts a selection.
+    let margin_press = ui
+        .input(|i| i.pointer.press_origin())
+        .and_then(margin_line)
+        .is_some();
+    let ctrl_click = if fold_click.is_some() || margin_press {
+        None
+    } else {
+        mouse(ui, &resp, &laid, doc, state, &m, text_rect)
+    };
     ViewOutput {
         focused,
         ctrl_click,
+        fold_click,
         clicked: resp.clicked() || resp.drag_started(),
     }
+}
+
+/// Step 99: how many lines from `a` up to (not including) `b` are not folded away.
+fn visible_between(hidden: &[(usize, usize)], a: usize, b: usize) -> usize {
+    if b <= a {
+        return 0;
+    }
+    let from = hidden.partition_point(|(_, e)| *e < a);
+    let gone: usize = hidden[from..]
+        .iter()
+        .take_while(|(s, _)| *s < b)
+        .map(|(s, e)| {
+            let (s, e) = ((*s).max(a), (*e).min(b - 1));
+            if e >= s { e - s + 1 } else { 0 }
+        })
+        .sum();
+    (b - a) - gone
 }
 
 fn x_of(l: &Laid, off: usize) -> f32 {
@@ -788,10 +911,17 @@ fn mouse(
             while state.top_px >= m.row && state.top_line + 1 < lines {
                 state.top_px -= m.row;
                 state.top_line += 1;
+                // Step 99: past a fold's hidden lines.
+                if let Some((_, e)) = doc.hidden_range(state.top_line) {
+                    state.top_line = (e + 1).min(lines - 1);
+                }
             }
             while state.top_px < 0.0 && state.top_line > 0 {
                 state.top_px += m.row;
                 state.top_line -= 1;
+                if let Some((s, _)) = doc.hidden_range(state.top_line) {
+                    state.top_line = s - 1;
+                }
             }
             if state.top_line == 0 && state.top_px < 0.0 {
                 state.top_px = 0.0;
@@ -927,6 +1057,25 @@ impl ViewState {
         let (_, origin) = self.drawn.iter().find(|(s, _)| *s == start)?;
         Some(egui::pos2(
             origin.x + col as f32 * self.cell.x + 0.1,
+            origin.y + self.cell.y / 2.0,
+        ))
+    }
+
+    /// Step 99: the lines the view drew last frame (folded-away ones are missing).
+    pub fn drawn_lines(&self, doc: &Document) -> Vec<usize> {
+        self.drawn
+            .iter()
+            .map(|(s, _)| doc.text().char_to_line((*s).min(doc.len_chars())))
+            .collect()
+    }
+
+    /// Step 99: the middle of the fold margin beside `line`, when it was drawn last frame.
+    pub fn fold_margin_of(&self, doc: &Document, line: usize) -> Option<Pos2> {
+        let start = doc.text().line_to_char(line);
+        let (_, origin) = self.drawn.iter().find(|(s, _)| *s == start)?;
+        // The text starts `pad` right of the margin (unscrolled); the margin is one cell wide.
+        Some(egui::pos2(
+            origin.x - space::S - self.cell.x,
             origin.y + self.cell.y / 2.0,
         ))
     }
