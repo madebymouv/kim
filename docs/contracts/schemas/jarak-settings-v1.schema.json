@@ -9,6 +9,15 @@
       "description": "Close brackets and quotes (Editor).",
       "type": "boolean"
     },
+    "backup": {
+      "default": "off",
+      "description": "Backup on save (Files).",
+      "enum": [
+        "off",
+        "simple",
+        "dated"
+      ]
+    },
     "brace_highlight": {
       "default": true,
       "description": "Highlight matching brackets (Editor).",
@@ -54,6 +63,12 @@
         "always"
       ]
     },
+    "context_menu": {
+      "default": "edit.undo,edit.redo,-,edit.cut,edit.copy,edit.paste,-,select.all,-,edit.copy-html",
+      "description": "Context menu of the text (Advanced).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
+    },
     "copy_line": {
       "default": true,
       "description": "Copy the line without a selection (Editor).",
@@ -83,6 +98,11 @@
         "standard",
         "vim"
       ]
+    },
+    "find_fill_selection": {
+      "default": true,
+      "description": "Selected text fills the find field (Editor).",
+      "type": "boolean"
     },
     "font_family": {
       "default": "default",
@@ -130,6 +150,12 @@
         "en",
         "ko"
       ]
+    },
+    "language_tabs": {
+      "default": "",
+      "description": "Tab width per language (Editor).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
     },
     "large_file_mb": {
       "default": 200,
@@ -182,6 +208,27 @@
         "lf",
         "cr"
       ]
+    },
+    "new_language": {
+      "default": "",
+      "description": "Language of new documents (Files).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
+    },
+    "open_folder": {
+      "default": "document",
+      "description": "Open dialog starts in (Files).",
+      "enum": [
+        "document",
+        "last",
+        "folder"
+      ]
+    },
+    "open_folder_path": {
+      "default": "",
+      "description": "The Open dialog's folder (Files).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
     },
     "param_hints": {
       "default": true,
@@ -308,6 +355,21 @@
       "description": "One window (General).",
       "type": "boolean"
     },
+    "smart_highlight": {
+      "default": true,
+      "description": "Highlight the selected word's other occurrences (Editor).",
+      "type": "boolean"
+    },
+    "smart_match_case": {
+      "default": true,
+      "description": "Smart highlighting matches case (Editor).",
+      "type": "boolean"
+    },
+    "smart_whole_word": {
+      "default": true,
+      "description": "Smart highlighting matches whole words (Editor).",
+      "type": "boolean"
+    },
     "snippets": {
       "default": true,
       "description": "Snippets in the completion list (Editor).",
@@ -353,6 +415,12 @@
       "default": false,
       "description": "Virtual space (Editor).",
       "type": "boolean"
+    },
+    "word_chars": {
+      "default": "",
+      "description": "Further word characters (Editor).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
     },
     "word_wrap": {
       "default": false,

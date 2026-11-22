@@ -467,6 +467,167 @@ fn build() -> Vec<Lang> {
     ruby.constants = words("true false nil");
     ruby.variable_prefix = "$@".into();
     v.push(ruby);
+    // Step 110 (LANG-02): further Notepad++ languages.
+    let mut perl = Lang::new("Perl");
+    perl.extensions = words("pl pm t pod");
+    perl.shebang = words("perl");
+    perl.line_comment = words("#");
+    perl.strings = vec![
+        d("\"", "\"", Some('\\'), true),
+        d("'", "'", Some('\\'), true),
+    ];
+    perl.keywords = words(
+        "my our local sub package use require no if elsif else unless while until for foreach do last next redo return and or not eq ne lt gt le ge cmp print BEGIN END",
+    );
+    perl.variable_prefix = "$@%".into();
+    v.push(perl);
+    let mut pascal = Lang::new("Pascal");
+    pascal.extensions = words("pas pp dpr dpk lpr");
+    pascal.case_sensitive = false;
+    pascal.line_comment = words("//");
+    pascal.block_comment = vec![d("{", "}", None, true), d("(*", "*)", None, true)];
+    pascal.strings = vec![d("'", "'", None, false)];
+    pascal.keywords = words(
+        "program unit uses interface implementation begin end var const type procedure function if then else case of for to downto do while repeat until with record array set class object private public protected published property constructor destructor inherited try except finally raise and or not div mod in is as nil",
+    );
+    pascal.types =
+        words("integer real boolean char string byte word longint cardinal double single");
+    pascal.constants = words("true false");
+    v.push(pascal);
+    let mut haskell = Lang::new("Haskell");
+    haskell.extensions = words("hs lhs");
+    haskell.line_comment = words("--");
+    haskell.block_comment = vec![d("{-", "-}", None, true)];
+    haskell.strings = vec![d("\"", "\"", Some('\\'), false)];
+    haskell.keywords = words(
+        "module import qualified as hiding where let in if then else case of data type newtype class instance deriving do forall infix infixl infixr",
+    );
+    haskell.types = words("Int Integer Double Float Bool Char String Maybe Either IO");
+    haskell.constants = words("True False Nothing Just Left Right");
+    v.push(haskell);
+    let mut lisp = Lang::new("Lisp");
+    lisp.extensions = words("lisp lsp cl el");
+    lisp.line_comment = words(";");
+    lisp.block_comment = vec![d("#|", "|#", None, true)];
+    lisp.strings = vec![d("\"", "\"", Some('\\'), true)];
+    lisp.keywords = words(
+        "defun defmacro defvar defparameter let let* lambda if when unless cond case progn setq setf loop do dolist dotimes return quote function and or not",
+    );
+    lisp.constants = words("t nil");
+    lisp.ident_chars = "-*!?<>=/+".into();
+    v.push(lisp);
+    let mut scheme = Lang::new("Scheme");
+    scheme.extensions = words("scm ss sld rkt");
+    scheme.line_comment = words(";");
+    scheme.block_comment = vec![d("#|", "|#", None, true)];
+    scheme.strings = vec![d("\"", "\"", Some('\\'), true)];
+    scheme.keywords = words(
+        "define lambda let let* letrec if cond case and or when unless begin do set! quote quasiquote define-syntax syntax-rules import library",
+    );
+    scheme.constants = words("#t #f");
+    scheme.ident_chars = "-*!?<>=/+".into();
+    v.push(scheme);
+    let mut fortran = Lang::new("Fortran");
+    fortran.extensions = words("f90 f95 f03 f08 for f ftn");
+    fortran.case_sensitive = false;
+    fortran.line_comment = words("!");
+    fortran.strings = vec![d("\"", "\"", None, false), d("'", "'", None, false)];
+    fortran.keywords = words(
+        "program end module use implicit none contains subroutine function call return if then else elseif endif do enddo while select case stop print write read allocate deallocate intent in out inout parameter",
+    );
+    fortran.types = words("integer real double precision complex logical character");
+    fortran.constants = words(".true. .false.");
+    v.push(fortran);
+    let mut ada = Lang::new("Ada");
+    ada.extensions = words("adb ads ada");
+    ada.case_sensitive = false;
+    ada.line_comment = words("--");
+    ada.strings = vec![d("\"", "\"", None, false)];
+    ada.keywords = words(
+        "procedure function package body is begin end if then elsif else case when loop while for in out return declare type subtype record array of access new null with use private limited task protected entry accept select exception raise and or not mod rem",
+    );
+    ada.types = words("Integer Float Boolean Character String Natural Positive");
+    ada.constants = words("True False");
+    v.push(ada);
+    let mut asm = Lang::new("Assembly");
+    asm.extensions = words("asm s nasm");
+    asm.case_sensitive = false;
+    asm.line_comment = words(";");
+    asm.strings = vec![d("\"", "\"", None, false), d("'", "'", None, false)];
+    asm.keywords = words(
+        "mov push pop add sub mul imul div idiv inc dec and or xor not shl shr cmp test jmp je jne jz jnz jg jl jge jle call ret lea nop int section global extern db dw dd dq resb resw",
+    );
+    asm.types = words(
+        "eax ebx ecx edx esi edi esp ebp rax rbx rcx rdx rsi rdi rsp rbp al ah bl bh cl ch dl dh",
+    );
+    v.push(asm);
+    v.push(c_family(
+        "D",
+        "d di",
+        "module import public private protected package static final abstract override class struct union interface enum template mixin alias auto ref const immutable shared if else switch case default for foreach while do break continue return goto try catch finally throw new delete is in out scope assert unittest",
+        "void bool byte ubyte short ushort int uint long ulong float double real char wchar dchar string",
+        "true false null",
+    ));
+    let mut r = Lang::new("R");
+    r.extensions = words("r rmd");
+    r.shebang = words("Rscript");
+    r.line_comment = words("#");
+    r.strings = vec![
+        d("\"", "\"", Some('\\'), true),
+        d("'", "'", Some('\\'), true),
+    ];
+    r.keywords = words("function if else for while repeat break next return in library require");
+    r.constants = words("TRUE FALSE NULL NA NaN Inf T F");
+    v.push(r);
+    v.push(c_family(
+        "Swift",
+        "swift",
+        "import class struct enum protocol extension func var let if else guard switch case default for in while repeat return break continue throw throws rethrows try catch do defer init deinit self super static public private internal fileprivate open override mutating where as is",
+        "Int Double Float Bool String Character Array Dictionary Set Optional Any AnyObject Void",
+        "true false nil",
+    ));
+    let mut vhdl = Lang::new("VHDL");
+    vhdl.extensions = words("vhd vhdl");
+    vhdl.case_sensitive = false;
+    vhdl.line_comment = words("--");
+    vhdl.strings = vec![d("\"", "\"", None, false)];
+    vhdl.keywords = words(
+        "library use entity architecture is begin end port map signal variable constant process if then elsif else case when others for loop generate component of in out inout downto to wait report severity",
+    );
+    vhdl.types =
+        words("std_logic std_logic_vector integer natural boolean bit bit_vector unsigned signed");
+    v.push(vhdl);
+    let mut verilog = c_family(
+        "Verilog",
+        "v vh sv svh",
+        "module endmodule input output inout wire reg logic assign always always_ff always_comb initial begin end if else case endcase for while parameter localparam function endfunction task endtask posedge negedge generate endgenerate",
+        "integer real time",
+        "",
+    );
+    verilog.preprocessor = Some("`".into());
+    v.push(verilog);
+    let mut cobol = Lang::new("COBOL");
+    cobol.extensions = words("cob cbl cpy");
+    cobol.case_sensitive = false;
+    cobol.line_comment = words("*>");
+    cobol.strings = vec![d("\"", "\"", None, false), d("'", "'", None, false)];
+    cobol.keywords = words(
+        "identification division program-id environment configuration data working-storage local-storage linkage file section procedure perform until varying from by times end-perform display accept move to if then else end-if evaluate when other end-evaluate compute add subtract multiply divide giving stop run goback call using pic picture value occurs copy",
+    );
+    cobol.constants = words("zero zeros zeroes space spaces high-value low-value");
+    cobol.ident_chars = "-".into();
+    v.push(cobol);
+    let mut autoit = Lang::new("AutoIt");
+    autoit.extensions = words("au3");
+    autoit.case_sensitive = false;
+    autoit.line_comment = words(";");
+    autoit.strings = vec![d("\"", "\"", None, false), d("'", "'", None, false)];
+    autoit.keywords = words(
+        "func endfunc if then else elseif endif while wend for to step next do until select case endselect switch endswitch return local global dim const exit continueloop and or not",
+    );
+    autoit.variable_prefix = "$".into();
+    autoit.preprocessor = Some("#".into());
+    v.push(autoit);
     // The code inside PHP's `<?php … ?>` (not a language of its own in the menu).
     let mut phpc = c_family(
         "PHP code",

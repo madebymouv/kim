@@ -11,12 +11,15 @@ jarak-gui: Jarak's editor window.
 
 Usage: jarak-gui [<file>[:<line>[:<column>]]...] [--new-window] [--lang en|ko]
                  [--language <name>] [--read-only] [--session <file>] [--no-session]
+                 [--position <x,y>] [--always-on-top]
 
 A running Jarak window takes the files instead (no second window) unless --new-window is given.
   --language <name>  The files after it open in that language (Rust, Markdown, …)
   --read-only        The files after it open read-only
   --session <file>   Opens a saved session's documents too
   --no-session       Starts without the last session and does not save one at exit
+  --position <x,y>   A new window's top-left corner (points)
+  --always-on-top    A new window stays above other windows
 Use `jarak` for the command line (`jarak --help`).
 ";
 
@@ -116,6 +119,8 @@ fn main() -> ExitCode {
     let mut lang = None;
     let mut tag: Option<String> = None;
     let mut no_session = false;
+    let mut position: Option<(f32, f32)> = None;
+    let mut on_top = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -152,6 +157,18 @@ fn main() -> ExitCode {
             }
             "--read-only" => files.push(args[i].clone()),
             "--no-session" => no_session = true,
+            // Step 110 (HELP-07): a new window's place and level.
+            "--position" => {
+                i += 1;
+                match args
+                    .get(i)
+                    .and_then(|v| jarak_gui::modes::parse_position(v))
+                {
+                    Some(p) => position = Some(p),
+                    None => return ExitCode::from(2),
+                }
+            }
+            "--always-on-top" => on_top = true,
             "--" => files.extend(args[i + 1..].iter().cloned()),
             a if a.starts_with("--") => return ExitCode::from(2),
             a => files.push(a.to_string()),
@@ -161,7 +178,15 @@ fn main() -> ExitCode {
         }
         i += 1;
     }
-    run(&files, new_window, lang, tag.as_deref(), no_session)
+    run(
+        &files,
+        new_window,
+        lang,
+        tag.as_deref(),
+        no_session,
+        position,
+        on_top,
+    )
 }
 
 /// Absolute targets, so the running window resolves them against the right folder; the options
@@ -210,6 +235,8 @@ fn run(
     lang: Option<kim_design::Lang>,
     tag: Option<&str>,
     no_session: bool,
+    position: Option<(f32, f32)>,
+    on_top: bool,
 ) -> ExitCode {
     use eframe::egui;
     use jarak_gui::{Incoming, JarakApp, handoff};
@@ -256,6 +283,12 @@ fn run(
         .with_app_id("mouv.jarak")
         .with_inner_size([960.0 * zoom, 640.0 * zoom])
         .with_min_inner_size([360.0 * zoom, 240.0 * zoom]);
+    if let Some((x, y)) = position {
+        viewport = viewport.with_position([x, y]);
+    }
+    if on_top {
+        viewport = viewport.with_window_level(egui::WindowLevel::AlwaysOnTop);
+    }
     // The window's own icon in the title bar and the taskbar (the .exe carries it too).
     if let Ok(icon) =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/jarak/jarak-256.png"))
@@ -310,6 +343,11 @@ fn run(
             .with_runner(Arc::new(jarak_gui::macros::ProcessRunner))
             // Step 104: files changed by other programs are checked by the window itself.
             .with_watching();
+            // Step 110 (HELP-07): the window started above the others.
+            if on_top {
+                app.modes.on_top = true;
+                app.modes_applied.on_top = true;
+            }
             // Step 106: print jobs go to the Windows spooler.
             #[cfg(windows)]
             {

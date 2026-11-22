@@ -1494,3 +1494,52 @@ the audit's rules). e2e `step108_jarak_extensions.rs`: PASS on its first run.
 Tests: security 7; window flows 2 (large-file mode; a 60 000-character line edited at both ends);
 perf 4 more (a single 10 MB line within the keystroke budget, fifty tabs, Find All in 10 MB, a 10 MB
 file in large-file mode). e2e `step109_jarak_hardening.rs`: PASS on its first run.
+
+## 32. The remaining Notepad++ built-ins and the parity report (Step 110)
+
+Step 110 walked every row of [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md); the counts per
+area are in [JARAK_PARITY_REPORT](JARAK_PARITY_REPORT.md).
+
+- **Window modes** (`jarak-gui::modes`, VIEW-01…04): always on top, full screen (F11), post-it
+  (F12: no frame, menu, tab or status bar) and distraction-free (full screen without the bars,
+  the function list or the map, the text in a column of at most `FOCUS_WIDTH` points). The app
+  keeps the modes asked for and the modes the window was told about; `modes_frame` sends the
+  viewport commands (`WindowLevel`, `Fullscreen`, `Decorations`) once per change. The UI audit's
+  `distraction-free` and `post-it` screens change the layout only, so an audit never makes a
+  real window full screen or frameless. `jarak-gui --position x,y --always-on-top` (HELP-07)
+  set the new window's viewport.
+- **The text's context menu** (UI-08, SET-25): a right click on either view opens the commands of
+  the `context_menu` setting (palette ids, `-` separators; unknown ids skipped).
+- **Drag and drop of text** (EDIT-18, `view::Drag::Move`): a plain press inside the single
+  selection starts a move; while dragging, a drop caret shows where it lands; releasing outside
+  the selection moves it (`Document::replace`, one undo step) or, with Ctrl held, copies it;
+  releasing inside is a click. Read-only documents and column blocks never start a move.
+- **`gaps`** (the remaining built-ins): Save a copy as (FILE-10), the read-only flag and the
+  file's read-only attribute (EDIT-11; only a flag the user set — Edit → Read-only or
+  `--read-only` — can be cleared; lossy, binary and monitored documents stay read-only), tab
+  colours (VIEWS-08, five design-system colours along the tab's edge, named in its accessible
+  label, kept in the session), Paste HTML / RTF as source (EDIT-13: `Clipboard::get_rich` reads
+  `HTML Format`'s fragment, `export::cf_html_fragment`, and `Rich Text Format`, only on that
+  command), the character panel (EDIT-16, `lineops::parse_char_code`), the clipboard history
+  (EDIT-17: what Jarak copied, cut or pasted, in memory, 20 — Jarak never watches the system
+  clipboard, `JARAK-SEC-003`) and finding characters in a range (SRCH-20,
+  `text::next_char_in_range`).
+- **Settings** ([JARAK_SETTINGS](JARAK_SETTINGS.md)): smart highlighting and its case and
+  whole-word options (SET-11, AUTO-10), further word characters (SET-17; `text::set_word_chars`
+  keeps them per thread — the window's), the find field from the selection (SET-13), the Open
+  dialog's folder (SET-07, `Dialogs::open_in`), new documents' language (SET-06), a backup on
+  save (SET-14: `file::write_backup`, `write_dated_backup`; a failed backup stops the save),
+  tab widths per language (SET-10), the context menu (SET-25). The status bar shows the
+  document's length and lines (UI-02).
+- **Languages** (LANG-02): Ada, Assembly, AutoIt, COBOL, D, Fortran, Haskell, Lisp, Pascal,
+  Perl, R, Scheme, Swift, VHDL and Verilog join the built-in definitions.
+- **Not intended** with reasons: the find dialog's transparency (the panel is docked), a
+  right-to-left text direction (no bidi layout in egui), importing Notepad++ style themes (the
+  colours are the design system's).
+
+Tests: window flows 15 (one per row or group of rows, two of them over the UI audit's rules and
+screens), core 6 (languages, a character range, word characters, backups, character codes, the
+session's tab colour), unit 2 (`--position`, the default context menu). e2e
+`step110_jarak_parity.rs`: the settings through `jarak settings`, the languages through `jarak
+export --dry-run`, the new screens in the release window and a refused `--position`; its first run is the
+Daily workflow's (no visible test windows while the maintainer is at the PC).

@@ -643,3 +643,38 @@ fn an_undoable_reload_keeps_the_previous_text_one_undo_away() {
     assert!(doc.read_only && doc.read_only_reason.is_none());
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// Step 110 (SET-14): the backup is `<name>.bak` beside the file, with its bytes; an older
+/// backup is replaced.
+#[test]
+fn a_backup_copies_the_file_beside_it() {
+    let d = std::env::temp_dir().join(format!("jarak-backup-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let f = d.join("a.txt");
+    assert_eq!(backup_path(&f), d.join("a.txt.bak"));
+    std::fs::write(&f, b"one\r\n").unwrap();
+    assert_eq!(write_backup(&f).unwrap(), d.join("a.txt.bak"));
+    assert_eq!(std::fs::read(d.join("a.txt.bak")).unwrap(), b"one\r\n");
+    std::fs::write(&f, b"two").unwrap();
+    write_backup(&f).unwrap();
+    assert_eq!(std::fs::read(d.join("a.txt.bak")).unwrap(), b"two");
+    assert!(write_backup(&d.join("missing.txt")).is_err());
+    // Dated: one per stamp, in `jarak-backup` beside the file.
+    let at = write_dated_backup(&f, "2026-11-22_203015").unwrap();
+    assert_eq!(
+        at,
+        d.join("jarak-backup").join("a.txt.2026-11-22_203015.bak")
+    );
+    assert_eq!(std::fs::read(&at).unwrap(), b"two");
+    std::fs::write(&f, b"three").unwrap();
+    write_dated_backup(&f, "2026-11-22_203016").unwrap();
+    assert_eq!(
+        std::fs::read_dir(d.join("jarak-backup")).unwrap().count(),
+        2
+    );
+    let s = backup_stamp();
+    assert_eq!(s.len(), 17, "{s}");
+    assert_eq!(&s[10..11], "_");
+    let _ = std::fs::remove_dir_all(&d);
+}

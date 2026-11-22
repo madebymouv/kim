@@ -94,6 +94,11 @@ pub enum Action {
     /// default keys (Ctrl+P is Go to file); Settings → Keyboard gives them some.
     Print,
     PrintNow,
+    /// Step 110: always on top, full screen (F11), post-it (F12), distraction-free.
+    OnTop,
+    FullScreen,
+    PostIt,
+    DistractionFree,
     GoTo,
     MatchBrace,
     SelectBraces,
@@ -192,6 +197,8 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::R) if shift && !m.alt => Some(A::Macro(0)),
         (false, Key::F9) if !shift => Some(A::Macro(1)),
         (false, Key::F5) if !shift => Some(A::RunDialog),
+        (false, Key::F11) if !shift => Some(A::FullScreen),
+        (false, Key::F12) if !shift => Some(A::PostIt),
         (true, Key::Comma) if !shift && !m.alt => Some(A::Settings),
         (true, Key::F2) if !shift => Some(A::Cmd(C::ToggleBookmark)),
         (false, Key::F2) => Some(A::Cmd(if shift {
@@ -432,7 +439,9 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::Macro(_) => "F9",
         A::RunDialog => "F5",
         A::Settings => "Ctrl+,",
-        A::Print | A::PrintNow => return None,
+        A::Print | A::PrintNow | A::OnTop | A::DistractionFree => return None,
+        A::FullScreen => "F11",
+        A::PostIt => "F12",
         A::Complete(0) => "Ctrl+Space",
         A::Complete(1) => "Ctrl+Enter",
         A::Complete(2) => "Ctrl+Alt+Space",

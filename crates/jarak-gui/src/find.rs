@@ -168,7 +168,11 @@ impl JarakApp {
     pub fn open_find(&mut self, page: Page) {
         let d = &self.tab().file.doc;
         let sel = d.selected_text();
-        if !sel.is_empty() && !sel.contains(['\n', '\r']) && sel.chars().count() < 500 {
+        if self.prefs.find_fill_selection
+            && !sel.is_empty()
+            && !sel.contains(['\n', '\r'])
+            && sel.chars().count() < 500
+        {
             self.find.find = sel;
             self.find.in_selection = false;
         }
@@ -644,15 +648,15 @@ impl JarakApp {
         {
             queries.push(self.find.query());
         }
-        // Smart highlighting: the selected word (one word, on one line).
+        // Smart highlighting: the selected word (one word, on one line); Step 110: its settings.
         let sel = t.file.doc.selection().primary();
-        if !sel.is_empty() && sel.len() < 200 {
+        if self.prefs.smart_highlight && !sel.is_empty() && sel.len() < 200 {
             let w = r.slice(sel.from()..sel.to()).to_string();
             if w.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 queries.push(Query {
                     text: w,
-                    match_case: true,
-                    whole_word: true,
+                    match_case: self.prefs.smart_match_case,
+                    whole_word: self.prefs.smart_whole_word,
                     ..Query::default()
                 });
             }

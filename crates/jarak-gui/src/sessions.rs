@@ -110,6 +110,7 @@ impl JarakApp {
                     Pane::Second => Views::Second,
                     Pane::Both => Views::Both,
                 },
+                color: t.color,
             });
             let _ = i;
         }
@@ -289,6 +290,7 @@ impl JarakApp {
             } else {
                 Mode::Source
             };
+            t.color = d.color.filter(|k| *k < 5);
             t.pane = match d.views {
                 Views::Main => Pane::Main,
                 Views::Second => Pane::Second,

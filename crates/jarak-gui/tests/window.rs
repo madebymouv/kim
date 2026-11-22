@@ -21,6 +21,8 @@ struct Scripted {
     folder: Mutex<Vec<PathBuf>>,
     /// Step 106: the print dialog's answers.
     print: Mutex<Vec<jarak_gui::print_ui::PrintChoice>>,
+    /// Step 110: the folders the Open dialog was started in.
+    open_dirs: Mutex<Vec<Option<PathBuf>>>,
 }
 
 impl Dialogs for Scripted {
@@ -43,6 +45,13 @@ impl Dialogs for Scripted {
     fn print(&self, _has_selection: bool) -> Option<jarak_gui::print_ui::PrintChoice> {
         *self.asked.lock().unwrap() += 1;
         self.print.lock().unwrap().pop()
+    }
+    fn open_in(&self, dir: Option<&std::path::Path>) -> Option<PathBuf> {
+        self.open_dirs
+            .lock()
+            .unwrap()
+            .push(dir.map(std::path::Path::to_path_buf));
+        self.open()
     }
 }
 
@@ -5423,12 +5432,28 @@ fn every_setting_resets_after_a_second_press() {
     h.state_mut()
         .open_settings(Some(jarak_core::settings::Section::Advanced));
     h.run();
+    // Step 110: the page is taller than the window now; scroll down to its last group, as a
+    // user would.
+    let over = h.get_by_label("Search engine").rect().center();
+    h.event(egui::Event::PointerMoved(over));
+    for _ in 0..4 {
+        h.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -500.0),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+    }
+    let _ = h.try_run();
     h.get_by_label("Reset…").click();
     h.run();
     assert!(
         settings_file(&d).contains("tab_width"),
         "the first press only asks"
     );
+    assert!(h.query_by_label("Reset for good").is_some(), "it asks");
     h.get_by_label("Reset for good").click();
     h.run();
     assert_eq!(settings_file(&d), "mine = 1\n");
@@ -6325,5 +6350,743 @@ fn a_very_long_line_is_edited_at_both_ends() {
     key(&mut h, egui::Key::Home, egui::Modifiers::NONE);
     text(&mut h, "A");
     assert!(doc_text(&h).starts_with("Aabcdefghij"));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+// ---- Step 110: the remaining Notepad++ built-ins (#129) ----------------------------------------
+
+fn two_files(name: &str) -> (PathBuf, Vec<String>) {
+    let d = temp(name);
+    let mut v = Vec::new();
+    for (f, t) in [("a.txt", "one\n"), ("b.txt", "two\n")] {
+        std::fs::write(d.join(f), t).unwrap();
+        v.push(d.join(f).display().to_string());
+    }
+    (d, v)
+}
+
+fn select(h: &mut Harness<'static, JarakApp>, a: usize, b: usize) {
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(a, b),
+        ));
+    h.run();
+}
+
+fn tab_count(h: &Harness<'static, JarakApp>) -> usize {
+    h.query_all_by_role(egui::accesskit::Role::Tab).count()
+}
+
+/// VIEW-01…04 (`JARAK-FR-036`): always on top, full screen (F11), post-it (F12) and
+/// distraction-free toggle; post-it and distraction-free hide the menu, tab and status bars;
+/// distraction-free draws the text in a centred column; the window is told once per change.
+#[test]
+fn window_modes_toggle_and_hide_the_chrome() {
+    let (d, files) = two_files("modes");
+    let refs: Vec<&str> = files.iter().map(String::as_str).collect();
+    let (a, _) = app_with(&refs, Arc::default());
+    let mut h = harness(a);
+    assert!(h.query_by_label("Settings").is_some(), "the status bar");
+    assert_eq!(tab_count(&h), 2, "the tab bar");
+    palette_run(&mut h, "Always on top");
+    h.run();
+    assert!(h.state().modes.on_top);
+    assert_eq!(
+        h.state().modes_applied,
+        h.state().modes,
+        "the window was told"
+    );
+    key(&mut h, egui::Key::F11, egui::Modifiers::NONE);
+    assert!(h.state().modes.full_screen);
+    key(&mut h, egui::Key::F12, egui::Modifiers::NONE);
+    h.run();
+    assert!(h.state().modes.post_it);
+    assert!(
+        h.query_by_label("Settings").is_none(),
+        "post-it: no status bar"
+    );
+    assert_eq!(tab_count(&h), 0, "post-it: no tab bar");
+    key(&mut h, egui::Key::F12, egui::Modifiers::NONE);
+    h.run();
+    assert!(h.query_by_label("Settings").is_some());
+    assert_eq!(tab_count(&h), 2);
+    let full_width = h.get_by_label("Text").rect().width();
+    palette_run(&mut h, "Distraction-free mode");
+    h.run();
+    assert!(h.state().modes.distraction_free);
+    assert!(
+        h.query_by_label("Settings").is_none(),
+        "distraction-free: no status bar"
+    );
+    assert_eq!(tab_count(&h), 0);
+    let w = h.get_by_label("Text").rect().width();
+    assert!(
+        w <= jarak_gui::modes::FOCUS_WIDTH + 1.0 && w < full_width,
+        "a centred column: {w} of {full_width}"
+    );
+    palette_run(&mut h, "Distraction-free mode");
+    key(&mut h, egui::Key::F11, egui::Modifiers::NONE);
+    palette_run(&mut h, "Always on top");
+    h.run();
+    assert_eq!(h.state().modes, jarak_gui::modes::Modes::default());
+    assert_eq!(h.state().modes_applied, jarak_gui::modes::Modes::default());
+    assert!(h.query_by_label("Settings").is_some());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Two clicks on consecutive frames (a harness stepping less than the double-click time).
+fn double_click_at(h: &mut Harness<'static, JarakApp>, p: egui::Pos2) {
+    h.event(egui::Event::PointerMoved(p));
+    h.run();
+    for _ in 0..2 {
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton {
+                pos: p,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+        h.step();
+    }
+    h.run();
+}
+
+fn right_click(h: &mut Harness<'static, JarakApp>, p: egui::Pos2) {
+    h.event(egui::Event::PointerMoved(p));
+    h.run();
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    h.run();
+    h.run();
+}
+
+/// UI-08, SET-25 (`JARAK-FR-031`, `JARAK-FR-130`): a right click on the text opens its context
+/// menu with the setting's commands; an item runs its command; changing the setting changes the
+/// menu.
+#[test]
+fn the_text_context_menu_runs_the_settings_commands() {
+    let (mut h, d) = settings_app("ctx-menu", &["a.txt"]);
+    let p = screen_of(&h, 1);
+    right_click(&mut h, p);
+    for item in [
+        "Undo",
+        "Redo",
+        "Cut",
+        "Copy",
+        "Paste (text or an image)",
+        "Select all",
+        "Copy as HTML",
+    ] {
+        assert!(h.query_by_label(item).is_some(), "{item} in the menu");
+    }
+    h.get_by_label("Select all").click();
+    h.run();
+    assert_eq!(sel_text(&h), "one\ntwo\n");
+    assert!(h.query_by_label("Redo").is_none(), "the menu closed");
+    assert!(
+        h.state_mut()
+            .change_setting("context_menu", "edit.copy,-,search.next-non-ascii")
+    );
+    h.run();
+    right_click(&mut h, p);
+    assert!(
+        h.query_by_label("Find the next non-ASCII character")
+            .is_some()
+    );
+    assert!(
+        h.query_by_label("Undo").is_none(),
+        "only the setting's commands"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// FILE-10 (`JARAK-FR-002`): Save a copy writes the text to another file; the document keeps its
+/// own file and its unsaved state; its own file is refused as the copy's name.
+#[test]
+fn save_a_copy_keeps_the_documents_file_and_unsaved_state() {
+    let d = temp("save-copy");
+    let a = d.join("a.txt");
+    std::fs::write(&a, "one\n").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.save.lock().unwrap().push(d.join("copy.txt"));
+    let (app, _) = app_with(&[a.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(app);
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    text(&mut h, "two");
+    palette_run(&mut h, "Save a copy as");
+    assert_eq!(
+        std::fs::read_to_string(d.join("copy.txt")).unwrap(),
+        "one\ntwo"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&a).unwrap(),
+        "one\n",
+        "the file is unchanged"
+    );
+    assert_eq!(h.state().tab().file.path.as_deref(), Some(a.as_path()));
+    assert!(h.state().tab().file.doc.is_dirty(), "still unsaved");
+    dialogs.save.lock().unwrap().push(a.clone());
+    palette_run(&mut h, "Save a copy as");
+    assert_eq!(std::fs::read_to_string(&a).unwrap(), "one\n");
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("another name"))
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// EDIT-11 (`JARAK-FR-024`): Edit → Read-only toggles the document's flag (typing is refused
+/// while it is on); a document read-only because its bytes cannot be reproduced stays so; Clear
+/// the file's read-only attribute makes the file writable.
+#[test]
+fn the_read_only_flag_toggles_and_the_files_attribute_clears() {
+    let d = temp("ro-toggle");
+    let a = d.join("a.txt");
+    std::fs::write(&a, "one\n").unwrap();
+    let mut perm = std::fs::metadata(&a).unwrap().permissions();
+    perm.set_readonly(true);
+    std::fs::set_permissions(&a, perm).unwrap();
+    let blob = d.join("blob.bin");
+    std::fs::write(&blob, b"PK\x03\x04\x00\x00data").unwrap();
+    let (app, _) = app_with(&[a.to_str().unwrap()], Arc::default());
+    let mut h = harness(app);
+    palette_run(&mut h, "Read-only: on/off");
+    assert!(h.state().tab().file.read_only);
+    text(&mut h, "x");
+    assert_eq!(doc_text(&h), "one\n", "typing refused");
+    palette_run(&mut h, "Read-only: on/off");
+    assert!(!h.state().tab().file.read_only);
+    text(&mut h, "x");
+    assert_eq!(doc_text(&h), "xone\n");
+    palette_run(&mut h, "Clear the file's read-only attribute");
+    assert!(!std::fs::metadata(&a).unwrap().permissions().readonly());
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert_eq!(
+        std::fs::read_to_string(&a).unwrap(),
+        "xone\n",
+        "now it saves"
+    );
+    // Binary text stays read-only.
+    h.state_mut().open_args(&[blob.display().to_string()]);
+    h.run();
+    palette_run(&mut h, "Read-only: on/off");
+    assert!(h.state().tab().file.read_only);
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("stays read-only"))
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// VIEWS-08 (`JARAK-FR-060`): a tab takes a colour (named in its accessible label, drawn along
+/// its edge), loses it again, and a saved session keeps it.
+#[test]
+fn a_tab_takes_a_colour_and_the_session_keeps_it() {
+    use jarak_gui::sessions::SessionFiles;
+    let (d, files) = two_files("tab-color");
+    let sf = SessionFiles {
+        file: d.join("local").join("session.json"),
+        recovery: d.join("local").join("recovery"),
+        restore: true,
+        save: true,
+    };
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_session(sf.clone()));
+    h.state_mut().open_args(&files);
+    h.run();
+    palette_run(&mut h, "Tab colour: green");
+    h.run();
+    assert_eq!(h.state().tab().color, Some(1));
+    assert!(h.query_by_label_contains("b.txt (Green)").is_some());
+    h.state_mut().save_session();
+    let (b, _) = app_with(&[], Arc::default());
+    let h2 = harness(b.with_session(sf));
+    let t = h2
+        .state()
+        .tabs
+        .iter()
+        .find(|t| t.title() == "b.txt")
+        .expect("b restored");
+    assert_eq!(t.color, Some(1), "the session keeps the colour");
+    palette_run(&mut h, "Tab colour: none");
+    h.run();
+    assert_eq!(h.state().tab().color, None);
+    assert!(h.query_by_label_contains("(Green)").is_none());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// EDIT-13 (`JARAK-FR-087`): Paste HTML / RTF as source inserts the clipboard's HTML fragment or
+/// RTF as text; without them it says so and leaves the document alone.
+#[test]
+fn pasting_html_and_rtf_as_source_inserts_their_text() {
+    let (mut h, clip) = app_clip(&[], Arc::default());
+    palette_run(&mut h, "Paste HTML as source");
+    assert_eq!(doc_text(&h), "");
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("no HTML"))
+    );
+    *clip.html.lock().unwrap() = Some("<b>한</b>".into());
+    *clip.rtf.lock().unwrap() = Some(r"{\rtf1 x}".into());
+    palette_run(&mut h, "Paste HTML as source");
+    assert_eq!(doc_text(&h), "<b>한</b>");
+    palette_run(&mut h, "Paste RTF as source");
+    assert_eq!(doc_text(&h), r"<b>한</b>{\rtf1 x}");
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "<b>한</b>", "each paste is one undo step");
+}
+
+/// EDIT-16 (`JARAK-FR-087`): the character panel inserts a character by its code or from its
+/// 32–255 table, and closes with Esc.
+#[test]
+fn the_character_panel_inserts_by_code_and_from_the_table() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    palette_run(&mut h, "Character panel");
+    assert!(h.state().gap_dialog.is_some());
+    h.get_by_label("Character code").click();
+    h.run();
+    text(&mut h, "U+00E9");
+    assert!(
+        h.query_by_label("é  U+00E9").is_some(),
+        "the panel shows it"
+    );
+    h.get_by_label("Insert").click();
+    h.run();
+    assert_eq!(doc_text(&h), "é");
+    h.get_by_label(" 35   0x23   #").click();
+    h.run();
+    assert_eq!(doc_text(&h), "é#");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state().gap_dialog.is_none());
+    for (code, ch) in [
+        ("0x41", 'A'),
+        ("233", 'é'),
+        ("&#xD55C;", '한'),
+        ("U+1F600", '😀'),
+    ] {
+        assert_eq!(
+            jarak_core::lineops::parse_char_code(code),
+            Some(ch),
+            "{code}"
+        );
+    }
+    assert_eq!(
+        jarak_core::lineops::parse_char_code("U+D800"),
+        None,
+        "a surrogate"
+    );
+}
+
+/// EDIT-17 (`JARAK-FR-087`): what Jarak copies, cuts or pastes is remembered (newest first,
+/// once each); a pick from the history pastes it.
+#[test]
+fn the_clipboard_history_pastes_an_earlier_copy() {
+    let (mut h, _clip) = app_clip(&[], Arc::default());
+    text(&mut h, "alpha beta");
+    select(&mut h, 0, 5);
+    key(&mut h, egui::Key::C, egui::Modifiers::CTRL);
+    select(&mut h, 6, 10);
+    key(&mut h, egui::Key::C, egui::Modifiers::CTRL);
+    select(&mut h, 0, 5);
+    key(&mut h, egui::Key::C, egui::Modifiers::CTRL);
+    assert_eq!(
+        h.state().clip_history,
+        ["alpha", "beta"],
+        "newest first, once"
+    );
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    palette_run(&mut h, "Paste from clipboard history");
+    h.get_by_label("beta").click();
+    h.run();
+    assert_eq!(doc_text(&h), "alpha betabeta");
+    assert!(h.state().gap_dialog.is_none(), "a pick closes it");
+}
+
+/// SRCH-20 (`JARAK-FR-070`): the next non-ASCII character, the next one above U+00FF and a
+/// range from the dialog select the next match after the caret, wrapping.
+#[test]
+fn characters_in_a_range_are_found_one_after_another() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "ab é c 中 d");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    palette_run(&mut h, "Find the next non-ASCII character");
+    assert_eq!(sel_text(&h), "é");
+    palette_run(&mut h, "Find the next non-ASCII character");
+    assert_eq!(sel_text(&h), "中");
+    palette_run(&mut h, "Find the next non-ASCII character");
+    assert_eq!(sel_text(&h), "é", "it wraps");
+    palette_run(&mut h, "Find the next character above U+00FF");
+    assert_eq!(sel_text(&h), "中");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    palette_run(&mut h, "Find characters in a range");
+    h.get_by_label("Find next").click();
+    h.run();
+    assert_eq!(sel_text(&h), "é", "U+0080–U+00FF");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    h.state_mut().find_char_range(0x400, 0x4FF);
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("No character"))
+    );
+}
+
+fn drag_text(
+    h: &mut Harness<'static, JarakApp>,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    release: egui::Modifiers,
+) {
+    h.event(egui::Event::PointerMoved(from));
+    h.run();
+    h.event(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = h.try_run();
+    for k in 1..=4 {
+        h.event(egui::Event::PointerMoved(
+            from + (to - from) * (k as f32 / 4.0),
+        ));
+        let _ = h.try_run();
+    }
+    if release != egui::Modifiers::NONE {
+        h.event(egui::Event::ModifiersChanged(release));
+    }
+    h.event(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: release,
+    });
+    let _ = h.try_run();
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    let _ = h.try_run();
+}
+
+/// EDIT-18 (`JARAK-FR-032`): dragging the selection moves it as one undo step; Ctrl held at the
+/// release copies it; a click inside the selection only places the caret; a read-only document
+/// keeps its text.
+#[test]
+fn dragging_the_selection_moves_or_copies_it() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "abc def ghi");
+    select(&mut h, 0, 3);
+    let (from, to) = (screen_of(&h, 1), screen_of(&h, 11));
+    drag_text(&mut h, from, to, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), " def ghiabc");
+    assert_eq!(sel_text(&h), "abc", "the dropped text is selected");
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "abc def ghi", "one undo step");
+    select(&mut h, 4, 7);
+    let (from, to) = (screen_of(&h, 5), screen_of(&h, 0));
+    drag_text(&mut h, from, to, CTRL_CMD);
+    assert_eq!(doc_text(&h), "defabc def ghi", "Ctrl copies");
+    assert_eq!(sel_range(&h), (0, 3));
+    // Away from the last press (no double click).
+    select(&mut h, 4, 7);
+    let p = screen_of(&h, 6);
+    click_at(&mut h, p, egui::Modifiers::NONE);
+    assert_eq!(sel_range(&h), (6, 6), "a click inside only moves the caret");
+    h.state_mut().file_op(1);
+    select(&mut h, 0, 3);
+    let (from, to) = (screen_of(&h, 1), screen_of(&h, 10));
+    drag_text(&mut h, from, to, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "defabc def ghi", "read-only: nothing moves");
+}
+
+/// SET-06, SET-07, SET-13, SET-14 (`JARAK-FR-130`): new documents take the settings' language;
+/// the Open dialog starts in the document's folder (or Windows' last one); Ctrl+F fills the
+/// find field from the selection only when set; a save keeps the previous file as `.bak` when
+/// set.
+#[test]
+fn new_language_open_folder_find_fill_and_backup_settings_apply() {
+    use jarak_gui::LangChoice;
+    let d = temp("s110");
+    let a = d.join("a.txt");
+    std::fs::write(&a, "one\ntwo\n").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    let (app, _) = app_with(&[a.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(
+        app.with_settings(d.join("settings.toml"))
+            .with_hotkeys(&d.join("hotkeys.json")),
+    );
+    // SET-07: the document's folder by default, Windows' remembered folder when set.
+    key(&mut h, egui::Key::O, egui::Modifiers::CTRL);
+    assert_eq!(
+        dialogs.open_dirs.lock().unwrap().last(),
+        Some(&Some(d.clone()))
+    );
+    assert!(h.state_mut().change_setting("open_folder", "last"));
+    key(&mut h, egui::Key::O, egui::Modifiers::CTRL);
+    assert_eq!(dialogs.open_dirs.lock().unwrap().last(), Some(&None));
+    // SET-13: the selection fills the find field only when set.
+    select(&mut h, 0, 3);
+    key(&mut h, egui::Key::F, egui::Modifiers::CTRL);
+    assert_eq!(h.state().find.find, "one");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state_mut().change_setting("find_fill_selection", "false"));
+    h.state_mut().find.find = "kept".into();
+    select(&mut h, 4, 7);
+    key(&mut h, egui::Key::F, egui::Modifiers::CTRL);
+    assert_eq!(h.state().find.find, "kept");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    // SET-14: no backup by default; `<name>.bak` with the previous text when set.
+    select(&mut h, 8, 8);
+    text(&mut h, "3");
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert!(!d.join("a.txt.bak").exists());
+    assert!(h.state_mut().change_setting("backup", "simple"));
+    text(&mut h, "4");
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert_eq!(std::fs::read_to_string(&a).unwrap(), "one\ntwo\n34");
+    assert_eq!(
+        std::fs::read_to_string(d.join("a.txt.bak")).unwrap(),
+        "one\ntwo\n3",
+        "the previous file"
+    );
+    assert!(h.state_mut().change_setting("backup", "dated"));
+    text(&mut h, "5");
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    let dated: Vec<_> = std::fs::read_dir(d.join("jarak-backup"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(dated.len(), 1, "one dated copy");
+    assert_eq!(std::fs::read_to_string(&dated[0]).unwrap(), "one\ntwo\n34");
+    // SET-07: a fixed folder (one that is gone falls back to the document's).
+    let fixed = d.join("fixed");
+    std::fs::create_dir_all(&fixed).unwrap();
+    assert!(h.state_mut().change_setting("open_folder", "folder"));
+    assert!(
+        h.state_mut()
+            .change_setting("open_folder_path", &fixed.display().to_string())
+    );
+    key(&mut h, egui::Key::O, egui::Modifiers::CTRL);
+    assert_eq!(
+        dialogs.open_dirs.lock().unwrap().last(),
+        Some(&Some(fixed.clone()))
+    );
+    std::fs::remove_dir_all(&fixed).unwrap();
+    key(&mut h, egui::Key::O, egui::Modifiers::CTRL);
+    assert_eq!(
+        dialogs.open_dirs.lock().unwrap().last(),
+        Some(&Some(d.clone()))
+    );
+    // SET-06: a new document in the settings' language.
+    assert!(h.state_mut().change_setting("new_language", "Markdown"));
+    key(&mut h, egui::Key::N, egui::Modifiers::CTRL);
+    assert_eq!(
+        h.state().tab().lang_choice,
+        LangChoice::Named("Markdown".into())
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 110 (`JARAK-NFR-007`): the character panel, the clipboard history, the range dialog, the
+/// context menu and distraction-free mode pass the UI audit rules.
+#[test]
+fn the_step_110_surfaces_pass_the_ui_audit_rules() {
+    let (mut h, _clip) = app_clip(&[], Arc::default());
+    text(&mut h, "alpha é");
+    select(&mut h, 0, 5);
+    key(&mut h, egui::Key::C, egui::Modifiers::CTRL);
+    for screen in [
+        "char-panel",
+        "clipboard-history",
+        "char-range",
+        "context-menu",
+        "distraction-free",
+    ] {
+        match screen {
+            "char-panel" => palette_run(&mut h, "Character panel"),
+            "clipboard-history" => palette_run(&mut h, "Paste from clipboard history"),
+            "char-range" => palette_run(&mut h, "Find characters in a range"),
+            "context-menu" => {
+                let p = screen_of(&h, 2);
+                right_click(&mut h, p);
+            }
+            _ => {
+                key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+                palette_run(&mut h, "Distraction-free mode");
+            }
+        }
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{screen}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        if screen != "context-menu" {
+            key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+        }
+    }
+}
+
+/// Step 110: the UI audit's screens (the e2e's `step110_jarak_parity` photographs them in the
+/// release window) show what the e2e looks for, headless.
+#[test]
+fn the_step_110_audit_screens_show_their_content() {
+    let d = temp("audit110");
+    let doc = d.join("note.txt");
+    std::fs::write(&doc, "Café 中文 and ASCII\nsecond line\n").unwrap();
+    for screen in [
+        "char-panel",
+        "clipboard-history",
+        "char-range",
+        "distraction-free",
+        "post-it",
+        "tab-color",
+    ] {
+        let (a, _) = app_with(&[doc.to_str().unwrap()], Arc::default());
+        let mut h = harness(a);
+        h.state_mut().prepare_audit(screen);
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{screen}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        let t: Vec<String> = r
+            .components
+            .iter()
+            .filter_map(|c| c.text.as_ref().map(|t| t.content.clone()))
+            .collect();
+        let has = |s: &str| t.iter().any(|x| x.contains(s));
+        match screen {
+            "char-panel" => assert!(has("233   0xE9   é") && has("Insert"), "{t:?}"),
+            "clipboard-history" => assert!(has("alpha") && has("(2 lines)"), "{t:?}"),
+            "char-range" => assert!(has("Find next"), "{t:?}"),
+            "tab-color" => {
+                assert!(has("note.txt") && has("Untitled"), "two tabs: {t:?}");
+                assert_eq!(h.state().tab().color, Some(1));
+            }
+            _ => {
+                assert!(t.iter().any(|x| x == "2"), "the line numbers: {t:?}");
+                assert!(!has("UTF-8"), "no status bar: {t:?}");
+                assert_eq!(
+                    h.state().modes_applied,
+                    h.state().modes,
+                    "the audit's window is never made full screen or frameless"
+                );
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// SET-11, SET-17, UI-02 (`JARAK-FR-130`, `JARAK-FR-033`): smart highlighting follows its
+/// settings (off, any case, part words); further word characters join words for a double click;
+/// the status bar shows the document's length and lines.
+#[test]
+fn smart_highlighting_word_characters_and_the_length_summary() {
+    let d = temp("s110b");
+    let (a, _) = app_with(&[], Arc::default());
+    // Frames 1/60 s apart, so two clicks on consecutive frames are a double click.
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(960.0, 640.0))
+        .with_step_dt(1.0 / 60.0)
+        .build_ui_state(
+            |ui, app: &mut JarakApp| app.ui(ui),
+            a.with_settings(d.join("settings.toml"))
+                .with_hotkeys(&d.join("hotkeys.json")),
+        );
+    h.run();
+    text(&mut h, "one One someone foo-bar");
+    select(&mut h, 0, 3);
+    h.run();
+    assert_eq!(
+        h.state().tab().view.marks,
+        Vec::<(usize, usize)>::new(),
+        "case, whole words"
+    );
+    assert!(h.state_mut().change_setting("smart_match_case", "false"));
+    select(&mut h, 0, 3);
+    h.run();
+    assert_eq!(h.state().tab().view.marks, vec![(4, 7)]);
+    assert!(h.state_mut().change_setting("smart_whole_word", "false"));
+    select(&mut h, 0, 3);
+    h.run();
+    assert_eq!(h.state().tab().view.marks, vec![(4, 7), (12, 15)]);
+    assert!(h.state_mut().change_setting("smart_highlight", "false"));
+    select(&mut h, 0, 3);
+    h.run();
+    assert_eq!(
+        h.state().tab().view.marks,
+        Vec::<(usize, usize)>::new(),
+        "off"
+    );
+    // SET-17: a double click on "bar" takes "foo-bar" once `-` is a word character.
+    let p = screen_of(&h, 21);
+    double_click_at(&mut h, p);
+    assert_eq!(sel_text(&h), "bar");
+    assert!(h.state_mut().change_setting("word_chars", "-"));
+    h.run();
+    let p = screen_of(&h, 21);
+    // A click elsewhere first, so the next two are a new double click.
+    let q = screen_of(&h, 2);
+    click_at(&mut h, q, egui::Modifiers::NONE);
+    double_click_at(&mut h, p);
+    assert_eq!(sel_text(&h), "foo-bar");
+    // UI-02: the length and lines.
+    assert!(h.query_by_label("23 chars · 1 lines").is_some());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// SET-10 (`JARAK-FR-130`): a language's own tab width and spaces override the general ones for
+/// its documents only.
+#[test]
+fn a_language_has_its_own_tab_width() {
+    assert_eq!(
+        jarak_gui::prefs::parse_lang_tabs("Python=4s, Go = 8t ,YAML=2, bad, X=0, Y=17s, =3"),
+        vec![
+            ("Python".to_string(), 4, Some(true)),
+            ("Go".to_string(), 8, Some(false)),
+            ("YAML".to_string(), 2, None),
+        ]
+    );
+    let (mut h, d) = settings_app("lang-tabs", &["a.rs", "b.txt"]);
+    assert!(h.state_mut().change_setting("language_tabs", "Rust=2s"));
+    h.run();
+    let tab = |h: &Harness<'static, JarakApp>, n: &str| {
+        let t = h.state().tabs.iter().find(|t| t.title() == n).unwrap();
+        (t.file.doc.tab_width, t.file.doc.use_spaces)
+    };
+    assert_eq!(tab(&h, "a.rs"), (2, true), "Rust's own");
+    assert_eq!(tab(&h, "b.txt"), (4, false), "the general settings");
     let _ = std::fs::remove_dir_all(&d);
 }

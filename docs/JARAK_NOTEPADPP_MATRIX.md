@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported; Step 104 `REL-02`…`REL-05`, `JRK-16`, `VIEW-17` supported, `SET-14` partial; Step 105 `SET-01`, `SET-04`, `SET-08`, `SET-15`, `SET-16`, `SET-20`, `SET-23`, `SET-26` supported, `SET-02`, `SET-03`, `SET-05`, `SET-06`, `SET-10`, `SET-21`, `SET-22` partial; Step 106 `FILE-20`, `SET-12` supported, `FILE-19`, `PLUG-07` partial; Step 107 `HELP-03`, `HELP-04`, `HELP-05`, `HELP-10`, `JRK-14` supported, `JRK-15` partial; Step 108 `PLUG-08`, `PLUG-09` supported; Step 109 `SET-18`, `REL-06` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported; Step 104 `REL-02`…`REL-05`, `JRK-16`, `VIEW-17` supported, `SET-14` partial; Step 105 `SET-01`, `SET-04`, `SET-08`, `SET-15`, `SET-16`, `SET-20`, `SET-23`, `SET-26` supported, `SET-02`, `SET-03`, `SET-05`, `SET-06`, `SET-10`, `SET-21`, `SET-22` partial; Step 106 `FILE-20`, `SET-12` supported, `FILE-19`, `PLUG-07` partial; Step 107 `HELP-03`, `HELP-04`, `HELP-05`, `HELP-10`, `JRK-14` supported, `JRK-15` partial; Step 108 `PLUG-08`, `PLUG-09` supported; Step 109 `SET-18`, `REL-06` supported; Step 110 every row reviewed — 20 rows supported, 10 partial with their gaps named, `SRCH-17`, `VIEW-16`, `SET-24` not intended, only `SET-09` and `HELP-11` (Step 111) planned — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -52,16 +52,16 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| FILE-01 | New untitled document (Ctrl+N) | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+N opens a new untitled document (key test); shown with tabs in Step 93 |
+| FILE-01 | New untitled document (Ctrl+N) | supported | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+N opens a new untitled document (key test); Step 93: it is a tab of its own (`tabs_switch_reorder_close_and_reopen_by_mouse_and_keys`); Step 110: in the settings' language when set (`new_language_open_folder_find_fill_and_backup_settings_apply`) |
 | FILE-02 | Open one or several files with a dialog (Ctrl+O) | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+O with the Windows Open dialog (`GetOpenFileNameW`); the dialog itself not exercised by a test yet |
 | FILE-03 | Open files by drag and drop onto the window | partial | `JARAK-FR-032` | 88 | M | Step 88: files dropped on the window open (`dropped_files`); a real drop not yet verified |
 | FILE-04 | Open containing folder in Explorer / in a command prompt | supported | `JARAK-FR-060` | 93 | T | Step 93: tab menu and palette — Show in Explorer (selected), a command prompt in the folder (window test with a recording opener) |
 | FILE-05 | Open the file in the default viewer (shell association) | supported | `JARAK-FR-060` | 93 | T | Step 93: the default program, never for programs or scripts (`exe`, `bat`, `ps1`, `lnk`, … shown in Explorer instead; unit + window test) |
 | FILE-06 | Open Folder as Workspace | supported | `JARAK-FR-063` | 93 | T, M | Step 93: a dropped folder, `jarak open <folder>` or the document's folder becomes the workspace; restored by the session (window test, e2e) |
-| FILE-07 | Reload from disk | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::reload` (tests); the command comes with Step 88 |
+| FILE-07 | Reload from disk | supported | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::reload` (tests); Step 104: File → Reload from disk (`file.reload`) and a file changed on disk reloading as one undo step (`a_file_changed_on_disk_is_asked_about_and_reloads_as_one_undo_step`, `unmodified_documents_reload_silently_when_set`) |
 | FILE-08 | Save (Ctrl+S) | supported | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+S, atomic (window test; real desktop: the file written with CRLF, nothing left behind) |
 | FILE-09 | Save As | partial | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+Shift+S and Ctrl+S on an untitled document ask for a name (window test with a scripted dialog); the real dialog not exercised yet |
-| FILE-10 | Save a Copy As (document keeps its path) | partial | `JARAK-FR-020` | 87 | T | Step 87: `FileDocument::save_copy` keeps the document's file and dirty state (tests); the dialog comes with Step 88 |
+| FILE-10 | Save a Copy As (document keeps its path) | supported | `JARAK-FR-020` | 87 | T | Step 110: File → Save a copy as… writes the text to another file; the document keeps its own file and its unsaved state; its own file is refused as the copy's name (`save_a_copy_keeps_the_documents_file_and_unsaved_state`; the Save dialog itself is `FILE-09`'s) |
 | FILE-11 | Save All | supported | `JARAK-FR-020` | 93 | T | Step 93: Save All (tab menu, palette, File menu; window test) |
 | FILE-12 | Rename the file of the document | supported | `JARAK-FR-020` | 93 | T | Step 93: Rename moves the file without replacing another; the document follows (window test) |
 | FILE-13 | Close (Ctrl+W) | supported | `JARAK-FR-020` | 87 | T, M | Step 88: Ctrl+W/Ctrl+F4 with the unsaved-changes question (window tests; real desktop) |
@@ -92,14 +92,14 @@ palette, the headless CLI) follow in §2.
 | EDIT-08 | Copy to clipboard: full path, file name, directory of the document | supported | `JARAK-FR-087` | 97 | T | Step 97: palette *Copy the full path / file name / directory* (`dates_paths_digests_and_the_copy_line_setting`) |
 | EDIT-09 | Copy to clipboard: names and paths of all open documents | supported | `JARAK-FR-087` | 97 | T | Step 97: palette *Copy the names / paths of all open documents* (window test) |
 | EDIT-10 | Increase / decrease line indent (Tab, Shift+Tab) | supported | `JARAK-FR-085` | 88 | T | Step 88: Tab/Shift+Tab indent and unindent the selected lines, Tab inserts a tab otherwise (core tests, key test) |
-| EDIT-11 | Set read-only for the document / clear the file's read-only attribute | partial | `JARAK-FR-027` | 87 | T | Step 87: read-only files refused and lossy/binary documents read-only with a reason (tests); the menu commands come with Step 88 |
+| EDIT-11 | Set read-only for the document / clear the file's read-only attribute | supported | `JARAK-FR-027` | 87 | T | Step 110: Edit → Read-only on/off (typing refused while on; `--read-only` sets the same flag); a lossy, binary or monitored document stays read-only with its reason; File → Clear the file's read-only attribute (`the_read_only_flag_toggles_and_the_files_attribute_clears`) |
 | EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | supported | `JARAK-FR-027` | 103 | T | Step 103: copy / cut / paste binary content keep NUL characters through a clipboard format of their own (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, memory clipboard); the real Windows clipboard checked 2026-11-22: copied from a read-only NUL file, pasted into another document and saved with the NUL |
-| EDIT-13 | Paste HTML / RTF clipboard content as source | planned | `JARAK-FR-087` | 110 | T | — |
+| EDIT-13 | Paste HTML / RTF clipboard content as source | partial | `JARAK-FR-087` | 110 | T | Step 110: Edit → Paste HTML as source / Paste RTF as source insert the clipboard's `HTML Format` fragment or `Rich Text Format` as text, one undo step; without them Jarak says so (`pasting_html_and_rtf_as_source_inserts_their_text`, `a_clipboard_html_fragment_is_found`); partial: reading those formats from the real Windows clipboard is not yet exercised (the clipboard was the maintainer's, in use) |
 | EDIT-14 | On selection: open the selected path as a file / its folder | supported | `JARAK-FR-103` | 101 | T | Step 101: *Open the selected path* / *Show the selected path's folder*, relative to the document's folder (palette, Edit) |
 | EDIT-15 | On selection: search on the internet (explicit, configurable engine) | supported | `JARAK-FR-111` | 102 | T | Step 102: the selection or the word at the caret, `search_engine` in the settings (`$(QUERY)`, DuckDuckGo by default), only on the command (`run_commands_show_the_exact_line_and_run_only_on_the_button`) |
-| EDIT-16 | Character panel (insert a character by code) | planned | `JARAK-FR-087` | 110 | T | — |
-| EDIT-17 | Clipboard history panel | planned | `JARAK-FR-087` | 110 | T | — |
-| EDIT-18 | Drag and drop of selected text inside the document | planned | `JARAK-FR-032` | 110 | M | — |
+| EDIT-16 | Character panel (insert a character by code) | supported | `JARAK-FR-087` | 110 | T | Step 110: Edit → Character panel… inserts a character by its code (`U+00E9`, `0xE9`, `&#233;`, `233`) or from the 32–255 table (`the_character_panel_inserts_by_code_and_from_the_table`, `character_codes_in_every_notation`; audited, `the_step_110_surfaces_pass_the_ui_audit_rules`, e2e `step110_jarak_parity`) |
+| EDIT-17 | Clipboard history panel | partial | `JARAK-FR-087` | 110 | T | Step 110: Edit → Paste from clipboard history… lists what Jarak copied, cut or pasted (newest first, each once, 20, in memory only) and pastes a pick (`the_clipboard_history_pastes_an_earlier_copy`; audited); partial by design: copies made in other programs are not listed — Jarak does not watch the system clipboard (`JARAK-SEC-003`) |
+| EDIT-18 | Drag and drop of selected text inside the document | supported | `JARAK-FR-032` | 110 | M | Step 110: dragging the selection moves it as one undo step; Ctrl held at the release copies it; a drop caret shows where it lands; a click inside the selection only places the caret; a read-only document keeps its text (`dragging_the_selection_moves_or_copies_it`, pointer events through egui) |
 
 ### CASE — Edit → Convert Case to (sources U, E)
 
@@ -185,7 +185,7 @@ palette, the headless CLI) follow in §2.
 | AUTO-07 | Auto-indent (keep / smart per language) | supported | `JARAK-FR-096` | 100 | T | Step 100: off / keep / smart (brackets, Python and YAML colons, a closer's dedent, the document's unit) (`assist::tests::tags_close_in_markup_and_enter_indents_smartly`, `closers_and_tags_only_when_turned_on_and_smart_indentation`) |
 | AUTO-08 | Brace highlighting | supported | `JARAK-FR-096` | 100 | T | Step 100: the bracket and its partner, an unmatched one in the danger colour, strings and comments skipped, bounded to 3 000 lines (`assist::tests::bracket_and_tag_matching_is_bounded_and_skips_strings`, `parameter_hints_follow_the_call_and_matching_brackets_are_highlighted`) |
 | AUTO-09 | HTML/XML tag matching highlight | supported | `JARAK-FR-096` | 100 | T | Step 100: the tag name and its partner's, void elements without (`assist::tests::bracket_and_tag_matching_is_bounded_and_skips_strings`, `paths_complete_tags_match_and_hints_switch_overloads`) |
-| AUTO-10 | Smart highlighting of the selected word (with options) | partial | `JARAK-FR-071` | 94 | T | Step 94: a selected word (letters, digits, `_`) highlights its other whole-word, same-case occurrences on screen (`incremental_search_highlight_all_and_smart_highlighting`); the options (case, whole word, the find panel's settings) come with the settings window, Step 110 |
+| AUTO-10 | Smart highlighting of the selected word (with options) | supported | `JARAK-FR-071` | 94 | T | Step 94: a selected word (letters, digits, `_`) highlights its other occurrences on screen (`incremental_search_highlight_all_and_smart_highlighting`); Step 110: its options in Settings → Editor → Highlighting — on/off, match case, whole words (`smart_highlighting_word_characters_and_the_length_summary`) |
 
 ### SRCH — Search menu: find and replace in the document (sources S, U)
 
@@ -207,10 +207,10 @@ palette, the headless CLI) follow in §2.
 | SRCH-14 | Find All / Replace All in all opened documents | supported | `JARAK-FR-074` | 95 | T | Step 95: *In all open documents* (untitled ones too) and *Replace all in all open documents*, one undo step per document, read-only ones left (`find_all_in_documents_and_replace_all_in_open_documents`) |
 | SRCH-15 | Incremental search bar (Ctrl+Alt+I) | supported | `JARAK-FR-072` | 94 | T | Step 94: Ctrl+Alt+I, the first match from where it started as you type, Enter / Shift+Enter, the count, Esc (`incremental_search_highlight_all_and_smart_highlighting`, UI audit `incremental`, real desktop) |
 | SRCH-16 | Search history (find/replace combo history) | supported | `JARAK-FR-072` | 94 | T | Step 94: 20 entries each for find and replace, Up / Down in the find box, kept in the session (`the_find_history_walks_with_the_arrows_and_lives_in_the_session`, e2e step94, schema `jarak-session-v1`) |
-| SRCH-17 | Find dialog transparency on losing focus | planned | `JARAK-FR-070` | 110 | M | — |
+| SRCH-17 | Find dialog transparency on losing focus | not intended | — | 110 | M | Step 110: Jarak's find panel is docked in the window under the text, never a floating dialog over it, so there is nothing to make transparent |
 | SRCH-18 | Go to line / offset (Ctrl+G) | supported | `JARAK-FR-103` | 99 | T | Step 99: Ctrl+G, a line or a character offset, a wrong entry kept with a message; a fold around the target opens (`go_to_line_and_matching_brackets_open_folds`, UI audit `goto`) |
 | SRCH-19 | Go to matching brace / select all between matching braces | supported | `JARAK-FR-096` | 99 | T | Step 99: Ctrl+B both ways and Ctrl+Alt+B, skipping brackets in strings and comments (`structure::tests`::brackets_match_both_ways_skipping_strings, `go_to_line_and_matching_brackets_open_folds`) |
-| SRCH-20 | Find characters in range (e.g. non-ASCII) | planned | `JARAK-FR-070` | 110 | T | — |
+| SRCH-20 | Find characters in range (e.g. non-ASCII) | supported | `JARAK-FR-070` | 110 | T | Step 110: Search → Find the next non-ASCII character, the next character above U+00FF, Find characters in a range… (code points as U+, 0x or decimal; wrapping) (`characters_in_a_range_are_found_one_after_another`, `the_next_character_in_a_range_wraps`) |
 
 ### MARK — Search → Mark, style tokens and bookmarks (sources S, U)
 
@@ -249,10 +249,10 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| VIEW-01 | Always on top | planned | `JARAK-FR-036` | 110 | T | — |
-| VIEW-02 | Toggle full screen (F11) | planned | `JARAK-FR-036` | 110 | M | — |
-| VIEW-03 | Post-it mode (F12: borderless window) | planned | `JARAK-FR-036` | 110 | M | — |
-| VIEW-04 | Distraction-free mode | planned | `JARAK-FR-036` | 110 | M | — |
+| VIEW-01 | Always on top | partial | `JARAK-FR-036` | 110 | T | Step 110: View → Always on top: on/off; the window is told once per change (`window_modes_toggle_and_hide_the_chrome`); `--always-on-top` (`HELP-07`); partial: the real window's level not yet seen on the desktop |
+| VIEW-02 | Toggle full screen (F11) | partial | `JARAK-FR-036` | 110 | M | Step 110: F11 / View → Full screen; the window is told once per change (`window_modes_toggle_and_hide_the_chrome`); partial: the real full-screen window not yet seen on the desktop |
+| VIEW-03 | Post-it mode (F12: borderless window) | partial | `JARAK-FR-036` | 110 | M | Step 110: F12 / View → Post-it mode: no window frame, no menu, tab or status bar (`window_modes_toggle_and_hide_the_chrome`; audit screen `post-it`); partial: the real frameless window not yet seen on the desktop |
+| VIEW-04 | Distraction-free mode | partial | `JARAK-FR-036` | 110 | M | Step 110: View → Distraction-free mode: full screen without the bars, the function list or the map, the text in a centred column (`window_modes_toggle_and_hide_the_chrome`; audit screen `distraction-free`); partial: the real full-screen window not yet seen on the desktop |
 | VIEW-05 | View the current file in a browser (explicit) | supported | `JARAK-FR-111` | 102 | T | Step 102: HTML, SVG and XML files in the default browser, others refused with the reason (`run_commands_show_the_exact_line_and_run_only_on_the_button`, `the_manager_changes_shortcuts_and_removes_commands_and_html_opens_in_the_browser`) |
 | VIEW-06 | Show spaces and tabs | supported | `JARAK-FR-037` | 103 | T | Step 103: dots for spaces, arrows for tabs (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, UI audit `symbols`; real desktop pending) |
 | VIEW-07 | Show end of line | supported | `JARAK-FR-037` | 103 | T | Step 103: a CRLF / LF / CR / NEL / LS / PS tag after each line (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, UI audit `symbols`; real desktop pending) |
@@ -264,7 +264,7 @@ palette, the headless CLI) follow in §2.
 | VIEW-13 | Word wrap | supported | `JARAK-FR-030` | 88 | T | Step 88: Alt+Z, wrapped selections and caret (window test; audited `editor-wrap` view) |
 | VIEW-14 | Hide lines | supported | `JARAK-FR-104` | 101 | T | Step 101: Alt+H, the mark above shows them again, *Show all hidden lines* (`navigate::tests::hidden_lines_hide_and_show_and_the_summary_counts`, `the_change_history_shows_in_the_margin_and_hidden_lines_come_back`) |
 | VIEW-15 | Summary (characters, words, lines, bytes) | supported | `JARAK-FR-104` | 101 | T | Step 101: path, created, modified, characters, words, lines, bytes as saved, the selection (`navigate::tests::hidden_lines_hide_and_show_and_the_summary_counts`, `quick_open_finds_open_documents_and_the_workspaces_files`, UI audit `summary`) |
-| VIEW-16 | Text direction right-to-left / left-to-right | planned | `JARAK-NFR-008` | 110 | M | — |
+| VIEW-16 | Text direction right-to-left / left-to-right | not intended | — | 110 | M | Step 110: egui lays text out left to right without bidirectional reordering; right-to-left scripts are shown in logical order ([JARAK_ACCESSIBILITY](JARAK_ACCESSIBILITY.md)). A right-to-left mode would need a bidi layout under the whole editor (carets, selections, columns); not offered in v1 |
 | VIEW-17 | Monitoring (tail -f) | supported | `JARAK-FR-122` | 104 | T | Step 104: *Monitoring (tail -f)* follows the file read-only at its end, a grown file gets the new lines (`monitoring_follows_a_growing_file_read_only_at_its_end`) |
 
 ### VIEWS — View → documents, views and panels (sources V, U)
@@ -278,7 +278,7 @@ palette, the headless CLI) follow in §2.
 | VIEWS-05 | Synchronize vertical / horizontal scrolling | supported | `JARAK-FR-061` | 93 | T | Step 93: synchronized vertical and horizontal scrolling keep the views' distance (palette, Window menu) |
 | VIEWS-06 | Go to tab 1–9, next / previous tab | supported | `JARAK-FR-060` | 93 | T | Step 93: Ctrl+1…9 (9 the last), Ctrl+Tab / Ctrl+Shift+Tab within the focused view (window test) |
 | VIEWS-07 | Move tab forward / backward | supported | `JARAK-FR-060` | 93 | T | Step 93: Ctrl+Shift+PageUp/PageDown and dragging a tab (window test) |
-| VIEWS-08 | Tab colouring | planned | `JARAK-FR-060` | 110 | T | — |
+| VIEWS-08 | Tab colouring | supported | `JARAK-FR-060` | 110 | T | Step 110: Window → Tab colour (five design-system colours, or none) drawn along the tab's edge and named in its accessible label; the session keeps it (`a_tab_takes_a_colour_and_the_session_keeps_it`, `a_session_round_trips_through_its_file`, audit screen `tab-color`) |
 | VIEWS-09 | Document Map panel | supported | `JARAK-FR-102` | 101 | T, M | Step 101: bars per row, the lines on screen framed, click and drag; 10 MB: first frame 0.8 ms, keystroke p95 0.85 ms (`the_document_map_scrolls_and_the_navigation_history_goes_back_and_forward`, `the_document_map_of_a_10_mb_document`, UI audit `docmap`; real desktop pending) |
 | VIEWS-10 | Document List panel | supported | `JARAK-FR-064` | 93 | T | Step 93: the side panel's Documents page (window test, UI audit) |
 | VIEWS-11 | Function List panel | supported | `JARAK-FR-093` | 99 | T, M | Step 99: symbols per language and Markdown/HTML headings, filter, jump, next/previous symbol, rows in view only (`structure::tests`::symbols_of_each_language_family, `the_function_list_lists_filters_and_jumps_to_symbols`, headless audit, UI audit `functions`; real desktop pending) |
@@ -313,7 +313,7 @@ palette, the headless CLI) follow in §2.
 | ENC-11 | Convert to ANSI | supported | `JARAK-FR-025` | 103 | T | Step 103: *Convert to ANSI* with the lossy question (`convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding` for the path) |
 | ENC-12 | Convert to UTF-8 / UTF-8-BOM | supported | `JARAK-FR-025` | 103 | T | Step 103: *Convert to UTF-8 / UTF-8-BOM* (palette; `file::tests::utf8_and_utf16_with_and_without_bom_are_reinterpreted`) |
 | ENC-13 | Convert to UTF-16 BE BOM / UTF-16 LE BOM | supported | `JARAK-FR-025` | 103 | T | Step 103: *Convert to UTF-16 BE / LE BOM*, saved with its BOM (`convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding`) |
-| ENC-14 | Automatic encoding detection on open | partial | `JARAK-FR-021` | 87 | T | Step 87: BOM, UTF-8, UTF-16 without BOM, then the locale's legacy code page (tests, `jarak info`, e2e `step87`); shown in the status bar with Step 88 |
+| ENC-14 | Automatic encoding detection on open | supported | `JARAK-FR-021` | 87 | T | Step 87: BOM, UTF-8, UTF-16 without BOM, then the locale's legacy code page (tests, `jarak info`, e2e `step87`); Step 88: the detected encoding in the status bar (`the_status_bar_carries_the_gear_at_its_right_end_and_no_toolbar` reads its `UTF-8` item); Step 103: reinterpreting and the encoding tests |
 | ENC-15 | Default encoding for new documents (setting) | supported | `JARAK-FR-021` | 87 | T | Step 103: *New documents in UTF-8 / UTF-8-BOM / ANSI* (setting `new_encoding`) (`line_endings_convert_and_new_documents_take_the_settings_encoding`) |
 | ENC-16 | Status-bar encoding and EOL indicators (clickable) | supported | `JARAK-FR-035` | 88 | T, M | Step 88: encoding label and line ending (or Mixed EOL) in the status bar (window tests); clickable in Step 103; Step 103: a click on the encoding or the line ending opens its entries (`convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding`, `line_endings_convert_and_new_documents_take_the_settings_encoding`) |
 
@@ -322,7 +322,7 @@ palette, the headless CLI) follow in §2.
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | LANG-01 | Built-in language highlighting (the JARAK-FR-090 list) | supported | `JARAK-FR-090` | 98 | T | Step 98: 23 languages, own line-state lexers (ADR 0103), golden fixtures for each (`syntax::tests`: c_and_cpp … sql_markdown_lua_php_ruby, UI audit `syntax`); 10 MB: 164 ms to lex to the end, keystroke frame p95 0.29 ms |
-| LANG-02 | Further Notepad++ languages (Ada, ASM, AutoIt, COBOL, D, Fortran, Haskell, Lisp, Pascal, Perl, R, Scheme, Swift, VHDL, Verilog, …) | planned | `JARAK-FR-090` | 110 | T | — |
+| LANG-02 | Further Notepad++ languages (Ada, ASM, AutoIt, COBOL, D, Fortran, Haskell, Lisp, Pascal, Perl, R, Scheme, Swift, VHDL, Verilog, …) | partial | `JARAK-FR-090` | 110 | T | Step 110: Ada, Assembly, AutoIt, COBOL, D, Fortran, Haskell, Lisp, Pascal, Perl, R, Scheme, Swift, VHDL and Verilog are built in, detected by extension (and Perl, R by `#!`) (`the_further_notepad_plus_plus_languages`, e2e `step110_jarak_parity`); partial: Notepad++'s other languages (for example Erlang, OCaml, Tcl, Nim, fixed-form COBOL's column-7 comments) are not built in — they can be added as user-defined languages (Step 98) |
 | LANG-03 | Language detection by extension | supported | `JARAK-FR-090` | 98 | T | Step 98: by extension, user languages first (`syntax::tests`::every_listed_language_is_built_in_and_detected, `a_rust_file_is_highlighted_and_the_language_menu_changes_it`) |
 | LANG-04 | Language detection by first line / shebang | supported | `JARAK-FR-090` | 98 | T | Step 98: `#!` lines (with `env` and version suffixes) and `<?xml` (`syntax::tests`::every_listed_language_is_built_in_and_detected) |
 | LANG-05 | Manual language selection (Language menu) | supported | `JARAK-FR-090` | 98 | T | Step 98: the Language menu in the palette and the menu bar, the status bar names the language (`a_rust_file_is_highlighted_and_the_language_menu_changes_it`, UI audit `palette-language`) |
@@ -342,26 +342,26 @@ palette, the headless CLI) follow in §2.
 | SET-03 | Preferences: Editing (caret, current line, line wrap, multi-editing, scrolling beyond last line) | partial | `JARAK-FR-130` | 105 | T | Step 105: current-line highlight, a blinking caret (off by default), word wrap, multi-editing (Ctrl+click), virtual space; scrolling beyond the last line is not implemented |
 | SET-04 | Preferences: Dark mode | supported | `JARAK-FR-132` | 105 | T, M | Step 105: theme System / Dark / Light from `kim-design`, live (`a_changed_setting_is_written_and_applied_at_once`; ui-audit dark and light) |
 | SET-05 | Preferences: Margins, border, edge (line numbers, bookmark margin, edge column) | partial | `JARAK-FR-130` | 105 | T | Step 105: line numbers on/off, edge lines at columns; the bookmark margin cannot be hidden |
-| SET-06 | Preferences: New document (format, encoding, default language) | partial | `JARAK-FR-130` | 105 | T | Step 105: new documents' encoding and line ending (`tab_width_spaces_and_new_documents_follow_the_settings`); a default language is not implemented |
-| SET-07 | Preferences: Default directory | planned | `JARAK-FR-130` | 105 | T | — |
+| SET-06 | Preferences: New document (format, encoding, default language) | supported | `JARAK-FR-130` | 105 | T | Step 105: new documents' encoding and line ending (`tab_width_spaces_and_new_documents_follow_the_settings`); Step 110: their language (`new_language`, `new_language_open_folder_find_fill_and_backup_settings_apply`) |
+| SET-07 | Preferences: Default directory | supported | `JARAK-FR-130` | 105 | T | Step 110: the Open dialog starts in the current document's folder, Windows' last folder or a set folder (`open_folder`, `open_folder_path`; a folder that is gone falls back to the document's) (`new_language_open_folder_find_fill_and_backup_settings_apply`) |
 | SET-08 | Preferences: Recent files history size | supported | `JARAK-FR-130` | 105 | T | Step 105: *Recent files kept* (0–50) |
 | SET-09 | Preferences: File association (explicit, reversible) | planned | `JARAK-FR-130` | 111 | M | — |
-| SET-10 | Preferences: Language (tab size per language, replace by space) | partial | `JARAK-FR-130` | 105 | T | Step 105: tab width and *Tab inserts spaces* for every document (`tab_inserts_spaces_to_the_next_stop_when_set`); per-language tab sizes are not implemented |
-| SET-11 | Preferences: Highlighting (smart highlight, mark-all options) | planned | `JARAK-FR-130` | 105 | T | — |
+| SET-10 | Preferences: Language (tab size per language, replace by space) | supported | `JARAK-FR-130` | 105 | T | Step 105: tab width and *Tab inserts spaces* for every document (`tab_inserts_spaces_to_the_next_stop_when_set`); Step 110: a language's own tab width and spaces (`language_tabs`, `a_language_has_its_own_tab_width`) |
+| SET-11 | Preferences: Highlighting (smart highlight, mark-all options) | supported | `JARAK-FR-130` | 105 | T | Step 110: Settings → Editor → Highlighting — smart highlighting on/off, match case, whole words (`smart_highlighting_word_characters_and_the_length_summary`); Mark All keeps its own case and whole-word options on the find panel's Mark page (`mark_all_bookmarks_lines_clears_and_copies_marks`) |
 | SET-12 | Preferences: Print (margins, header, footer, colour mode) | supported | `JARAK-FR-140` | 106 | T | Step 106: Settings → Files → Printing — header and footer (left, centre and right parts with `{file}`, `{path}`, `{page}`, `{pages}`, `{date}`, `{time}`), line numbers, colour or black on white, text size, four margins; live for the next job (`the_print_settings_apply_to_the_next_job`); header/footer fonts are not settable |
-| SET-13 | Preferences: Searching (minimum size, fill find field, confirm replace all) | planned | `JARAK-FR-130` | 105 | T | — |
-| SET-14 | Preferences: Backup (session snapshot, periodic backup, backup on save) | partial | `JARAK-FR-121` | 104 | T | Step 104: the session (Step 93) and periodic recovery snapshots, on/off and the interval (`recovery_interval`); *backup on save* (a copy of the previous file) is not implemented |
+| SET-13 | Preferences: Searching (minimum size, fill find field, confirm replace all) | partial | `JARAK-FR-130` | 105 | T | Step 110: *Selected text fills the find field* (`find_fill_selection`, `new_language_open_folder_find_fill_and_backup_settings_apply`); partial: no minimum size for *in selection* and no Replace All confirmation setting (Replace All is one undo step; Replace in Files always previews, Step 95) |
+| SET-14 | Preferences: Backup (session snapshot, periodic backup, backup on save) | supported | `JARAK-FR-121` | 104 | T | Step 104: the session (Step 93) and periodic recovery snapshots, on/off and the interval (`recovery_interval`); Step 110: backup on save, simple (`<name>.bak`) or dated copies in `jarak-backup` (`backup`; `a_backup_copies_the_file_beside_it`, `new_language_open_folder_find_fill_and_backup_settings_apply`; a backup that fails stops the save) |
 | SET-15 | Preferences: Auto-completion | supported | `JARAK-FR-094` | 105 | T | Step 105: the completion and typing-aid settings of Step 100 in Settings → Editor |
 | SET-16 | Preferences: Multi-instance and date format | supported | `JARAK-FR-002` | 105 | T | Step 105: *One window* (off: every start opens its own window) and the custom date format |
-| SET-17 | Preferences: Delimiter (word characters, double-click delimiters) | planned | `JARAK-FR-130` | 105 | T | — |
+| SET-17 | Preferences: Delimiter (word characters, double-click delimiters) | partial | `JARAK-FR-130` | 105 | T | Step 110: further word characters for double-click, Ctrl+arrows and select word (`word_chars`; `further_word_characters_join_words`, `smart_highlighting_word_characters_and_the_length_summary`); partial: Notepad++'s Ctrl+double-click delimiter selection is not implemented |
 | SET-18 | Preferences: Performance (large file restriction) | supported | `JARAK-NFR-004` | 109 | T | Step 109: Settings → Files → Performance — *Large file from (MB)* (200 by default) (`a_large_file_is_plain_text_without_wrap_or_map`, [JARAK_PERFORMANCE](JARAK_PERFORMANCE.md)) |
 | SET-19 | Preferences: Cloud settings path | not intended | — | 105 | D | — |
 | SET-20 | Preferences: Search engine for 'search on internet' | supported | `JARAK-FR-111` | 105 | T | Step 105: the search engine address, checked to hold `$(QUERY)` |
 | SET-21 | Preferences: MISC (file status auto-detection, document peeker, smooth font, clickable links) | partial | `JARAK-FR-120` | 105 | T | Step 105: file status auto-detection (Step 104) in Settings → Files; document peeker, smooth font and clickable-link options are not implemented |
 | SET-22 | Style Configurator (themes, per-language token colours, global font) | partial | `JARAK-FR-132` | 105 | T, M | Step 105: themes and the editor font family and size (Windows' fonts when present); per-language token colours are not implemented |
 | SET-23 | Shortcut Mapper (main menu, macros, run commands, editor commands; conflicts) | supported | `JARAK-FR-112` | 105 | T, M | Step 105: Settings → Keyboard and `jarak hotkeys` on the shared hotkey contract — every command with keys (Change by recording, Off, Reset, Take it for a clash, Reset all), conflicts checked, the user's changes listed first (`a_remapped_command_runs_from_its_new_keys`, `the_keyboard_section_records_refuses_and_resets`, e2e `step105_jarak_settings`); macros and run commands keep their own shortcut fields (Step 102); the navigation and editing keys every Kim window reserves are not remappable |
-| SET-24 | Import style themes | planned | `JARAK-FR-132` | 105 | T | — |
-| SET-25 | Edit the context menu | planned | `JARAK-FR-130` | 110 | T | — |
+| SET-24 | Import style themes | not intended | — | 105 | T | Step 110: Jarak's themes are the Kim design system's (`kim-design` tokens, contrast-audited, the same in every Kim tool); a Notepad++ style theme would bring colours the design audit cannot vouch for. User-defined languages keep their token kinds (Step 98) |
+| SET-25 | Edit the context menu | supported | `JARAK-FR-130` | 110 | T | Step 110: Settings → Advanced → Context menu of the text: palette command ids and `-` separators; unknown ids are skipped (`the_text_context_menu_runs_the_settings_commands`, `the_default_context_menu_names_real_commands`) |
 | SET-26 | Localization (Korean, English) | supported | `JARAK-FR-131` | 105 | T, M | Step 105: English and Korean for every string, following Windows unless set (ui-audit `ko` runs of every Settings section) |
 
 ### TOOL — Tools menu (sources U)
@@ -420,13 +420,13 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| HELP-01 | Command line: open files | partial | `JARAK-FR-003` | 85 | T | Step 85: `jarak open` / `jarak-gui <file>…` take the files (single-instance hand-off, `tests/window.rs`, real desktop); the files are shown, not loaded, until Steps 87–88 |
-| HELP-02 | Command line: -n line / -c column / -p position | partial | `JARAK-FR-003` | 85 | T | Step 85: `file:line:column` parsed (`jarak-core` `target` tests, `open --dry-run` in e2e step85); the caret moves there once the text view exists (Step 88) |
+| HELP-01 | Command line: open files | supported | `JARAK-FR-003` | 85 | T | Step 85: `jarak open` / `jarak-gui <file>…` take the files (single-instance hand-off, real desktop); Step 88: they open as documents (`files_open_at_a_line_and_a_second_start_hands_files_over`, e2e `step88`) |
+| HELP-02 | Command line: -n line / -c column / -p position | supported | `JARAK-FR-003` | 85 | T | Step 85: `file:line:column` parsed (`jarak-core` `target` tests, `open --dry-run` in e2e step85); Step 88: the caret goes there (`files_open_at_a_line_and_a_second_start_hands_files_over`) |
 | HELP-03 | Command line: -l language / -udl | supported | `JARAK-FR-150` | 107 | T | Step 107: `--language <name>` (`jarak open`, `jarak-gui`; any case, the user's languages too, `text` for none) applies to the files after it, also through the hand-off to a running window (`language_and_read_only_options_apply_to_the_files_after_them`); Notepad++'s `-udl=` is the same option with a user language's name |
 | HELP-04 | Command line: -ro read-only | supported | `JARAK-FR-150` | 107 | T | Step 107: `--read-only` opens the files after it read-only, with the reason in the status bar (`language_and_read_only_options_apply_to_the_files_after_them`, e2e `step107_jarak_cli_interop`) |
 | HELP-05 | Command line: -nosession / -openSession | supported | `JARAK-FR-150` | 107 | T | Step 107: `jarak-gui --no-session` (no last session, none saved at exit, the saved one kept) and `--session <file>` (a saved session's documents; also through the hand-off) (`session_options_open_a_session_file_and_leave_the_saved_one`) |
 | HELP-06 | Command line: -multiInst (separate instance) | supported | `JARAK-FR-002` | 85 | T | Step 85: `--new-window` / `jarak open --new-window` start a separate window; without it a second start hands its files to the running window (real desktop: title changed, second process exit 0) |
-| HELP-07 | Command line: -x / -y window position, -alwaysOnTop | planned | `JARAK-FR-150` | 110 | T | — |
+| HELP-07 | Command line: -x / -y window position, -alwaysOnTop | partial | `JARAK-FR-150` | 110 | T | Step 110: `jarak-gui --position x,y --always-on-top` for a new window (`a_position_is_two_numbers`; a bad position exits 2 before any window, e2e `step110_jarak_parity`); partial: the window's real place and level not yet checked on the desktop |
 | HELP-08 | Command line: -qt / -qf ghost typing | not intended | — | 107 | D | — |
 | HELP-09 | Built-in updater (WinGUp) | not intended | — | 111 | D | — |
 | HELP-10 | Debug info (versions, paths) | supported | `JARAK-FR-150` | 107 | T | Step 107: `jarak debug-info` (version, programs, folders and files, the Windows build, printers; never contents) and Window → Copy debug info (`copy_debug_info_names_the_version_and_windows`, CLI `debug_info_names_the_version_and_windows`) |
@@ -448,13 +448,13 @@ palette, the headless CLI) follow in §2.
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | UI-01 | Tab bar with dirty markers, close buttons and context menu | supported | `JARAK-FR-060` | 93 | T, M | Step 93: tab bars from the design tokens with dirty dots, close buttons, middle click, drag, context menu (window tests, UI audit 95 runs 0 failures) |
-| UI-02 | Status bar: language, length/lines, position, EOL, encoding, insert/overwrite | partial | `JARAK-FR-035` | 88 | T, M | Step 88: Ln/Col, selection, encoding, EOL, language, INS/OVR (window tests, audited views); the length/lines summary comes with Step 101 |
+| UI-02 | Status bar: language, length/lines, position, EOL, encoding, insert/overwrite | supported | `JARAK-FR-035` | 88 | T, M | Step 88: Ln/Col, selection, encoding, EOL, language, INS/OVR (window tests, audited views); Step 110: the document's length and lines (`23 chars · 1 lines`, `smart_highlighting_word_characters_and_the_length_summary`) |
 | UI-03 | Overwrite mode (Insert key) | supported | `JARAK-FR-031` | 88 | T | Step 88: Insert toggles overwrite; typing replaces the next grapheme, never a line break (core test, window test) |
 | UI-04 | Line number margin | supported | `JARAK-FR-030` | 88 | T, M | Step 88: line numbers, the caret's line brighter (audited views, real screenshots) |
 | UI-05 | Current line highlight | supported | `JARAK-FR-030` | 88 | T | Step 88: the caret's line highlighted (audited views) |
 | UI-06 | Vertical edge line(s) at configured columns | supported | `JARAK-FR-037` | 103 | T | Step 103: edge lines at `edge_columns` (80 by default) (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, UI audit `symbols`; real desktop pending) |
 | UI-07 | Clickable links (Ctrl+click) | supported | `JARAK-FR-046` | 89 | T | Step 89: links in the preview open with Ctrl+click only, web and mail only (window tests); a plain click explains |
-| UI-08 | Context menu in the text | planned | `JARAK-FR-031` | 110 | M | — |
+| UI-08 | Context menu in the text | supported | `JARAK-FR-031` | 110 | M | Step 110: a right click on the text (either view) opens its context menu — Undo, Redo, Cut, Copy, Paste, Select all, Copy as HTML by default; an item runs its command (`the_text_context_menu_runs_the_settings_commands`; audited, `the_step_110_surfaces_pass_the_ui_audit_rules`) |
 | UI-09 | Toolbar with icons | not intended | — | 88 | D | — |
 | UI-10 | Menu bar (Jarak: hidden by default, shown with Alt or from the palette) | supported | `JARAK-FR-054` | 92 | T | Step 92: hidden by default, Alt alone (traced events) or the palette shows it; six menus with the keys (window test, e2e step92, real desktop) |
 
@@ -481,12 +481,15 @@ palette, the headless CLI) follow in §2.
 
 ## 3. Counts
 
-| | Rows |
-| --- | --- |
-| Notepad++ built-in features | 285 |
-| … `planned` | 277 |
-| … `not intended` | 8 |
-| Jarak additions | 16 |
+After Step 110 (the per-area counts are in [JARAK_PARITY_REPORT](JARAK_PARITY_REPORT.md)):
+
+| | Notepad++ built-in features | Jarak additions |
+| --- | --- | --- |
+| Rows | 285 | 16 |
+| … `supported` | 252 | 15 |
+| … `partial` | 20 | 1 |
+| … `planned` | 2 | 0 |
+| … `not intended` | 11 | 0 |
 
 ## 4. Not intended, and why
 
@@ -498,10 +501,19 @@ palette, the headless CLI) follow in §2.
 - **Built-in updater** (`HELP-09`): Kim installs and updates tools only when the user asks
   (`KIM-SEC-001`, `KIM-SEC-002`).
 - **Project panels and Find in Projects** (`VIEWS-13`, `FIF-08`): Folder as Workspace and Find in
-  Files cover the use; `.workspace` project trees are not planned for v1 (revisited in Step 110).
+  Files cover the use; `.workspace` project trees are not planned for v1 (revisited in Step 110:
+  still not intended — the workspace folder, its document list and Find in Files cover them).
 - **Cloud settings path** (`SET-19`): no cloud features (`JARAK-SEC-003`); the settings folder is
   a plain folder the user may sync with tools of their choice.
 - **Ghost typing** (`HELP-08`): typing a file's content into the editor as a demo is not an
   editing feature.
 - **Toolbar** (`UI-09`): a deliberate design decision ([JARAK_PHILOSOPHY §1](JARAK_PHILOSOPHY.md));
   every toolbar command is in the palette, the menus and the keys.
+- **Find dialog transparency** (`SRCH-17`, Step 110): the find panel is docked under the text,
+  never a floating dialog over it.
+- **Right-to-left text direction** (`VIEW-16`, Step 110): egui has no bidirectional text layout;
+  right-to-left scripts are shown in logical order. A right-to-left editor needs a bidi layout
+  for carets, selections and columns — not offered in v1, recorded in
+  [JARAK_ACCESSIBILITY](JARAK_ACCESSIBILITY.md).
+- **Importing Notepad++ style themes** (`SET-24`, Step 110): the colours are the Kim design
+  system's, audited for contrast and shared by every Kim tool.

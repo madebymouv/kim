@@ -535,7 +535,7 @@ impl JarakApp {
 
     /// The tab bars are shown when there is more than one document or a second view.
     pub fn tab_bars_shown(&self) -> bool {
-        self.tabs.len() > 1 || self.second.is_some()
+        (self.tabs.len() > 1 || self.second.is_some()) && !self.chrome_hidden()
     }
 
     /// Draws the views (their tab bars and documents) into `rect`.
@@ -598,6 +598,13 @@ impl JarakApp {
                             dirty: t.file.doc.is_dirty(),
                             active: *k == i,
                             cloned: t.pane == Pane::Both,
+                            color: t.color.map(|k| {
+                                let (en, ko) = crate::gaps::TAB_COLORS[usize::from(k).min(4)];
+                                (
+                                    crate::gaps::tab_color(c, k),
+                                    self.lang.pick(en, ko).to_string(),
+                                )
+                            }),
                         }
                     })
                     .collect();
@@ -760,6 +767,8 @@ impl JarakApp {
 
     /// Draws one document (source, preview or both) into `rect`.
     fn draw_doc(&mut self, ui: &mut egui::Ui, rect: Rect, i: usize, salt: u8, c: &Colors) -> Drawn {
+        // Step 110: distraction-free mode draws the text in a centred column.
+        let rect = self.focus_rect(rect, self.tabs[i].view.zoom);
         let lang = self.lang;
         let read_only = self.tabs[i].file.read_only;
         let t = &mut self.tabs[i];

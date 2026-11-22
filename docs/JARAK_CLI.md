@@ -86,6 +86,8 @@ diagnostics to stderr.
 | `-nosession` | `--no-session` (`jarak-gui`) | Starts without the last session and does not save one at exit — HELP-05 |
 | `-openSession file` | `--session <file>` (`jarak-gui`) | Opens a saved session's documents — HELP-05 |
 | `-multiInst` | `--new-window` | A window of its own instead of the running one |
+| `-x` / `-y` | `--position <x,y>` (`jarak-gui`) | A new window's top-left corner in points (a bad value exits 2 before any window) — HELP-07 |
+| `-alwaysOnTop` | `--always-on-top` (`jarak-gui`) | A new window stays above the others (View → Always on top turns it off) — HELP-07 |
 
 The options travel to a running window through the hand-off, so `jarak open --read-only
 notes.md:12` from a Subak terminal shows *notes.md* read-only at line 12 in the window already

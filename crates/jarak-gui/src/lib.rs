@@ -19,6 +19,7 @@ pub mod encoding;
 pub mod export_ui;
 pub mod ext_ui;
 pub mod find;
+pub mod gaps;
 pub mod handoff;
 pub mod hashdlg;
 pub mod images;
@@ -26,6 +27,7 @@ pub mod keys;
 pub mod languages;
 pub mod macros;
 pub mod media;
+pub mod modes;
 pub mod navmap;
 pub mod outline;
 pub mod palette;
@@ -66,6 +68,10 @@ pub trait Dialogs: Send + Sync {
     /// Step 95: a folder (Find in Files).
     fn folder(&self) -> Option<PathBuf> {
         None
+    }
+    /// Step 110 (SET-07): the Open dialog starting in `dir` (by default the plain dialog).
+    fn open_in(&self, _dir: Option<&Path>) -> Option<PathBuf> {
+        self.open()
     }
     /// Step 106: where an export goes (the Save dialog asks before it replaces a file).
     fn save_export(
@@ -144,11 +150,16 @@ pub struct Tab {
     /// Step 104: the document follows its file (tail -f), and whether it was read-only before.
     pub monitor: bool,
     pub(crate) read_only_before_monitor: bool,
+    /// Step 110 (EDIT-11): the read-only flag was set by the user (Edit → Read-only or
+    /// `--read-only`), so the user can clear it.
+    pub(crate) user_read_only: bool,
     /// Step 104: another program deleted or moved its file (the text stays, unsaved).
     pub missing: bool,
     /// Step 105: the settings for new documents (word wrap, how Markdown opens) are still to
     /// be applied (a restored session's documents keep their own).
     pub(crate) fresh: bool,
+    /// Step 110 (VIEWS-08): the tab's colour (`gaps::tab_color`).
+    pub color: Option<u8>,
 }
 
 impl Tab {
@@ -177,6 +188,8 @@ impl Tab {
             read_only_before_monitor: false,
             missing: false,
             fresh: true,
+            color: None,
+            user_read_only: false,
         }
     }
 
@@ -575,6 +588,12 @@ pub struct JarakApp {
     pub ext_grants_file: Option<PathBuf>,
     pub ext_question: Option<ext_ui::ExtQuestion>,
     pub ext_running: Option<ext_ui::ExtRun>,
+    /// Step 110: the window modes asked for, and those the window was told about.
+    pub modes: modes::Modes,
+    pub modes_applied: modes::Modes,
+    /// Step 110: what Jarak copied, cut or pasted (EDIT-17, in memory) and the open small dialog.
+    pub clip_history: Vec<String>,
+    pub gap_dialog: Option<gaps::GapDialog>,
     /// Step 105: the settings applied to the window, the Settings window, and what was applied
     /// (the language is fixed for the run when `--lang` named it, or by a test).
     pub prefs: prefs::Prefs,
@@ -1056,6 +1075,9 @@ impl JarakApp {
             palette::Run::Disk(k) => self.disk_tool(k),
             palette::Run::Export(k) => self.export_tool(k),
             palette::Run::Extension(k) => self.run_extension(k),
+            palette::Run::Gap(k) => self.gap_tool(k),
+            palette::Run::FileOp(k) => self.file_op(k),
+            palette::Run::TabColor(k) => self.color_tab((k < 5).then_some(k)),
             palette::Run::DebugInfo => {
                 let text = jarak_core::about::debug_text("jarak-gui");
                 self.message = Some(if self.clipboard.set_text(&text) {
@@ -1434,6 +1456,10 @@ impl JarakApp {
 
     /// The menu bar (hidden by default; Alt or the palette shows it).
     fn menu_bar_ui(&mut self, ui: &mut egui::Ui, c: &Colors) {
+        // Step 110: post-it and distraction-free modes show no menu bar.
+        if self.chrome_hidden() {
+            return;
+        }
         // Step 105: the menu bar always, or only while Alt is pressed (the setting).
         if !self.menu_bar && !self.prefs.menu_always {
             return;
@@ -1769,6 +1795,10 @@ impl JarakApp {
             ext_grants_file: None,
             ext_question: None,
             ext_running: None,
+            modes: modes::Modes::default(),
+            modes_applied: modes::Modes::default(),
+            clip_history: Vec::new(),
+            gap_dialog: None,
             prefs: prefs::Prefs::default(),
             settings_win: None,
             lang_fixed: true,
@@ -1848,6 +1878,32 @@ impl JarakApp {
                 });
             }
             "menu-bar" => self.menu_bar = true,
+            // Step 110: the character panel, the clipboard history (two copies), the range
+            // dialog, distraction-free and post-it modes, a coloured tab.
+            "char-panel" => self.gap_tool(0),
+            "clipboard-history" => {
+                self.remember_clip("alpha");
+                self.remember_clip(
+                    "two lines
+of text",
+                );
+                self.gap_tool(1);
+            }
+            "char-range" => self.gap_tool(4),
+            // The layout only: the audit's window is never made full screen or frameless
+            // (no viewport command is sent).
+            "distraction-free" | "post-it" => {
+                if screen == "post-it" {
+                    self.modes.post_it = true;
+                } else {
+                    self.modes.distraction_free = true;
+                }
+                self.modes_applied = self.modes;
+            }
+            "tab-color" => {
+                self.act(Action::New);
+                self.color_tab(Some(1));
+            }
             // Step 97: the digest dialog over a selected word; the palette's sort commands.
             "hash" => {
                 let d = &mut self.tab_mut().file.doc;
@@ -2319,6 +2375,7 @@ fn main() {
                     let tab = self.tab_mut();
                     tab.file.read_only = true;
                     tab.file.read_only_reason = Some(reason);
+                    tab.user_read_only = true;
                 }
             }
         }
@@ -2480,6 +2537,11 @@ fn main() {
                 }
                 self.tabs.push(t);
                 self.active = self.tabs.len() - 1;
+                // Step 110 (SET-06): new documents in the language of the settings.
+                if !self.prefs.new_language.is_empty() {
+                    let l = self.prefs.new_language.clone();
+                    self.choose_language_named(&l);
+                }
             }
             Action::FocusOther => {
                 let other = if self.second_focused() {
@@ -2516,6 +2578,10 @@ fn main() {
             Action::RunDialog => self.open_run(),
             Action::Settings => self.open_settings(None),
             Action::Print => self.print_dialog(),
+            Action::OnTop => self.toggle_mode(0),
+            Action::FullScreen => self.toggle_mode(1),
+            Action::PostIt => self.toggle_mode(2),
+            Action::DistractionFree => self.toggle_mode(3),
             Action::PrintNow => self.print_now(),
             Action::QuickOpen => self.open_quick(),
             Action::Complete(k) => match k {
@@ -2545,7 +2611,23 @@ fn main() {
             Action::BlockRight => self.block(0, 1),
             Action::ColumnEditor => self.open_column_editor(),
             Action::Open => {
-                if let Some(p) = self.dialogs.open() {
+                // Step 110 (SET-07): the Open dialog starts in the document's folder, the one
+                // Windows remembers, or the settings' folder.
+                let doc_dir = self
+                    .tab()
+                    .file
+                    .path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf);
+                let dir = match self.prefs.open_folder.as_str() {
+                    "last" => None,
+                    "folder" => Some(PathBuf::from(&self.prefs.open_folder_path))
+                        .filter(|p| !p.as_os_str().is_empty() && p.is_dir())
+                        .or(doc_dir),
+                    _ => doc_dir,
+                };
+                if let Some(p) = self.dialogs.open_in(dir.as_deref()) {
                     self.open_target(&OpenTarget {
                         path: p,
                         line: None,
@@ -2583,12 +2665,14 @@ fn main() {
                 let s = self.copy_text();
                 if !s.is_empty() {
                     self.clipboard.set_text(&s);
+                    self.remember_clip(&s);
                 }
             }
             Action::Cut => {
                 let s = self.cut();
                 if !s.is_empty() {
                     self.clipboard.set_text(&s);
+                    self.remember_clip(&s);
                 }
             }
             Action::Paste => self.paste_from_clipboard(),
@@ -2638,6 +2722,7 @@ fn main() {
     /// programs put both), otherwise an image into a Markdown document.
     pub fn paste_from_clipboard(&mut self) {
         if let Some(s) = self.clipboard.get_text() {
+            self.remember_clip(&s);
             self.paste(&s);
             return;
         }
@@ -2793,6 +2878,26 @@ fn main() {
         }
         // Step 104: a file another program changed is never overwritten unasked.
         if !self.safe_to_save(i) {
+            return false;
+        }
+        // Step 110 (SET-14): the previous file kept first (`<name>.bak`, or a dated copy in
+        // `jarak-backup`), when set; a backup that fails stops the save.
+        if self.prefs.backup != "off"
+            && let Some(p) = self.tabs[i].file.path.clone()
+            && p.is_file()
+            && let Err(e) = if self.prefs.backup == "dated" {
+                file::write_dated_backup(&p, &file::backup_stamp())
+            } else {
+                file::write_backup(&p)
+            }
+        {
+            self.message = Some(format!(
+                "{}: {e}",
+                self.t(
+                    "Not saved: the backup could not be written",
+                    "저장하지 않았습니다: 백업을 쓸 수 없습니다"
+                )
+            ));
             return false;
         }
         let r = self.tabs[i].file.save();
@@ -3142,8 +3247,9 @@ fn main() {
         self.vim_frame();
         self.outline_frame(&ctx);
         self.nav_frame();
+        self.modes_frame(&ctx);
         self.menu_bar_ui(ui, &c);
-        if self.prefs.status_bar {
+        if self.prefs.status_bar && !self.chrome_hidden() {
             self.status_bar(ui, &c);
         }
         self.poll_job(&ctx);
@@ -3168,7 +3274,13 @@ fn main() {
             .show(ui, |ui| {
                 let rect = ui.max_rect();
                 self.central = rect;
-                self.draw_views(ui, rect, &c)
+                let d = self.draw_views(ui, rect, &c);
+                // Step 110 (UI-08): the text's context menu, in either view.
+                self.text_context_menu(ui, 0);
+                if self.second.is_some() {
+                    self.text_context_menu(ui, 1);
+                }
+                d
             })
             .inner;
         let (focused, link, ctrl_click) = (drawn.focused, drawn.link, drawn.ctrl_click);
@@ -3263,6 +3375,7 @@ fn main() {
         self.publish_question_ui(&ctx, &c);
         self.print_frame(&ctx);
         self.extension_question_ui(&ctx, &c);
+        self.gap_dialog_ui(&ctx, &c);
         self.extension_frame(&ctx);
         // Step 109: a large file never wraps (opened with the wrap setting on, or grown).
         for i in 0..self.tabs.len() {
@@ -3696,6 +3809,17 @@ fn main() {
         if t.view.wrap {
             items.push((self.t("Wrap", "줄 바꿈").to_string(), c.text_muted));
         }
+        // Step 110 (UI-02): the document's length and lines, as Notepad++'s status bar.
+        items.push((
+            format!(
+                "{} {} · {} {}",
+                t.file.doc.len_chars(),
+                self.t("chars", "자"),
+                t.file.doc.text().len_lines(),
+                self.t("lines", "줄")
+            ),
+            c.text_muted,
+        ));
         // Step 109: a large file shows as plain text with fewer aids.
         if self.is_large(self.active) {
             items.push((self.t("Large file", "대용량 파일").to_string(), c.warning));
@@ -4067,6 +4191,9 @@ impl Dialogs for WinDialogs {
     fn open(&self) -> Option<PathBuf> {
         win_dialog(true, "").map(PathBuf::from)
     }
+    fn open_in(&self, dir: Option<&Path>) -> Option<PathBuf> {
+        win_dialog_in(true, "", dir).map(PathBuf::from)
+    }
     fn save_as(&self, suggested: &str) -> Option<PathBuf> {
         win_dialog(false, suggested).map(PathBuf::from)
     }
@@ -4237,8 +4364,13 @@ fn win_export_dialog(suggested: &str, format: jarak_core::export::Format) -> Opt
 }
 
 #[cfg(windows)]
-#[allow(unsafe_code)]
 fn win_dialog(open: bool, suggested: &str) -> Option<String> {
+    win_dialog_in(open, suggested, None)
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn win_dialog_in(open: bool, suggested: &str, dir: Option<&Path>) -> Option<String> {
     use windows_sys::Win32::UI::Controls::Dialogs::{
         GetOpenFileNameW, GetSaveFileNameW, OFN_FILEMUSTEXIST, OFN_OVERWRITEPROMPT,
         OFN_PATHMUSTEXIST, OPENFILENAMEW,
@@ -4257,6 +4389,16 @@ fn win_dialog(open: bool, suggested: &str) -> Option<String> {
     ofn.lpstrFilter = filter.as_ptr();
     ofn.lpstrFile = buf.as_mut_ptr();
     ofn.nMaxFile = buf.len() as u32;
+    let initial: Option<Vec<u16>> = dir.map(|d| {
+        d.as_os_str()
+            .to_string_lossy()
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect()
+    });
+    if let Some(i) = &initial {
+        ofn.lpstrInitialDir = i.as_ptr();
+    }
     ofn.Flags = OFN_PATHMUSTEXIST
         | if open {
             OFN_FILEMUSTEXIST

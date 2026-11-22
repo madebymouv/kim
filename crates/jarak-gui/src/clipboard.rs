@@ -26,6 +26,11 @@ pub trait Clipboard: Send + Sync {
     fn set_rich(&self, text: &str, _html: Option<&str>, _rtf: Option<&str>) -> bool {
         self.set_text(text)
     }
+    /// Step 110 (EDIT-13): the HTML fragment and the RTF on the clipboard, read only on an
+    /// explicit Paste HTML / RTF as source; by default none.
+    fn get_rich(&self) -> (Option<String>, Option<String>) {
+        (None, None)
+    }
 }
 
 /// An in-memory clipboard (tests, and no system clipboard).
@@ -71,6 +76,12 @@ impl Clipboard for MemoryClipboard {
             *r = rtf.map(str::to_string);
         }
         self.set_text(text)
+    }
+    fn get_rich(&self) -> (Option<String>, Option<String>) {
+        (
+            self.html.lock().ok().and_then(|h| h.clone()),
+            self.rtf.lock().ok().and_then(|r| r.clone()),
+        )
     }
 }
 
@@ -387,6 +398,43 @@ mod win {
         ok
     }
 
+    /// Step 110 (EDIT-13): the `HTML Format` fragment (UTF-8) and `Rich Text Format` (bytes up
+    /// to their NUL), when present.
+    pub fn get_rich() -> (Option<String>, Option<String>) {
+        use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
+        let name = |n: &str| -> Vec<u16> { n.encode_utf16().chain(std::iter::once(0)).collect() };
+        let text = |b: Vec<u8>| -> String {
+            let n = b.iter().position(|&x| x == 0).unwrap_or(b.len());
+            String::from_utf8_lossy(&b[..n]).into_owned()
+        };
+        // SAFETY: NUL-terminated names; registering an existing name returns its id.
+        let (fh, fr) = unsafe {
+            (
+                RegisterClipboardFormatW(name("HTML Format").as_ptr()),
+                RegisterClipboardFormatW(name("Rich Text Format").as_ptr()),
+            )
+        };
+        if !open() {
+            return (None, None);
+        }
+        // SAFETY: the clipboard is open until `close`.
+        let (h, r) = unsafe {
+            (
+                (fh != 0 && IsClipboardFormatAvailable(fh) != 0)
+                    .then(|| bytes_of(fh))
+                    .flatten(),
+                (fr != 0 && IsClipboardFormatAvailable(fr) != 0)
+                    .then(|| bytes_of(fr))
+                    .flatten(),
+            )
+        };
+        close();
+        (
+            h.map(|b| jarak_core::export::cf_html_fragment(&text(b))),
+            r.map(text),
+        )
+    }
+
     pub fn set_text(text: &str) -> bool {
         let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
         if !open() {
@@ -457,6 +505,12 @@ impl Clipboard for WinClipboard {
         #[cfg(windows)]
         {
             win::get_binary()
+        }
+    }
+    fn get_rich(&self) -> (Option<String>, Option<String>) {
+        #[cfg(windows)]
+        {
+            win::get_rich()
         }
     }
 }

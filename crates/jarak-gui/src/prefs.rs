@@ -46,6 +46,44 @@ pub struct Prefs {
     pub print: jarak_core::print::Setup,
     /// Step 109: a document larger than this (bytes) is a large file.
     pub large_file_bytes: usize,
+    /// Step 110: the text's context menu (command ids, `-` separators).
+    pub context_menu: Vec<String>,
+    /// Step 110: smart highlighting and its options, the find field, the Open dialog's folder,
+    /// new documents' language, a backup on save.
+    pub smart_highlight: bool,
+    pub smart_match_case: bool,
+    pub smart_whole_word: bool,
+    pub find_fill_selection: bool,
+    /// `document`, `last` or `folder` (then `open_folder_path`).
+    pub open_folder: String,
+    pub open_folder_path: String,
+    pub new_language: String,
+    /// `off`, `simple` or `dated`.
+    pub backup: String,
+    pub word_chars: String,
+    /// Step 110 (SET-10): a language's own tab width and, when given, whether Tab inserts spaces.
+    pub lang_tabs: Vec<(String, usize, Option<bool>)>,
+}
+
+/// Step 110 (SET-10): `Python=4s, Go=8t, YAML=2` — a width from 1 to 16, `s` spaces, `t` a tab
+/// character; entries that do not read are skipped.
+pub fn parse_lang_tabs(s: &str) -> Vec<(String, usize, Option<bool>)> {
+    s.split(',')
+        .filter_map(|e| {
+            let (name, v) = e.split_once('=')?;
+            let name = name.trim();
+            let v = v.trim();
+            let (num, spaces) = match v.strip_suffix(['s', 'S']) {
+                Some(n) => (n, Some(true)),
+                None => match v.strip_suffix(['t', 'T']) {
+                    Some(n) => (n, Some(false)),
+                    None => (v, None),
+                },
+            };
+            let w: usize = num.trim().parse().ok().filter(|w| (1..=16).contains(w))?;
+            (!name.is_empty()).then(|| (name.to_string(), w, spaces))
+        })
+        .collect()
 }
 
 impl Default for Prefs {
@@ -97,6 +135,28 @@ impl Prefs {
             recent_max: n("recent_max", 0, 50) as usize,
             recovery_interval: n("recovery_interval", 0, 3600) as f64,
             large_file_bytes: n("large_file_mb", 1, 4096) as usize * 1024 * 1024,
+            smart_highlight: b("smart_highlight"),
+            smart_match_case: b("smart_match_case"),
+            smart_whole_word: b("smart_whole_word"),
+            find_fill_selection: b("find_fill_selection"),
+            open_folder: g("open_folder"),
+            open_folder_path: g("open_folder_path").trim().to_string(),
+            new_language: g("new_language").trim().to_string(),
+            backup: g("backup"),
+            word_chars: g("word_chars"),
+            lang_tabs: parse_lang_tabs(&g("language_tabs")),
+            context_menu: {
+                let v = g("context_menu");
+                let v = if v.trim().is_empty() {
+                    crate::modes::DEFAULT_CONTEXT_MENU.to_string()
+                } else {
+                    v
+                };
+                v.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            },
             print: jarak_core::settings::print_setup(get, n("tab_width", 1, 16) as usize),
         }
     }
@@ -225,6 +285,8 @@ impl JarakApp {
         if self.applied_font.as_deref() != Some(self.prefs.font_family.as_str()) {
             self.install_editor_font(ctx);
         }
+        // Step 110 (SET-17): the further word characters, on the thread that edits.
+        jarak_core::text::set_word_chars(&self.prefs.word_chars);
         let p = &self.prefs;
         for t in &mut self.tabs {
             t.file.doc.tab_width = p.tab_width;
@@ -241,6 +303,28 @@ impl JarakApp {
                         "preview" => t.set_mode(Mode::Preview),
                         _ => {}
                     }
+                }
+            }
+        }
+        // Step 110 (SET-10): a language's own tab settings, over the general ones above.
+        if !self.prefs.lang_tabs.is_empty() {
+            for i in 0..self.tabs.len() {
+                let Some(name) = self.lang_for(i).map(|l| l.name.clone()) else {
+                    continue;
+                };
+                let Some((_, w, sp)) = self
+                    .prefs
+                    .lang_tabs
+                    .iter()
+                    .find(|(l, ..)| l.eq_ignore_ascii_case(&name))
+                    .cloned()
+                else {
+                    continue;
+                };
+                let d = &mut self.tabs[i].file.doc;
+                d.tab_width = w;
+                if let Some(sp) = sp {
+                    d.use_spaces = sp;
                 }
             }
         }

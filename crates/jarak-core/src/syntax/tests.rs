@@ -403,6 +403,214 @@ fn sql_markdown_lua_php_ruby() {
     );
 }
 
+/// Step 110 (LANG-02, `JARAK-FR-090`): the further Notepad++ languages.
+#[test]
+fn the_further_notepad_plus_plus_languages() {
+    golden(
+        "Perl",
+        "my $x = \"hi\"; # c\nsub f { return @a; }",
+        &[
+            ("my", K::Keyword),
+            ("$x", K::Variable),
+            ("\"hi\"", K::String),
+            ("# c", K::Comment),
+            ("sub", K::Keyword),
+            ("return", K::Keyword),
+            ("@a", K::Variable),
+        ],
+    );
+    golden(
+        "Pascal",
+        "PROGRAM p; { c } begin x := 'a'; end. (* d *)",
+        &[
+            ("PROGRAM", K::Keyword),
+            ("{ c }", K::Comment),
+            ("begin", K::Keyword),
+            ("'a'", K::String),
+            ("end", K::Keyword),
+            ("(* d *)", K::Comment),
+        ],
+    );
+    golden(
+        "Haskell",
+        "module M where -- c\nf :: Int -> Bool\n{- d -} f x = True",
+        &[
+            ("module", K::Keyword),
+            ("where", K::Keyword),
+            ("-- c", K::Comment),
+            ("Int", K::Type),
+            ("{- d -}", K::Comment),
+            ("True", K::Constant),
+        ],
+    );
+    golden(
+        "Lisp",
+        "(defun f (x) \"s\") ; c\n#| d |# nil",
+        &[
+            ("defun", K::Keyword),
+            ("\"s\"", K::String),
+            ("; c", K::Comment),
+            ("#| d |#", K::Comment),
+            ("nil", K::Constant),
+        ],
+    );
+    golden(
+        "Scheme",
+        "(define (f x) (lambda () \"s\")) ; c",
+        &[
+            ("define", K::Keyword),
+            ("lambda", K::Keyword),
+            ("\"s\"", K::String),
+            ("; c", K::Comment),
+        ],
+    );
+    golden(
+        "Fortran",
+        "PROGRAM p ! c\ninteger :: i\nprint *, 'a'\nend program",
+        &[
+            ("PROGRAM", K::Keyword),
+            ("! c", K::Comment),
+            ("integer", K::Type),
+            ("print", K::Keyword),
+            ("'a'", K::String),
+            ("end", K::Keyword),
+        ],
+    );
+    golden(
+        "Ada",
+        "procedure P is -- c\nbegin Put(\"a\"); end P;",
+        &[
+            ("procedure", K::Keyword),
+            ("is", K::Keyword),
+            ("-- c", K::Comment),
+            ("begin", K::Keyword),
+            ("\"a\"", K::String),
+            ("end", K::Keyword),
+        ],
+    );
+    golden(
+        "Assembly",
+        "section .text ; c\nmov eax, 1\nret",
+        &[
+            ("section", K::Keyword),
+            ("; c", K::Comment),
+            ("mov", K::Keyword),
+            ("eax", K::Type),
+            ("1", K::Number),
+            ("ret", K::Keyword),
+        ],
+    );
+    golden(
+        "D",
+        "import std.stdio; // c\nvoid main() { string s = \"a\"; }",
+        &[
+            ("import", K::Keyword),
+            ("// c", K::Comment),
+            ("void", K::Type),
+            ("string", K::Type),
+            ("\"a\"", K::String),
+        ],
+    );
+    golden(
+        "R",
+        "f <- function(x) { if (TRUE) NULL } # c",
+        &[
+            ("function", K::Keyword),
+            ("if", K::Keyword),
+            ("TRUE", K::Constant),
+            ("NULL", K::Constant),
+            ("# c", K::Comment),
+        ],
+    );
+    golden(
+        "Swift",
+        "let s: String = \"a\" // c\nfunc f() -> Bool { return true }",
+        &[
+            ("let", K::Keyword),
+            ("String", K::Type),
+            ("\"a\"", K::String),
+            ("// c", K::Comment),
+            ("func", K::Keyword),
+            ("true", K::Constant),
+        ],
+    );
+    golden(
+        "VHDL",
+        "entity e is -- c\nsignal s : std_logic := '0';\nend e;",
+        &[
+            ("entity", K::Keyword),
+            ("is", K::Keyword),
+            ("-- c", K::Comment),
+            ("signal", K::Keyword),
+            ("std_logic", K::Type),
+            ("end", K::Keyword),
+        ],
+    );
+    golden(
+        "Verilog",
+        "module m(input a); // c\nassign b = 1'b0;\nendmodule",
+        &[
+            ("module", K::Keyword),
+            ("input", K::Keyword),
+            ("// c", K::Comment),
+            ("assign", K::Keyword),
+            ("endmodule", K::Keyword),
+        ],
+    );
+    golden(
+        "AutoIt",
+        "Func F() ; c\nLocal $x = \"a\"\nEndFunc",
+        &[
+            ("Func", K::Keyword),
+            ("; c", K::Comment),
+            ("Local", K::Keyword),
+            ("$x", K::Variable),
+            ("\"a\"", K::String),
+            ("EndFunc", K::Keyword),
+        ],
+    );
+    golden(
+        "COBOL",
+        "PROCEDURE DIVISION. *> c\n    DISPLAY 'HI' MOVE ZERO TO WS-X.\n    STOP RUN.",
+        &[
+            ("PROCEDURE", K::Keyword),
+            ("DIVISION", K::Keyword),
+            ("*> c", K::Comment),
+            ("DISPLAY", K::Keyword),
+            ("'HI'", K::String),
+            ("ZERO", K::Constant),
+            ("STOP", K::Keyword),
+        ],
+    );
+    for (file, name) in [
+        ("a.pl", "Perl"),
+        ("a.pas", "Pascal"),
+        ("a.hs", "Haskell"),
+        ("a.lisp", "Lisp"),
+        ("a.scm", "Scheme"),
+        ("a.f90", "Fortran"),
+        ("a.adb", "Ada"),
+        ("a.asm", "Assembly"),
+        ("a.d", "D"),
+        ("a.r", "R"),
+        ("a.swift", "Swift"),
+        ("a.vhd", "VHDL"),
+        ("a.sv", "Verilog"),
+        ("a.au3", "AutoIt"),
+        ("a.cbl", "COBOL"),
+    ] {
+        assert_eq!(
+            detect(file, "", &[]).map(|l| l.name.as_str()),
+            Some(name),
+            "{file}"
+        );
+    }
+    assert_eq!(
+        detect("script", "#!/usr/bin/env perl", &[]).map(|l| l.name.as_str()),
+        Some("Perl")
+    );
+}
+
 #[test]
 fn every_listed_language_is_built_in_and_detected() {
     for (file, name) in [

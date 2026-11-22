@@ -261,6 +261,18 @@ pub const SETTINGS: &[Setting] = &[
         Kind::Bool,
         "false"
     ),
+    // Step 110 (SET-10): tab settings of their own for some languages.
+    s!(
+        "language_tabs",
+        Editor,
+        ("Indentation", "들여쓰기"),
+        "Tab width per language",
+        "언어별 탭 너비",
+        "Language=width, comma separated; s after the width: Tab inserts spaces, t: a tab character (for example Python=4s, Go=8t, YAML=2s).",
+        "언어=너비를 쉼표로 구분합니다. 너비 뒤 s는 Tab이 공백, t는 탭 문자(예: Python=4s, Go=8t, YAML=2s).",
+        Kind::Text { must: "" },
+        ""
+    ),
     s!(
         "indent",
         Editor,
@@ -665,6 +677,127 @@ pub const SETTINGS: &[Setting] = &[
         "충돌 뒤 복구용 스냅숏. 0이면 끕니다.",
         Kind::Int { min: 0, max: 3600 },
         "10"
+    ),
+    // Step 110: smart highlighting (AUTO-10, SET-11), the find field (SET-13), the Open dialog's
+    // folder (SET-07), new documents' language (SET-06), a backup on save (SET-14).
+    s!(
+        "smart_highlight",
+        Editor,
+        ("Highlighting", "강조"),
+        "Highlight the selected word's other occurrences",
+        "선택한 단어의 다른 곳 강조",
+        "Smart highlighting: the selected word's other occurrences on screen.",
+        "스마트 강조: 화면에 보이는 선택한 단어의 다른 곳.",
+        Kind::Bool,
+        "true"
+    ),
+    s!(
+        "smart_match_case",
+        Editor,
+        ("Highlighting", "강조"),
+        "Smart highlighting matches case",
+        "스마트 강조에서 대소문자 구분",
+        "Only occurrences with the same capitals.",
+        "대소문자가 같은 곳만.",
+        Kind::Bool,
+        "true"
+    ),
+    s!(
+        "smart_whole_word",
+        Editor,
+        ("Highlighting", "강조"),
+        "Smart highlighting matches whole words",
+        "스마트 강조에서 단어 단위",
+        "Only occurrences that are whole words.",
+        "온전한 단어인 곳만.",
+        Kind::Bool,
+        "true"
+    ),
+    s!(
+        "word_chars",
+        Editor,
+        ("Word characters", "단어 문자"),
+        "Further word characters",
+        "추가 단어 문자",
+        "Characters that count as part of a word besides letters, digits and _ (double-click, Ctrl+arrows), for example -$.",
+        "글자·숫자·_ 외에 단어의 일부로 보는 문자(두 번 클릭, Ctrl+화살표). 예: -$",
+        Kind::Text { must: "" },
+        ""
+    ),
+    s!(
+        "find_fill_selection",
+        Editor,
+        ("Search", "찾기"),
+        "Selected text fills the find field",
+        "선택한 텍스트로 찾을 내용 채우기",
+        "Ctrl+F with a selection on one line puts it into the find field.",
+        "한 줄 안의 선택이 있을 때 Ctrl+F가 그것을 찾을 내용에 넣습니다.",
+        Kind::Bool,
+        "true"
+    ),
+    s!(
+        "open_folder",
+        Files,
+        ("Opening", "열기"),
+        "Open dialog starts in",
+        "열기 대화 상자의 시작 폴더",
+        "The current document's folder, the folder Windows remembers, or the folder below.",
+        "현재 문서의 폴더, Windows가 기억하는 폴더, 또는 아래의 폴더.",
+        Kind::Choice(&[
+            ("document", "The document's folder", "문서의 폴더"),
+            ("last", "The last folder", "마지막 폴더"),
+            ("folder", "This folder", "이 폴더")
+        ]),
+        "document"
+    ),
+    s!(
+        "open_folder_path",
+        Files,
+        ("Opening", "열기"),
+        "The Open dialog's folder",
+        "열기 대화 상자의 폴더",
+        "Used when the Open dialog starts in this folder (a folder that is gone falls back to the document's).",
+        "열기 대화 상자가 이 폴더에서 시작할 때 씁니다(없는 폴더면 문서의 폴더).",
+        Kind::Text { must: "" },
+        ""
+    ),
+    s!(
+        "new_language",
+        Files,
+        ("New documents", "새 문서"),
+        "Language of new documents",
+        "새 문서의 언어",
+        "A language's name (Markdown, Rust, …); empty means plain text.",
+        "언어 이름(Markdown, Rust, …). 비우면 일반 텍스트.",
+        Kind::Text { must: "" },
+        ""
+    ),
+    s!(
+        "backup",
+        Files,
+        ("Recovery", "복구"),
+        "Backup on save",
+        "저장할 때 백업",
+        "Before a save replaces a file, its previous version is copied: to <name>.bak beside it (simple), or to jarak-backup\\<name>.<date_time>.bak beside it (dated, one per save).",
+        "저장이 파일을 바꾸기 전에 이전 버전을 복사합니다: 옆의 <이름>.bak(간단), 또는 옆의 jarak-backup\\<이름>.<날짜_시각>.bak(날짜별, 저장마다 하나).",
+        Kind::Choice(&[
+            ("off", "Off", "끔"),
+            ("simple", "Simple (.bak)", "간단(.bak)"),
+            ("dated", "Dated copies", "날짜별 사본")
+        ]),
+        "off"
+    ),
+    // Step 110: the text's context menu (SET-25, UI-08).
+    s!(
+        "context_menu",
+        Advanced,
+        ("Context menu", "상황에 맞는 메뉴"),
+        "Context menu of the text",
+        "텍스트의 상황에 맞는 메뉴",
+        "Command ids from the palette, separated by commas; - is a separator (jarak hotkeys list names them).",
+        "팔레트의 명령 id를 쉼표로 구분합니다. -는 구분선입니다(jarak hotkeys list에서 이름을 봅니다).",
+        Kind::Text { must: "" },
+        "edit.undo,edit.redo,-,edit.cut,edit.copy,edit.paste,-,select.all,-,edit.copy-html"
     ),
     // Step 109: large files (SET-18, REL-06).
     s!(

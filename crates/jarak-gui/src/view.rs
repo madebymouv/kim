@@ -89,6 +89,14 @@ enum Drag {
     Column { anchor: (usize, usize) },
     /// The scrollbar thumb, grabbed at this offset.
     Scrollbar { grab: f32 },
+    /// Step 110 (EDIT-18): the selection `from..to`, pressed at `press`, being dragged to `at`
+    /// (moved on release, copied with Ctrl held then).
+    Move {
+        from: usize,
+        to: usize,
+        press: usize,
+        at: Option<usize>,
+    },
 }
 
 impl Default for ViewState {
@@ -935,6 +943,23 @@ pub fn show(
             }
         }
     }
+    // Step 110 (EDIT-18): where a dragged selection would be dropped.
+    if let Some(Drag::Move {
+        from,
+        to,
+        at: Some(a),
+        ..
+    }) = state.drag
+        && (a < from || a > to)
+        && let Some(l) = laid.iter().find(|l| a >= l.start && a <= l.start + l.full)
+    {
+        let p = l.galley.pos_from_cursor(CCursor::new(l.at(a - l.start)));
+        let r = Rect::from_min_size(
+            egui::pos2(l.origin.x + p.left(), l.origin.y + p.top()),
+            Vec2::new(size::FOCUS_RING, m.row),
+        );
+        painter.rect_filled(r, CornerRadius::ZERO, c.accent);
+    }
     if read_only {
         // A quiet marker in the corner says the document cannot be edited.
         painter.rect_stroke(
@@ -1000,7 +1025,7 @@ pub fn show(
     let ctrl_click = if fold_click.is_some() || margin_press {
         None
     } else {
-        mouse(ui, &resp, &laid, doc, state, &m, text_rect)
+        mouse(ui, &resp, &laid, doc, state, &m, text_rect, read_only)
     };
     ViewOutput {
         focused,
@@ -1346,6 +1371,7 @@ fn column_at(laid: &[Laid], doc: &Document, m: &Metrics, p: Pos2) -> (usize, usi
     (line, col)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn mouse(
     ui: &mut egui::Ui,
     resp: &egui::Response,
@@ -1354,6 +1380,7 @@ fn mouse(
     state: &mut ViewState,
     m: &Metrics,
     text_rect: Rect,
+    read_only: bool,
 ) -> Option<usize> {
     let (shift, ctrl, alt, scroll, time) = ui.input(|i| {
         (
@@ -1401,6 +1428,25 @@ fn mouse(
             }
         }
     }
+    // Step 110 (EDIT-18): releasing a dragged selection drops it (Ctrl: a copy); released where
+    // it was pressed, it is a click (the caret goes there).
+    if let Some(Drag::Move {
+        from,
+        to,
+        press,
+        at,
+    }) = state.drag
+        && !ui.input(|i| i.pointer.primary_down())
+    {
+        state.drag = None;
+        match at.filter(|a| *a < from || *a > to) {
+            Some(a) => drop_text(doc, from, to, a, ctrl),
+            None => doc.set_selection(&Selection::point(press)),
+        }
+        state.preedit.clear();
+        ui.ctx().request_repaint();
+        return None;
+    }
     let p = resp.interact_pointer_pos()?;
     let pos = hit(laid, doc, p);
     let pressed = ui.input(|i| i.pointer.primary_pressed());
@@ -1438,6 +1484,27 @@ fn mouse(
                 state.preedit.clear();
                 return Some(pos);
             }
+            // Step 110 (EDIT-18): a press inside the (single) selection starts dragging it.
+            1 if !shift
+                && !alt
+                && !ctrl
+                && !read_only
+                && doc.selection().len() == 1
+                && !doc.selection().primary().is_empty()
+                && doc.block().is_none()
+                && (doc.selection().primary().from()..doc.selection().primary().to())
+                    .contains(&pos) =>
+            {
+                let r = doc.selection().primary();
+                state.drag = Some(Drag::Move {
+                    from: r.from(),
+                    to: r.to(),
+                    press: pos,
+                    at: None,
+                });
+                state.preedit.clear();
+                return None;
+            }
             2 => {
                 doc.select_word_at(pos);
                 state.drag = Some(Drag::Text {
@@ -1468,6 +1535,18 @@ fn mouse(
     match state.drag {
         Some(Drag::Add { anchor }) if resp.dragged() => {
             doc.set_primary_range(Range::new(anchor, pos));
+            ui.ctx().request_repaint();
+        }
+        Some(Drag::Move {
+            from, to, press, ..
+        }) if resp.dragged() => {
+            state.drag = Some(Drag::Move {
+                from,
+                to,
+                press,
+                at: Some(pos),
+            });
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             ui.ctx().request_repaint();
         }
         Some(Drag::Column { anchor }) if resp.dragged() => {
@@ -1522,10 +1601,26 @@ fn mouse(
         }
         ui.ctx().request_repaint();
     }
-    if resp.drag_stopped() {
+    if resp.drag_stopped() && !matches!(state.drag, Some(Drag::Move { .. })) {
         state.drag = None;
     }
     None
+}
+
+/// Step 110 (EDIT-18): moves (or copies) `from..to` to `at` (outside it) as one undo step and
+/// selects the dropped text.
+fn drop_text(doc: &mut Document, from: usize, to: usize, at: usize, copy: bool) {
+    let s = doc.text().slice(from..to).to_string();
+    let n = to - from;
+    let (parts, start) = if copy {
+        (vec![(at, at, s)], at)
+    } else if at < from {
+        (vec![(at, at, s), (from, to, String::new())], at)
+    } else {
+        (vec![(from, to, String::new()), (at, at, s)], at - n)
+    };
+    doc.replace(parts, Some(start + n));
+    doc.set_selection(&Selection::single(Range::new(start, start + n)));
 }
 
 impl ViewState {

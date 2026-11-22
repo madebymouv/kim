@@ -122,7 +122,7 @@ impl JarakApp {
     /// drag scrolls there.
     pub(crate) fn doc_map_ui(&mut self, ui: &mut egui::Ui, c: &Colors) {
         // Step 109: no Document Map for a large file.
-        if !self.doc_map || self.is_large(self.active) {
+        if !self.doc_map || self.is_large(self.active) || self.modes.distraction_free {
             return;
         }
         let k = self.active;

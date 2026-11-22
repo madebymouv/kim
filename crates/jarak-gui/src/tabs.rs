@@ -7,7 +7,7 @@
 //! (`tabbar` and its `tab` components), so the audit's tab rules measure it. When the tabs do not
 //! fit, the bar scrolls with the wheel and always keeps the active tab in view.
 
-use eframe::egui::{self, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use kim_design::{Lang, font, size, space};
 use kim_ui::Colors;
 
@@ -21,6 +21,8 @@ pub struct Item {
     pub active: bool,
     /// The document is in both views (a clone).
     pub cloned: bool,
+    /// Step 110 (VIEWS-08): the tab's colour and its name.
+    pub color: Option<(Color32, String)>,
 }
 
 /// A command of the tab context menu.
@@ -226,7 +228,14 @@ pub fn bar(
                 egui::Id::unique(("jarak-tab", id, i)),
                 Sense::click_and_drag(),
             );
-            let label = format!("{}{}", t.title, if t.dirty { " •" } else { "" });
+            let label = format!(
+                "{}{}{}",
+                t.title,
+                if t.dirty { " •" } else { "" },
+                t.color
+                    .as_ref()
+                    .map_or_else(String::new, |(_, n)| format!(" ({n})"))
+            );
             resp.widget_info(|| {
                 egui::WidgetInfo::selected(egui::Role::Tab, true, t.active, &label)
             });
@@ -245,6 +254,14 @@ pub fn bar(
                 se: 0,
             };
             painter.rect_filled(tr, r, fill);
+            if let Some((col, _)) = &t.color {
+                // Step 110: a coloured tab carries its colour along its bottom edge.
+                painter.hline(
+                    tr.x_range().shrink(size::TAB_PAD_X / 2.0),
+                    tr.bottom() - 2.0,
+                    Stroke::new(2.0, *col),
+                );
+            }
             if t.active {
                 // The focused view's active tab carries the accent; the other view's a quiet line.
                 let marker = if focused { c.accent } else { c.border_strong };

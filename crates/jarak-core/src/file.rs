@@ -761,6 +761,58 @@ pub struct FileDocument {
     pub disk: Option<DiskStamp>,
 }
 
+/// Step 110 (SET-14): where the backup of `path` goes: `<name>.bak` beside it.
+pub fn backup_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".bak");
+    path.with_file_name(name)
+}
+
+/// Step 110 (SET-14): copies the file at `path` to its backup (atomically; an older backup is
+/// replaced) and returns where it went.
+pub fn write_backup(path: &Path) -> io::Result<PathBuf> {
+    let bytes = std::fs::read(path)?;
+    let to = backup_path(path);
+    save_atomic(&to, &bytes)?;
+    Ok(to)
+}
+
+/// Step 110 (SET-14): where a dated backup of `path` goes: `jarak-backup\<name>.<stamp>.bak`
+/// beside it.
+pub fn dated_backup_path(path: &Path, stamp: &str) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{stamp}.bak"));
+    path.with_file_name("jarak-backup").join(name)
+}
+
+/// Step 110 (SET-14): copies the file at `path` to a dated backup (the folder is made when
+/// needed; a backup of the same second is replaced) and returns where it went.
+pub fn write_dated_backup(path: &Path, stamp: &str) -> io::Result<PathBuf> {
+    let bytes = std::fs::read(path)?;
+    let to = dated_backup_path(path, stamp);
+    if let Some(dir) = to.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    save_atomic(&to, &bytes)?;
+    Ok(to)
+}
+
+/// The local date and time for a dated backup's name (`2026-11-22_203015`).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn backup_stamp() -> String {
+    // SAFETY: GetLocalTime fills the structure it is given.
+    let t = unsafe {
+        let mut t: windows_sys::Win32::Foundation::SYSTEMTIME = std::mem::zeroed();
+        windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut t);
+        t
+    };
+    format!(
+        "{:04}-{:02}-{:02}_{:02}{:02}{:02}",
+        t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
+    )
+}
+
 impl FileDocument {
     /// A new untitled document (UTF-8 without BOM, Windows line endings).
     pub fn untitled() -> FileDocument {

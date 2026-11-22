@@ -32,6 +32,7 @@ did.
 | [JARAK_VIM.md](JARAK_VIM.md) | current (Step 92) | Vim editing in Jarak: turning it on, modes, motions, operators, text objects, registers, the command line, patterns, what is not there |
 | [JARAK_ASSIST.md](JARAK_ASSIST.md) | current (Step 100) | Jarak's editing assistance reference: completion (words, keywords, API files, paths), parameter hints, snippets with tab stops, closing brackets, quotes and tags, indentation, the matching-bracket highlight, and their settings |
 | [JARAK_CLI.md](JARAK_CLI.md) | current (Step 107) | Jarak's headless command line (every command, its effect, options, exit codes and examples), the window's command-line options, and the capabilities Jarak provides to Kim, Subak, Noeul and Ddalgak |
+| [JARAK_PARITY_REPORT.md](JARAK_PARITY_REPORT.md) | current (Step 110) | Jarak's Notepad++ parity: counts per area, every partial, planned and not-intended row with its reason, how the evidence was gathered, the open real-desktop checks |
 | [JARAK_PERFORMANCE.md](JARAK_PERFORMANCE.md) | current (Step 109) | Jarak's budgets and what was measured (start, keystrokes, idle, large files, a 10 MB line, many tabs, search, pictures), large-file mode and the gaps (1 GB not measured) |
 | [JARAK_SECURITY.md](JARAK_SECURITY.md) | current (Step 109) | Jarak's threat model: what is protected, hostile files, state files, extensions and command lines, the mitigations and the tests that check them, and what is not protected |
 | [JARAK_ACCESSIBILITY.md](JARAK_ACCESSIBILITY.md) | current (Step 109) | The accessibility checklist of `JARAK-NFR-007` with its evidence and gaps (High Contrast, a real screen reader) |
@@ -42,7 +43,7 @@ did.
 | [JARAK_RECOVERY.md](JARAK_RECOVERY.md) | current (Step 104) | Jarak's files changed on disk (asking, reloading as one undo step, keep mine / compare, deleted files, tail -f), recovery snapshots of unsaved documents and the offer after a crash, the session's backup |
 | [JARAK_MACROS.md](JARAK_MACROS.md) | current (Step 102) | Jarak's macros and Run reference: recording, playback, until the end, saved macros and shortcuts, run commands with variables, the browser entries, and the security notes (nothing runs by itself, never elevated, no shell unless written) |
 | [JARAK_KEYS.md](JARAK_KEYS.md) | current (Step 92; Step 94 find and mark; Step 95 find in files; Step 96 carets and columns; Step 97 lines and case; Step 98 comments; Step 99 folding and Go to; Step 100 completion; Step 101 bookmarks and navigation; Step 102 macros and Run) | Jarak's keyboard reference: files, editing, moving and selecting, find, replace and mark, view and Markdown, the palette and the menu bar |
-| [JARAK_NOTEPADPP_MATRIX.md](JARAK_NOTEPADPP_MATRIX.md) | current (inventory, Notepad++ 8.9.x; 285 rows; Step 85: 2 partial, 1 supported) | Notepad++ built-in feature parity matrix: status, requirement, owner Step, verification and evidence per row (checked by `cargo xtask docs-check`) |
+| [JARAK_NOTEPADPP_MATRIX.md](JARAK_NOTEPADPP_MATRIX.md) | current (Step 110: every row reviewed; 285 Notepad++ rows — 252 supported, 20 partial, 2 planned for Step 111, 11 not intended; 16 Jarak additions) | Notepad++ built-in feature parity matrix: status, requirement, owner Step, verification and evidence per row (checked by `cargo xtask docs-check`) |
 
 ## Architecture and compatibility
 

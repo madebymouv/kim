@@ -477,6 +477,34 @@ pub fn cf_html(fragment: &str) -> String {
     )
 }
 
+/// Step 110 (EDIT-13): the HTML a clipboard `HTML Format` entry carries — between its
+/// `StartFragment`/`EndFragment` offsets (or markers), else everything after the header.
+pub fn cf_html_fragment(cf: &str) -> String {
+    let offset = |key: &str| -> Option<usize> {
+        let i = cf.find(key)? + key.len();
+        cf[i..].split(['\r', '\n']).next()?.trim().parse().ok()
+    };
+    if let (Some(a), Some(b)) = (offset("StartFragment:"), offset("EndFragment:"))
+        && a <= b
+        && b <= cf.len()
+        && cf.is_char_boundary(a)
+        && cf.is_char_boundary(b)
+    {
+        return cf[a..b].to_string();
+    }
+    if let (Some(a), Some(b)) = (
+        cf.find("<!--StartFragment-->"),
+        cf.find("<!--EndFragment-->"),
+    ) && a < b
+    {
+        return cf[a + "<!--StartFragment-->".len()..b].to_string();
+    }
+    match cf.find('<') {
+        Some(i) if cf[..i].contains("Version:") => cf[i..].to_string(),
+        _ => cf.to_string(),
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // HTML pages.
 
@@ -1270,6 +1298,17 @@ mod tests {
         assert_eq!(&c[num("StartFragment:")..num("EndFragment:")], "<b>한</b>");
         assert!(c[num("StartHTML:")..].starts_with("<html>"));
         assert_eq!(num("EndHTML:"), c.len());
+    }
+
+    #[test]
+    fn a_clipboard_html_fragment_is_found() {
+        let c = cf_html("<b>한</b>");
+        assert_eq!(cf_html_fragment(&c), "<b>한</b>");
+        assert_eq!(
+            cf_html_fragment("<html><!--StartFragment--><i>x</i><!--EndFragment--></html>"),
+            "<i>x</i>"
+        );
+        assert_eq!(cf_html_fragment("<p>plain</p>"), "<p>plain</p>");
     }
 
     #[test]

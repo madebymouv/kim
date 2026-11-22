@@ -14,6 +14,17 @@ use ropey::str_utils::byte_to_char_idx;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::UnicodeWidthStr;
 
+/// Step 110 (SRCH-20): the position of the next character whose code point is in `lo..=hi`, from
+/// `from` on and then from the start (wrapping); `None` when the text has none.
+pub fn next_char_in_range(t: RopeSlice<'_>, from: usize, lo: u32, hi: u32) -> Option<usize> {
+    let from = from.min(t.len_chars());
+    let hit = |c: char| (lo..=hi).contains(&(c as u32));
+    if let Some(i) = t.slice(from..).chars().position(hit) {
+        return Some(from + i);
+    }
+    t.slice(..from).chars().position(hit)
+}
+
 /// The grapheme boundary before `char_idx` (0 at the start).
 pub fn prev_grapheme(slice: RopeSlice, char_idx: usize) -> usize {
     if char_idx == 0 {
@@ -101,13 +112,37 @@ pub enum CharClass {
     Punct,
 }
 
+thread_local! {
+    /// Step 110 (SET-17): characters that count as word characters besides letters, digits and
+    /// `_` (the settings' *word characters*), for the thread that edits (the window's).
+    static WORD_CHARS: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+/// Step 110 (SET-17): sets the further word characters (whitespace and line breaks never are).
+pub fn set_word_chars(s: &str) {
+    let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    WORD_CHARS.with_borrow_mut(|w| {
+        if *w != s {
+            *w = s;
+        }
+    });
+}
+
+/// The further word characters in use.
+pub fn word_chars() -> String {
+    WORD_CHARS.with_borrow(Clone::clone)
+}
+
 impl CharClass {
     pub fn of(c: char) -> CharClass {
         if c == '\n' || c == '\r' {
             CharClass::Eol
         } else if c.is_whitespace() {
             CharClass::Space
-        } else if c.is_alphanumeric() || c == '_' {
+        } else if c.is_alphanumeric()
+            || c == '_'
+            || WORD_CHARS.with_borrow(|w| !w.is_empty() && w.contains(c))
+        {
             CharClass::Word
         } else {
             CharClass::Punct
@@ -265,6 +300,35 @@ pub fn offset_at_column(line: RopeSlice, col: usize, tab_width: usize) -> usize 
 
 #[cfg(test)]
 mod tests {
+    /// Step 110 (SRCH-20): the next character in a code point range, wrapping.
+    #[test]
+    fn the_next_character_in_a_range_wraps() {
+        let r = Rope::from_str("ab é c 中");
+        let s = r.slice(..);
+        assert_eq!(next_char_in_range(s, 0, 0x80, 0x10_FFFF), Some(3));
+        assert_eq!(next_char_in_range(s, 4, 0x80, 0x10_FFFF), Some(7));
+        assert_eq!(next_char_in_range(s, 8, 0x80, 0x10_FFFF), Some(3));
+        assert_eq!(next_char_in_range(s, 0, 0x400, 0x4FF), None);
+    }
+
+    /// Step 110 (SET-17): further word characters join words, on this thread only.
+    #[test]
+    fn further_word_characters_join_words() {
+        let r = Rope::from_str("foo-bar baz");
+        let s = r.slice(..);
+        assert_eq!(word_at(s, 5), (4, 7));
+        set_word_chars("- ");
+        assert_eq!(word_chars(), "-", "no whitespace");
+        assert_eq!(word_at(s, 5), (0, 7));
+        assert_eq!(
+            std::thread::spawn(word_chars).join().unwrap(),
+            "",
+            "another thread keeps its own"
+        );
+        set_word_chars("");
+        assert_eq!(word_at(s, 5), (4, 7));
+    }
+
     use super::*;
     use ropey::Rope;
 

@@ -81,6 +81,10 @@ pub enum Run {
     DebugInfo,
     /// Step 108: the `n`th command of the installed extensions.
     Extension(u16),
+    /// Step 110: `JarakApp::gap_tool` 0–6, `JarakApp::file_op` 0–2, a tab colour (5: none).
+    Gap(u8),
+    FileOp(u8),
+    TabColor(u8),
 }
 
 /// The menu an entry belongs to.
@@ -1615,6 +1619,35 @@ pub fn entries() -> Vec<Entry> {
         ),
         // Step 106: export (NppExport) and publishing.
         act("file.print", "Print…", "인쇄…", Action::Print, M::File),
+        // Step 110: window modes.
+        act(
+            "view.always-on-top",
+            "Always on top: on/off",
+            "항상 위: 켜기/끄기",
+            Action::OnTop,
+            M::View,
+        ),
+        act(
+            "view.full-screen",
+            "Full screen",
+            "전체 화면",
+            Action::FullScreen,
+            M::View,
+        ),
+        act(
+            "view.post-it",
+            "Post-it mode (no frame or bars)",
+            "포스트잇 모드(창 테두리와 막대 없음)",
+            Action::PostIt,
+            M::View,
+        ),
+        act(
+            "view.distraction-free",
+            "Distraction-free mode",
+            "집중 모드",
+            Action::DistractionFree,
+            M::View,
+        ),
         act(
             "file.print-now",
             "Print now (default printer)",
@@ -1627,6 +1660,119 @@ pub fn entries() -> Vec<Entry> {
             "Copy debug info (versions, Windows, files)",
             "디버그 정보 복사(버전, Windows, 파일)",
             Run::DebugInfo,
+            M::Window,
+        ),
+        // Step 110: the remaining built-ins.
+        run(
+            "file.save-copy",
+            "Save a copy as…",
+            "사본으로 저장…",
+            Run::FileOp(0),
+            M::File,
+        ),
+        run(
+            "edit.read-only",
+            "Read-only: on/off",
+            "읽기 전용: 켜기/끄기",
+            Run::FileOp(1),
+            M::Edit,
+        ),
+        run(
+            "file.clear-read-only",
+            "Clear the file's read-only attribute",
+            "파일의 읽기 전용 속성 지우기",
+            Run::FileOp(2),
+            M::File,
+        ),
+        run(
+            "edit.char-panel",
+            "Character panel…",
+            "문자 패널…",
+            Run::Gap(0),
+            M::Edit,
+        ),
+        run(
+            "edit.clipboard-history",
+            "Paste from clipboard history…",
+            "클립보드 기록에서 붙여넣기…",
+            Run::Gap(1),
+            M::Edit,
+        ),
+        run(
+            "search.next-non-ascii",
+            "Find the next non-ASCII character",
+            "다음 ASCII 아닌 문자 찾기",
+            Run::Gap(2),
+            M::Search,
+        ),
+        run(
+            "search.next-above-ff",
+            "Find the next character above U+00FF",
+            "U+00FF보다 큰 다음 문자 찾기",
+            Run::Gap(3),
+            M::Search,
+        ),
+        run(
+            "search.char-range",
+            "Find characters in a range…",
+            "범위의 문자 찾기…",
+            Run::Gap(4),
+            M::Search,
+        ),
+        run(
+            "edit.paste-html-source",
+            "Paste HTML as source",
+            "HTML을 소스로 붙여넣기",
+            Run::Gap(5),
+            M::Edit,
+        ),
+        run(
+            "edit.paste-rtf-source",
+            "Paste RTF as source",
+            "RTF를 소스로 붙여넣기",
+            Run::Gap(6),
+            M::Edit,
+        ),
+        run(
+            "view.tab-color-0",
+            "Tab colour: purple",
+            "탭 색: 보라",
+            Run::TabColor(0),
+            M::Window,
+        ),
+        run(
+            "view.tab-color-1",
+            "Tab colour: green",
+            "탭 색: 초록",
+            Run::TabColor(1),
+            M::Window,
+        ),
+        run(
+            "view.tab-color-2",
+            "Tab colour: amber",
+            "탭 색: 호박색",
+            Run::TabColor(2),
+            M::Window,
+        ),
+        run(
+            "view.tab-color-3",
+            "Tab colour: red",
+            "탭 색: 빨강",
+            Run::TabColor(3),
+            M::Window,
+        ),
+        run(
+            "view.tab-color-4",
+            "Tab colour: blue",
+            "탭 색: 파랑",
+            Run::TabColor(4),
+            M::Window,
+        ),
+        run(
+            "view.tab-color-none",
+            "Tab colour: none",
+            "탭 색: 없음",
+            Run::TabColor(5),
             M::Window,
         ),
         run(
@@ -1766,7 +1912,9 @@ mod tests {
                 Run::Act(Action::Cmd(c)) => {
                     assert_eq!(x.keys, key_label(Action::Cmd(c)), "{}", x.id);
                 }
-                Run::Act(Action::Print | Action::PrintNow) => assert!(x.keys.is_none()),
+                Run::Act(
+                    Action::Print | Action::PrintNow | Action::OnTop | Action::DistractionFree,
+                ) => assert!(x.keys.is_none()),
                 Run::Act(_) => assert!(x.keys.is_some(), "{}", x.id),
                 _ => {}
             }
@@ -1781,7 +1929,8 @@ mod tests {
     fn the_filter_matches_words_in_any_language_id_or_key() {
         let e = entries();
         let names = |q: &str| -> Vec<&str> { filter(&e, q).into_iter().map(|i| e[i].id).collect() };
-        assert_eq!(names("save as"), ["file.save-as"]);
+        // The phrase first; Step 110's "Save a copy as" has both words.
+        assert_eq!(names("save as"), ["file.save-as", "file.save-copy"]);
         assert!(names("vim").contains(&"editing.vim"));
         assert_eq!(names("다른 이름"), ["file.save-as"]);
         assert!(names("ctrl+e").contains(&"markdown.preview"));

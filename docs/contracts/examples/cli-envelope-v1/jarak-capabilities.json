@@ -412,7 +412,7 @@
     "schema_version": 1,
     "summary": "Pre-alpha (Step 91): the headless CLI (file inspection, image assets of Markdown documents) and the editor window (editing, files, Markdown preview, Ctrl+V images)",
     "tool": "jarak",
-    "version": "0.0.31"
+    "version": "0.0.32"
   },
   "ok": true,
   "schema_version": 1,

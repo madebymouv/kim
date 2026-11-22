@@ -217,6 +217,26 @@ pub fn sha1(bytes: &[u8]) -> [u8; 20] {
 
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// Step 110 (EDIT-16, SRCH-20): a character from its code — `U+00E9`, `0xE9`, `#xE9`, `&#233;`
+/// or `233`.
+pub fn parse_char_code(s: &str) -> Option<char> {
+    let t = s.trim().trim_end_matches(';');
+    let t = t.strip_prefix("&#").unwrap_or(t);
+    let n = if let Some(h) = t
+        .strip_prefix("U+")
+        .or_else(|| t.strip_prefix("u+"))
+        .or_else(|| t.strip_prefix("0x"))
+        .or_else(|| t.strip_prefix("0X"))
+        .or_else(|| t.strip_prefix('x'))
+        .or_else(|| t.strip_prefix("#x"))
+    {
+        u32::from_str_radix(h, 16).ok()?
+    } else {
+        t.parse::<u32>().ok()?
+    };
+    char::from_u32(n)
+}
+
 pub(crate) fn base64_encode(bytes: &[u8], pad: bool, url: bool) -> String {
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for c in bytes.chunks(3) {

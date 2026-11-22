@@ -420,3 +420,22 @@ fn the_edit_log_says_from_where_the_text_changed() {
     assert_eq!(d.edits_since(g1), Some(2), "undo is an edit too");
     assert_eq!(d.edits_since(d.edit_gen()), None);
 }
+
+/// Step 110 (EDIT-16): a character from its code in the usual notations.
+#[test]
+fn character_codes_in_every_notation() {
+    for (code, ch) in [
+        ("U+00E9", 'é'),
+        ("u+e9", 'é'),
+        ("0xE9", 'é'),
+        ("233", 'é'),
+        ("&#233;", 'é'),
+        ("&#xD55C;", '한'),
+        (" U+1F600 ", '😀'),
+    ] {
+        assert_eq!(parse_char_code(code), Some(ch), "{code}");
+    }
+    for bad in ["", "U+", "U+D800", "0x110000", "abc", "-1"] {
+        assert_eq!(parse_char_code(bad), None, "{bad}");
+    }
+}

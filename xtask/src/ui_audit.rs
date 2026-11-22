@@ -177,6 +177,14 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "publish-question",
                 // Step 108: an extension asks for its grant.
                 "extension-question",
+                // Step 110: the character panel, the clipboard history, the range dialog, the
+                // window modes, a coloured tab.
+                "char-panel",
+                "clipboard-history",
+                "char-range",
+                "distraction-free",
+                "post-it",
+                "tab-color",
                 // Step 105: every section of the Settings window (its own window).
                 "settings-general",
                 "settings-editor",

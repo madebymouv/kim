@@ -780,6 +780,42 @@
     },
     {
       "defaults": [],
+      "id": "view.always-on-top",
+      "scopes": [
+        "app"
+      ],
+      "title": "Always on top: on/off"
+    },
+    {
+      "defaults": [
+        "F11"
+      ],
+      "id": "view.full-screen",
+      "scopes": [
+        "app"
+      ],
+      "title": "Full screen"
+    },
+    {
+      "defaults": [
+        "F12"
+      ],
+      "id": "view.post-it",
+      "scopes": [
+        "app"
+      ],
+      "title": "Post-it mode (no frame or bars)"
+    },
+    {
+      "defaults": [],
+      "id": "view.distraction-free",
+      "scopes": [
+        "app"
+      ],
+      "title": "Distraction-free mode"
+    },
+    {
+      "defaults": [],
       "id": "file.print-now",
       "scopes": [
         "app"
@@ -1534,5 +1570,5 @@
   "schema": "kim.hotkey-manifest",
   "schema_version": 1,
   "tool": "jarak",
-  "version": "0.0.28"
+  "version": "0.0.31"
 }

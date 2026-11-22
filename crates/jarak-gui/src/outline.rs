@@ -530,7 +530,7 @@ impl JarakApp {
     /// The Function List (a right panel): the filter, the symbols indented by depth (only the
     /// rows in view are laid out), the one around the caret marked; a click goes there.
     pub(crate) fn function_list_ui(&mut self, ui: &mut egui::Ui, c: &Colors) {
-        if !self.function_list {
+        if !self.function_list || self.modes.distraction_free {
             return;
         }
         let lang = self.lang;

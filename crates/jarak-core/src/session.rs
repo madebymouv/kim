@@ -60,6 +60,9 @@ pub struct Doc {
     pub shown: Shown,
     #[serde(default)]
     pub views: Views,
+    /// Step 110 (VIEWS-08): the tab's colour (0 purple, 1 green, 2 amber, 3 red, 4 blue).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<u8>,
 }
 
 /// The second view.
@@ -298,6 +301,8 @@ mod tests {
                 Doc {
                     untitled: Some("untitled-1.txt".into()),
                     views: Views::Second,
+                    // Step 110 (VIEWS-08): the tab's colour.
+                    color: Some(3),
                     ..Doc::default()
                 },
             ],

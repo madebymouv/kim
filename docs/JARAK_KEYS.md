@@ -119,6 +119,8 @@ screen (smart highlighting).
 | Ctrl+Shift+R | Start / stop recording a macro |
 | F9 | Play back the recorded macro (Notepad++'s Ctrl+Shift+P is Jarak's command palette) |
 | F5 | Run… (a command line, shown exactly before it runs — [JARAK_MACROS](JARAK_MACROS.md)) |
+| F11 | Full screen on/off (Step 110) |
+| F12 | Post-it mode on/off: no window frame, menu, tab or status bar (Step 110; the palette, Ctrl+Shift+P, still works) |
 
 The palette and the Edit menu have the rest: removing duplicate, consecutive duplicate and empty
 lines, reverse, randomize, the sorts (lexicographic, ignoring case, locale, integers, decimals,

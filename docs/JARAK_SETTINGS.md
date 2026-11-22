@@ -71,6 +71,7 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 | --- | --- | --- | --- |
 | `tab_width` | Tab width | 1–16 | `4` |
 | `use_spaces` | Tab inserts spaces | `true` / `false` | `false` |
+| `language_tabs` | Tab width per language | `Language=width`, `s` or `t` after it, comma separated | `(none)` |
 | `indent` | Indentation on Enter | `off` / `keep` / `smart` | `smart` |
 | `word_wrap` | Word wrap | `true` / `false` | `false` |
 | `highlight_current_line` | Highlight the current line | `true` / `false` | `true` |
@@ -87,6 +88,11 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 | `auto_close` | Close brackets and quotes | `true` / `false` | `false` |
 | `close_tags` | Close HTML/XML tags | `true` / `false` | `false` |
 | `brace_highlight` | Highlight matching brackets | `true` / `false` | `true` |
+| `smart_highlight` | Highlight the selected word's other occurrences | `true` / `false` | `true` |
+| `smart_match_case` | Smart highlighting matches case | `true` / `false` | `true` |
+| `smart_whole_word` | Smart highlighting matches whole words | `true` / `false` | `true` |
+| `word_chars` | Further word characters | text (one line) | `(none)` |
+| `find_fill_selection` | Selected text fills the find field | `true` / `false` | `true` |
 
 ### Appearance
 
@@ -131,6 +137,10 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 | `reload_unmodified_silently` | Reload unmodified documents silently | `true` / `false` | `false` |
 | `recovery_interval` | Keep unsaved documents every (seconds) | 0–3600 | `10` |
 | `large_file_mb` | Large file from (MB) | 1–4096 | `200` |
+| `open_folder` | Open dialog starts in | `document` / `last` / `folder` | `document` |
+| `open_folder_path` | The Open dialog's folder | a folder | `(none)` |
+| `new_language` | Language of new documents | a language's name | `(none)` |
+| `backup` | Backup on save | `off` / `simple` / `dated` | `off` |
 | `print_header` | Header | text (one line) | `{file}\|\|{date} {time}` |
 | `print_footer` | Footer | text (one line) | `\|\|{page} / {pages}` |
 | `print_line_numbers` | Line numbers | `true` / `false` | `true` |
@@ -147,6 +157,7 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 | --- | --- | --- | --- |
 | `search_engine` | Search engine | text with `$(QUERY)` | `https://duckduckgo.com/?q=$(QUERY)` |
 | `date_format` | Custom date format | text (one line) | `yyyy-MM-dd HH:mm:ss` |
+| `context_menu` | Context menu of the text | command ids, comma separated (`-` a separator) | `edit.undo,edit.redo,-,edit.cut,edit.copy,edit.paste,-,select.all,-,edit.copy-html` |
 
 ## What each setting does
 
@@ -157,7 +168,9 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
   changes as any close does.
 - **One window** off: every start of `jarak-gui` (or `jarak open`) opens a window of its own.
 - **Tab width** and **Tab inserts spaces** apply to every open document; with spaces, Tab adds
-  spaces up to the next tab stop and indenting lines adds a tab width of spaces.
+  spaces up to the next tab stop and indenting lines adds a tab width of spaces. **Tab width per
+  language** (Step 110) overrides them for documents in a language: `Python=4s, Go=8t, YAML=2`
+  (`s` Tab inserts spaces, `t` a tab character, neither: the general setting).
 - **Word wrap** applies to every open document when it changes and to each new one (View's *Word
   wrap* still changes one document). **Highlight the current line**, **Blinking caret** (off by
   default: an idle window never repaints; on, at most twice a second while it has the focus),
@@ -170,6 +183,19 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 - **Markdown files open as** source, split or preview (a restored session's documents keep
   theirs). **Folder for pasted images**: Ctrl+V writes images into this folder next to the
   document (a plain folder name; the orphan scan of *Assets* still looks at `assets`).
+- **Smart highlighting** (Step 110): a selected word's other occurrences on screen are marked;
+  its two options make it ignore case or match parts of words. **Further word characters**
+  join words for a double click, Ctrl+arrows and *select word* (for example `-` for CSS names).
+  **Selected text fills the find field** off keeps Ctrl+F's field as it was.
+- **Open dialog starts in** the current document's folder, where Windows' Open dialog was
+  last, or **the Open dialog's folder** (one that is gone falls back to the document's).
+  **Language of new documents**: Ctrl+N's documents get it (empty: plain text). **Backup on
+  save** (off by default) copies the file before each save: *Simple* to `<name>.bak` beside it
+  (replacing the last one), *Dated copies* to `jarak-backup\<name>.<date_time>.bak` beside it
+  (one per save; Jarak never deletes them). A backup that cannot be written stops the save, so
+  nothing is lost.
+- **Context menu of the text** (Advanced): the commands of the right-click menu, by their ids
+  (`jarak hotkeys list` names them); unknown ids are skipped.
 - **Files**: new documents' encoding and line ending; how many recent files are kept; detecting
   files changed by other programs, reloading unmodified documents silently and recovery
   snapshots (Step 104, [JARAK_RECOVERY](JARAK_RECOVERY.md)). **Printing** (Step 106,
