@@ -2,7 +2,7 @@
   "schema": "kim.capabilities",
   "schema_version": 1,
   "tool": "subak",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "cli_contract": 1,
   "json_schema_version": 1,
   "implementation": "implemented",

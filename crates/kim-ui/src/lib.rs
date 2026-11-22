@@ -9,7 +9,7 @@
 //! [`set_theme`]), the spacing, the type scale, the Korean font fallback and reduced motion. The
 //! components are in [`widgets`].
 
-pub use kim_design::{self as design, Lang, LangPref, Theme, ThemePref};
+pub use kim_design::{self as design, Lang, LangPref, SystemColors, Theme, ThemePref};
 
 pub mod forms;
 pub mod inspect;
@@ -60,7 +60,11 @@ pub struct Colors {
 impl Colors {
     /// The colours of `theme`.
     pub fn of(theme: Theme) -> Colors {
-        let p: &Palette = theme.palette();
+        Colors::from_palette(theme.palette())
+    }
+
+    /// The colours of a palette (a theme's, or a contrast theme's from [`SystemColors`]).
+    pub fn from_palette(p: &Palette) -> Colors {
         Colors {
             bg_base: c32(p.bg_base),
             bg_raised: c32(p.bg_raised),
@@ -87,10 +91,70 @@ impl Colors {
         }
     }
 
-    /// The colours of the theme `ctx` draws with now.
+    /// The colours `ctx` draws with now: a Windows contrast theme's while the program follows one
+    /// ([`follow_high_contrast`]), else its theme's.
     pub fn get(ctx: &egui::Context) -> Colors {
-        Colors::of(theme_of(ctx))
+        match high_contrast(ctx) {
+            Some(p) => Colors::from_palette(&p),
+            None => Colors::of(theme_of(ctx)),
+        }
     }
+}
+
+fn high_contrast_id() -> egui::Id {
+    egui::Id::unique("kim-ui-high-contrast")
+}
+
+/// The contrast theme's palette `ctx` draws with, when a program follows Windows' contrast
+/// themes and one is on (DESIGN_SYSTEM §4.3).
+pub fn high_contrast(ctx: &egui::Context) -> Option<Palette> {
+    ctx.data(|d| d.get_temp::<Option<Palette>>(high_contrast_id()))
+        .flatten()
+}
+
+/// Draws with a contrast theme's system colours (`Some`) or the program's own theme again
+/// (`None`): both egui visuals slots get the contrast colours, so the theme choice does not
+/// matter while it is on.
+pub fn set_high_contrast(ctx: &egui::Context, colors: Option<SystemColors>) {
+    let palette = colors.map(|s| s.palette());
+    if high_contrast(ctx) == palette {
+        return;
+    }
+    ctx.data_mut(|d| d.insert_temp(high_contrast_id(), palette));
+    match colors {
+        Some(s) => {
+            let v = visuals_from(Colors::from_palette(&s.palette()), s.is_dark(), false);
+            ctx.set_visuals_of(egui::Theme::Dark, v.clone());
+            ctx.set_visuals_of(egui::Theme::Light, v);
+        }
+        None => {
+            ctx.set_visuals_of(egui::Theme::Dark, visuals(Theme::Dark));
+            ctx.set_visuals_of(egui::Theme::Light, visuals(Theme::Light));
+        }
+    }
+    ctx.request_repaint();
+}
+
+/// Windows' contrast theme now: `KIM_UI_HIGH_CONTRAST=black|white|off` (UI audits and tests)
+/// first, else what Windows reports.
+pub fn system_high_contrast() -> Option<SystemColors> {
+    match std::env::var("KIM_UI_HIGH_CONTRAST").as_deref() {
+        Ok("black") => return Some(SystemColors::BLACK),
+        Ok("white") => return Some(SystemColors::WHITE),
+        Ok("off") => return None,
+        _ => {}
+    }
+    #[cfg(windows)]
+    return kim_design::system::high_contrast();
+    #[allow(unreachable_code)]
+    None
+}
+
+/// For a program that follows Windows' contrast themes: call once a frame (a few system calls;
+/// nothing is scheduled, so an idle window stays idle — switching a contrast theme on or off
+/// repaints every window, and that frame picks it up).
+pub fn follow_high_contrast(ctx: &egui::Context) {
+    set_high_contrast(ctx, system_high_contrast());
 }
 
 /// The theme `ctx` draws with now.
@@ -104,17 +168,27 @@ pub fn theme_of(ctx: &egui::Context) -> Theme {
 
 /// The egui visuals of a theme.
 pub fn visuals(theme: Theme) -> egui::Visuals {
-    let c = Colors::of(theme);
-    let mut v = match theme {
-        Theme::Dark => egui::Visuals::dark(),
-        Theme::Light => egui::Visuals::light(),
+    visuals_from(Colors::of(theme), theme == Theme::Dark, true)
+}
+
+/// The egui visuals of a set of colours (a contrast theme has no shadows).
+fn visuals_from(c: Colors, dark: bool, shadows: bool) -> egui::Visuals {
+    let theme = if dark { Theme::Dark } else { Theme::Light };
+    let mut v = if dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
     };
     v.panel_fill = c.bg_base;
     v.window_fill = c.bg_overlay;
     v.window_stroke = Stroke::new(size::BORDER, c.border_subtle);
     v.window_corner_radius = CornerRadius::same(radius::L as u8);
     v.menu_corner_radius = CornerRadius::same(radius::M as u8);
-    let shadow_alpha = if theme == Theme::Dark { 115 } else { 40 };
+    let shadow_alpha = match (shadows, theme) {
+        (false, _) => 0,
+        (true, Theme::Dark) => 115,
+        (true, Theme::Light) => 40,
+    };
     v.window_shadow = Shadow {
         offset: [0, 8],
         blur: 24,

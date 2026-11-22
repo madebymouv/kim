@@ -222,6 +222,21 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
             out.push(egui_run(app, s, 1.5, "light", "ko", false));
         }
     }
+    // DESIGN_SYSTEM §4.3: Jarak follows Windows' contrast themes — its main views in High Contrast
+    // Black, checked by the same rules (text contrast included).
+    for s in [
+        "editor",
+        "editor-selection",
+        "syntax",
+        "palette",
+        "find",
+        "question",
+        "preview",
+        "settings-general",
+        "settings-keyboard",
+    ] {
+        out.push(egui_run("jarak", s, 1.0, "hc", "en", false));
+    }
     let subak = |name: &str, dpi: u32, z: f32, font, compact, size, tabs, theme, baseline| Run {
         name: format!("subak-{name}"),
         app: "subak",
@@ -456,7 +471,16 @@ fn run_egui(root: &Path, out: &Path, r: &Run) -> Result<(PathBuf, PathBuf), Stri
         .env("KIM_UI_EXIT", "1")
         .env("KIM_UI_ZOOM", r.zoom.to_string())
         .env("KIM_UI_SCREEN", &r.screen)
-        .env("KIM_UI_THEME", r.theme)
+        // A contrast run ("hc") is High Contrast Black over the dark theme; every other run is
+        // pinned to no contrast theme, whatever Windows has on.
+        .env(
+            "KIM_UI_THEME",
+            if r.theme == "hc" { "dark" } else { r.theme },
+        )
+        .env(
+            "KIM_UI_HIGH_CONTRAST",
+            if r.theme == "hc" { "black" } else { "off" },
+        )
         .env("KIM_UI_LANG", r.lang)
         .env("KIM_UI_POS", "40,40")
         .env(

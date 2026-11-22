@@ -34,6 +34,46 @@ pub fn apps_use_light_theme() -> bool {
     false
 }
 
+/// Windows High Contrast is on: its system colours (`SPI_GETHIGHCONTRAST`, `GetSysColor`);
+/// `None` when it is off or cannot be read (DESIGN_SYSTEM §4.3).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn high_contrast() -> Option<crate::SystemColors> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_HOTLIGHT, COLOR_WINDOW,
+        COLOR_WINDOWTEXT, GetSysColor,
+    };
+    use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};
+    let mut hc = HIGHCONTRASTW {
+        cbSize: size_of::<HIGHCONTRASTW>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: SPI_GETHIGHCONTRAST fills the HIGHCONTRASTW whose size is given.
+    let ok =
+        unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cbSize, (&raw mut hc).cast(), 0) };
+    if ok == 0 || hc.dwFlags & HCF_HIGHCONTRASTON == 0 {
+        return None;
+    }
+    let c = |i| {
+        // SAFETY: GetSysColor takes a colour index and returns 0x00BBGGRR.
+        let v = unsafe { GetSysColor(i) };
+        crate::Rgb {
+            r: (v & 0xFF) as u8,
+            g: ((v >> 8) & 0xFF) as u8,
+            b: ((v >> 16) & 0xFF) as u8,
+        }
+    };
+    Some(crate::SystemColors {
+        window: c(COLOR_WINDOW),
+        window_text: c(COLOR_WINDOWTEXT),
+        highlight: c(COLOR_HIGHLIGHT),
+        highlight_text: c(COLOR_HIGHLIGHTTEXT),
+        gray_text: c(COLOR_GRAYTEXT),
+        hot_light: c(COLOR_HOTLIGHT),
+    })
+}
+
 /// "Show animations in Windows" is on (`SPI_GETCLIENTAREAANIMATION`; on when it cannot be read).
 #[cfg(windows)]
 #[allow(unsafe_code)]

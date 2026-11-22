@@ -511,6 +511,9 @@ pub struct JarakApp {
     central: Rect,
     /// The theme's colours of the frame.
     colors: Colors,
+    /// DESIGN_SYSTEM §4.3: `None` follows Windows' contrast themes; `Some` fixes one (or none),
+    /// for tests.
+    pub high_contrast: Option<Option<kim_ui::SystemColors>>,
     /// When an Alt+letter chord came (its text is dropped).
     alt_text: Option<f64>,
     /// Step 95: Find / Replace in Files running on a thread, the results panel, the Replace in
@@ -1766,6 +1769,7 @@ impl JarakApp {
             incremental: None,
             central: Rect::NOTHING,
             colors: Colors::of(kim_design::Theme::Dark),
+            high_contrast: None,
             alt_text: None,
             job: None,
             results: None,
@@ -3213,6 +3217,11 @@ fn main() {
         if !self.themed {
             kim_ui::apply(&ctx, kim_ui::Options::default());
             self.themed = true;
+        }
+        // DESIGN_SYSTEM §4.3, `JARAK-NFR-007`: Windows' contrast themes, or a fixed one (tests).
+        match self.high_contrast {
+            None => kim_ui::follow_high_contrast(&ctx),
+            Some(c) => kim_ui::set_high_contrast(&ctx, c),
         }
         let pending: Vec<Vec<String>> = self
             .incoming

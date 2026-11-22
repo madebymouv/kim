@@ -1,6 +1,6 @@
 # Jarak — accessibility
 
-Status: **current** (Step 109, checklist reviewed 2026-11-22) · Requirement: `JARAK-NFR-007`
+Status: **current** (Step 109, checklist reviewed 2026-11-22; contrast themes and the UI Automation tree 2026-11-23) · Requirement: `JARAK-NFR-007`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Design: [DESIGN_SYSTEM §4](DESIGN_SYSTEM.md),
 [UI_QUALITY_PIPELINE](UI_QUALITY_PIPELINE.md)
 
@@ -18,14 +18,14 @@ done or not tested.
 | **Scaling** | Yes | Windows display scaling and Jarak's zoom (Ctrl+= / Ctrl+-) scale the whole window; audited at four zoom levels; the editor font size is a setting (8–40) |
 | **Reduced motion** | Yes | "Show animations in Windows" off turns kim-ui animations off |
 | **Korean input (IME)** | Yes | The composition is drawn inline and only the committed text is inserted (Step 88, window test `the_ime_composition_is_shown_and_only_the_commit_is_inserted`) |
-| **High-contrast theme** | **Gap** | DESIGN_SYSTEM §4.3 asks every Kim window to switch to the Windows contrast theme's system colours; kim-ui does not do this yet. It needs a change in kim-ui for every tool and a check with a contrast theme switched on (a temporary display setting, to be done while the maintainer is away). Until then the dark and light themes meet the token contrast pairs |
-| **Screen reader on the real desktop** | **Not tested** | Narrator was not run against Jarak (the maintainer was at the PC); the names are verified headlessly through AccessKit only |
+| **High-contrast theme** | Yes (2026-11-23) | Under a Windows contrast theme Jarak draws with its system colours only (DESIGN_SYSTEM §4.3, kim-ui `follow_high_contrast`): window text on the window colour, the highlight for focus, selection, keywords and the primary action, no lilac accent. Checked: `contrast_theme_palettes_keep_their_pairs_readable` (every pair ≥ 7:1 text, ≥ 4.5:1 accent text, both High Contrast Black and White), window test `a_contrast_theme_draws_with_the_system_colours`, the UI audit's nine High Contrast Black runs (text contrast included), e2e `step109_contrast_themes_pass_the_audit`, and the release window shown with both themes' colours. Windows' own contrast theme was not switched on for the check (it re-themes the whole desktop, and switching back does not restore every personalisation exactly) |
+| **Screen reader on the real desktop** | Partly (2026-11-23) | Windows' UI Automation tree of a real window, read with `UIAutomationClient` (what Narrator reads): the window's name (`note.md — Jarak`), the Settings button, the status bar items, and with the palette open its commands as named menu items (*Save*, *Save as…*, …). The editor is a focusable, focused Edit named *Text* with **no Value or Text pattern**: its text is not read (the gap below). Narrator itself was not run — its speech needs a listener |
 | **Right-to-left text** | Not done | `VIEW-16`, planned for Step 110 |
 
 ## What the gaps mean for users
 
-- People who rely on a Windows contrast theme see Jarak in its own dark or light colours, not
-  their theme's.
+- People who rely on a Windows contrast theme see Jarak in their theme's colours (since
+  2026-11-23); Kim Manager, Noeul's settings and the Ddalgak editor do not follow it yet.
 - People who use a screen reader can operate the menus, dialogs, Settings and palette by name, but
   the document text is not read out from the editor area. The command line (`jarak info`,
   `jarak find`) and the Markdown preview's exports are the accessible routes for content today.

@@ -1,5 +1,16 @@
 # Release notes
 
+## Jarak 0.0.35 — large files and contrast themes (preview, not yet published)
+
+- **Status:** draft (2026-11-23, #128).
+- **Windows contrast themes:** with High Contrast on, Jarak draws with the theme's system colours
+  only (text, borders, the highlight for focus, selection and keywords; no lilac accent) and
+  switches when it is turned on or off ([JARAK_ACCESSIBILITY](JARAK_ACCESSIBILITY.md)).
+- **Fixed:** an edit in a large plain-text document no longer starts a structure search that
+  copied every line (1000 MiB: about 5 s of CPU after each pause in typing).
+- **Measured** on the real desktop: 100 MiB opens in 0.6 s, 1000 MiB in 2.9 s, both at 2.3× the
+  file in memory, idle at 0 % CPU ([JARAK_PERFORMANCE](JARAK_PERFORMANCE.md)).
+
 ## Jarak 0.0.34 — after the real-desktop acceptance run (preview, not yet published)
 
 - **Status:** draft (2026-11-23). The checks that needed the real desktop were run with test

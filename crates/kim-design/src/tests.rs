@@ -189,3 +189,38 @@ fn reduced_motion_removes_every_duration() {
     assert_eq!(motion::seconds(motion::BASE_MS, true), 0.0);
     assert!((motion::seconds(motion::BASE_MS, false) - 0.12).abs() < 1e-6);
 }
+
+/// DESIGN_SYSTEM §4.3: a contrast theme's palette keeps every pair a window draws readable —
+/// text on every surface, the former accent as text (keywords) on the surfaces and in the
+/// selection, text on the highlight, disabled text on the background.
+#[test]
+fn contrast_theme_palettes_keep_their_pairs_readable() {
+    for (name, s) in [
+        ("black", SystemColors::BLACK),
+        ("white", SystemColors::WHITE),
+    ] {
+        let p = s.palette();
+        for (what, fg, bg, min) in [
+            ("text on base", p.text_primary, p.bg_base, 7.0),
+            ("text on selected", p.text_primary, p.bg_selected, 7.0),
+            ("text on hover", p.text_primary, p.bg_hover, 7.0),
+            ("muted on base", p.text_muted, p.bg_base, 7.0),
+            ("accent text on base", p.accent, p.bg_base, 4.5),
+            ("accent text in the selection", p.accent, p.accent_soft, 4.5),
+            ("text on the accent", p.text_on_accent, p.accent, 4.5),
+            ("links on base", p.info, p.bg_base, 4.5),
+            ("disabled on base", p.text_disabled, p.bg_base, 3.0),
+            ("borders on base", p.border_subtle, p.bg_base, 3.0),
+            ("focus on base", p.focus, p.bg_base, 3.0),
+        ] {
+            let c = fg.contrast(bg);
+            assert!(c >= min, "{name}: {what} {c:.2} < {min}");
+        }
+    }
+    assert!(SystemColors::BLACK.is_dark());
+    assert!(!SystemColors::WHITE.is_dark());
+    assert_eq!(
+        Rgb::hex(0xFFFFFF).mix(Rgb::hex(0x000000), 0.5),
+        Rgb::hex(0x808080)
+    );
+}

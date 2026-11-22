@@ -233,6 +233,82 @@ pub const LIGHT: Palette = Palette {
 };
 
 /// The spacing scale (logical pixels): every gap, padding and margin is one of these.
+/// The system colours of a Windows contrast theme (DESIGN_SYSTEM §4.3). While High Contrast is
+/// on, a Kim window that follows it draws with these only and drops the lilac accent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SystemColors {
+    /// `COLOR_WINDOW`: the background.
+    pub window: Rgb,
+    /// `COLOR_WINDOWTEXT`: text and borders.
+    pub window_text: Rgb,
+    /// `COLOR_HIGHLIGHT`: the selection, focus and the primary action.
+    pub highlight: Rgb,
+    /// `COLOR_HIGHLIGHTTEXT`: text on the highlight.
+    pub highlight_text: Rgb,
+    /// `COLOR_GRAYTEXT`: disabled text.
+    pub gray_text: Rgb,
+    /// `COLOR_HOTLIGHT`: links.
+    pub hot_light: Rgb,
+}
+
+impl SystemColors {
+    /// Windows' *High Contrast Black* (`hcblack.theme`).
+    pub const BLACK: SystemColors = SystemColors {
+        window: Rgb::hex(0x000000),
+        window_text: Rgb::hex(0xFFFFFF),
+        highlight: Rgb::hex(0x1AEBFF),
+        highlight_text: Rgb::hex(0x000000),
+        gray_text: Rgb::hex(0x3FF23F),
+        hot_light: Rgb::hex(0xFFFF00),
+    };
+    /// Windows' *High Contrast White* (`hcwhite.theme`).
+    pub const WHITE: SystemColors = SystemColors {
+        window: Rgb::hex(0xFFFFFF),
+        window_text: Rgb::hex(0x000000),
+        highlight: Rgb::hex(0x37006E),
+        highlight_text: Rgb::hex(0xFFFFFF),
+        gray_text: Rgb::hex(0x600000),
+        hot_light: Rgb::hex(0x00009F),
+    };
+
+    /// The palette roles in these colours: text and borders in the window text colour, focus,
+    /// the primary action and the former accent in the highlight (text on it in the highlight
+    /// text colour), disabled text in grey text. Selected and hovered surfaces are the highlight
+    /// mixed into the window (40 % and 20 %), so the window text stays readable on them.
+    pub fn palette(&self) -> Palette {
+        let soft = self.window.mix(self.highlight, 0.4);
+        Palette {
+            bg_base: self.window,
+            bg_raised: self.window,
+            bg_overlay: self.window,
+            bg_hover: self.window.mix(self.highlight, 0.2),
+            bg_selected: soft,
+            border_subtle: self.window_text,
+            border_strong: self.window_text,
+            text_primary: self.window_text,
+            text_secondary: self.window_text,
+            text_muted: self.window_text,
+            text_disabled: self.gray_text,
+            text_on_accent: self.highlight_text,
+            accent: self.highlight,
+            accent_hover: self.highlight,
+            accent_pressed: self.highlight,
+            accent_soft: soft,
+            focus: self.highlight,
+            success: self.window_text,
+            warning: self.window_text,
+            danger: self.window_text,
+            info: self.hot_light,
+            switch_off: self.gray_text,
+        }
+    }
+
+    /// The background is dark (High Contrast Black and the like).
+    pub fn is_dark(&self) -> bool {
+        self.window.luminance() < 0.5
+    }
+}
+
 pub mod space {
     /// Hairline gaps inside a control (an icon and its badge).
     pub const XXS: f32 = 2.0;

@@ -1605,3 +1605,25 @@ environment had the real profile while the window ran in a sandbox) signals the 
 finds nothing in its own folder and only comes to the front. For a user both are always the same
 profile; the acceptance run gave the Subak terminal the sandbox profile (`subak new --env`).
 
+## 35. Large files on the real desktop, Windows contrast themes (#128, 2026-11-23)
+
+**Measured** with the release window (JARAK_PERFORMANCE): 100 MiB titled in 573 ms, 1000 MiB in
+2.9 s, both settling at 2.3× the file; Ctrl+End within 62 ms; the CLI's `info` and `find` over
+1000 MiB in 1.9 s and 3.3 s. The run found one fault: after a typed character the 1000 MiB window
+used about 5 s of CPU — `outline_frame` sent the document to its worker, which copies every line
+into a `String` before asking `structure::outline`, which for plain text (and every large file,
+shown as plain text) returns nothing. Now a document without a language installs an empty
+structure at once (test `plain_and_large_documents_find_no_structure_after_an_edit`); the same edit
+costs 453 ms of the first second and nothing after.
+
+**Contrast themes** (DESIGN_SYSTEM §4.3): `kim_design::SystemColors` (six system colours, Windows'
+High Contrast Black and White as constants) maps onto the palette roles; `kim_design::system::
+high_contrast()` reads Windows (`SPI_GETHIGHCONTRAST`, `GetSysColor`). kim-ui keeps the contrast
+palette in the egui context (`set_high_contrast`, `high_contrast`), `Colors::get` returns it, and
+both visuals slots get its visuals (no shadows), so a program's own theme choice does not matter
+while one is on. A program opts in with `follow_high_contrast` once a frame; Jarak does (its field
+`high_contrast` fixes a value for tests), and everything it draws goes through `Colors::get`, the
+editor's token colours included. The geometry report names the theme (`high-contrast-black`,
+`-white`) and the audit checks such a report against that palette; `cargo xtask ui-audit` adds nine
+High Contrast Black runs of Jarak and pins every other run to `KIM_UI_HIGH_CONTRAST=off`.
+

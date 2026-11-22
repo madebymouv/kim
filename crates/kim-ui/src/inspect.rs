@@ -128,8 +128,11 @@ pub fn record(
         c.state.push("disabled".into());
         // egui paints a disabled control faded towards the surface
         // (`state::DISABLED_OPACITY`): record the colour actually drawn.
-        let under =
-            c.bg.unwrap_or_else(|| kim_design::Theme::palette(crate::theme_of(ui.ctx())).bg_base);
+        let under = c.bg.unwrap_or_else(|| {
+            crate::high_contrast(ui.ctx())
+                .unwrap_or(*kim_design::Theme::palette(crate::theme_of(ui.ctx())))
+                .bg_base
+        });
         c.fg =
             c.fg.map(|f| under.mix(f, kim_design::state::DISABLED_OPACITY));
     }
@@ -184,7 +187,16 @@ pub fn report(ctx: &egui::Context, application: &str, screen: &str) -> Report {
         application: application.into(),
         screen: screen.into(),
         fixture: std::env::var("KIM_UI_FIXTURE").unwrap_or_default(),
-        theme: crate::theme_of(ctx).token_name().into(),
+        theme: match crate::high_contrast(ctx) {
+            Some(p) if p == kim_design::SystemColors::BLACK.palette() => {
+                "high-contrast-black".into()
+            }
+            Some(p) if p == kim_design::SystemColors::WHITE.palette() => {
+                "high-contrast-white".into()
+            }
+            Some(_) => "high-contrast".into(),
+            None => crate::theme_of(ctx).token_name().into(),
+        },
         window: (content.width() * ppp, content.height() * ppp),
         dpi_scale: ppp / zoom,
         ui_zoom: zoom,

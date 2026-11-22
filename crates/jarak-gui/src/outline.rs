@@ -60,6 +60,11 @@ impl Outline {
     pub fn fresh(&self, at_gen: u64, lang: &str) -> bool {
         self.valid && self.at_gen == at_gen && self.lang == lang
     }
+
+    /// A worker is finding this document's structure now.
+    pub fn working(&self) -> bool {
+        self.job.is_some()
+    }
 }
 
 /// The Go to dialog (a line, or a character offset).
@@ -103,6 +108,14 @@ impl JarakApp {
             let at_gen = t.file.doc.edit_gen();
             let o = &mut t.outline;
             if !(o.fresh(at_gen, &name) && (!want || o.with_symbols)) {
+                // Plain text has no structure, and a large file is shown as plain text: nothing
+                // to find (the worker used to copy every line first — for 1 GB about 5 s of CPU
+                // and a second copy of the text after each pause in typing).
+                if lang.is_none() {
+                    o.job = None;
+                    install(t, Vec::new(), Vec::new(), at_gen, name, want);
+                    continue;
+                }
                 // Step 109: small in lines and in bytes (a few very long lines go to the worker).
                 if t.file.doc.text().len_lines() <= SMALL
                     && t.file.doc.text().len_bytes() <= 2 * 1024 * 1024

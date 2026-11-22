@@ -420,6 +420,15 @@ assets — is in [SUBAK_BRAND](SUBAK_BRAND.md) (Step 44).
 - `kim-dark` meets the declared pairs in `tokens.json` (checked in CI).
 - When Windows High Contrast / Contrast themes are active, GUIs switch to system colors
   (`COLOR_WINDOW`, `COLOR_WINDOWTEXT`, `COLOR_HIGHLIGHT`, …) and drop the lilac accent.
+- In kim-ui (2026-11-23): `kim_design::system::high_contrast()` reads the theme
+  (`SPI_GETHIGHCONTRAST`, `GetSysColor`); `SystemColors::palette()` maps it onto the palette roles —
+  text and borders `COLOR_WINDOWTEXT` on `COLOR_WINDOW`, focus, the primary action and the former
+  accent `COLOR_HIGHLIGHT` (text on it `COLOR_HIGHLIGHTTEXT`), links `COLOR_HOTLIGHT`, disabled
+  text `COLOR_GRAYTEXT`, selected and hovered surfaces the highlight mixed 40 % / 20 % into the
+  window (so window text stays ≥ 7:1 on them), no shadows. A program opts in with
+  `kim_ui::follow_high_contrast(ctx)` once a frame (`KIM_UI_HIGH_CONTRAST=black|white|off` fixes
+  it for audits). **Jarak** follows; Kim Manager, Noeul's settings and the Ddalgak editor do not
+  yet (their own drawing keeps a palette copy), nor Subak's Win32 window and Noeul's pins.
 
 ### 4.4 Korean and Unicode
 

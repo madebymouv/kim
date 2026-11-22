@@ -7340,3 +7340,92 @@ fn the_preview_opens_the_palette_and_the_window_modes() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// `JARAK-NFR-007`, DESIGN_SYSTEM §4.3: under a Windows contrast theme the window draws with its
+/// system colours only (no lilac accent, the editor's keywords in the highlight colour, readable
+/// selection), and goes back to its own theme when the contrast theme is turned off.
+#[test]
+fn a_contrast_theme_draws_with_the_system_colours() {
+    use jarak_core::syntax::Kind;
+    use kim_ui::{Colors, SystemColors};
+    let d = temp("contrast");
+    let p = d.join("a.rs");
+    std::fs::write(&p, "fn main() {}\n").unwrap();
+    let (mut a, _) = app_with(&[p.to_str().unwrap()], Arc::default());
+    a.high_contrast = Some(Some(SystemColors::BLACK));
+    let mut h = harness(a);
+    h.run();
+    let c = Colors::get(&h.ctx);
+    assert_eq!(c.bg_base, egui::Color32::BLACK);
+    assert_eq!(c.text_primary, egui::Color32::WHITE);
+    assert_eq!(c.accent, egui::Color32::from_rgb(0x1A, 0xEB, 0xFF));
+    assert_eq!(c.text_on_accent, egui::Color32::BLACK);
+    assert!(
+        h.ctx.global_style().visuals.dark_mode,
+        "High Contrast Black is dark"
+    );
+    assert_eq!(
+        jarak_gui::languages::syntax_color(&c, Kind::Keyword),
+        c.accent,
+        "keywords in the highlight colour"
+    );
+    assert_eq!(
+        jarak_gui::languages::syntax_color(&c, Kind::String),
+        egui::Color32::WHITE
+    );
+    h.state_mut().high_contrast = Some(Some(SystemColors::WHITE));
+    h.run();
+    let c = Colors::get(&h.ctx);
+    assert_eq!(c.bg_base, egui::Color32::WHITE);
+    assert!(!h.ctx.global_style().visuals.dark_mode);
+    h.state_mut().high_contrast = Some(None);
+    h.run();
+    let c = Colors::get(&h.ctx);
+    assert_ne!(c.bg_base, egui::Color32::WHITE);
+    assert_eq!(kim_ui::high_contrast(&h.ctx), None, "back to the theme");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// `JARAK-NFR-003`, `JARAK-NFR-004`: a large plain-text document starts no structure worker after
+/// an edit (the real 1 GB check of 2026-11-23 measured ~5 s of CPU after one typed character), and
+/// a large code file shown as plain text (large-file mode) neither; a code file below the limit
+/// still gets its structure.
+#[test]
+fn plain_and_large_documents_find_no_structure_after_an_edit() {
+    let d = temp("no-outline");
+    let p = d.join("big.txt");
+    let line = "a line of plain text for the large document test\n";
+    std::fs::write(&p, line.repeat(60_000)).unwrap();
+    let (a, _) = app_with(&[p.to_str().unwrap()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    text(&mut h, "x");
+    for _ in 0..20 {
+        h.step();
+        assert!(
+            !h.state().tabs[0].outline.working(),
+            "no worker for plain text"
+        );
+    }
+    let r = d.join("big.rs");
+    std::fs::write(&r, "fn f() {\n    let x = 1;\n}\n".repeat(60_000)).unwrap();
+    let (a, _) = app_with(&[r.to_str().unwrap()], Arc::default());
+    let mut h = harness(a.with_settings(d.join("settings.toml")));
+    assert!(h.state_mut().change_setting("large_file_mb", "1"));
+    h.run();
+    assert!(
+        h.state().is_large(0),
+        "{} bytes",
+        h.state().tabs[0].file.doc.text().len_bytes()
+    );
+    text(&mut h, "x");
+    for _ in 0..20 {
+        h.step();
+        assert!(
+            !h.state().tabs[0].outline.working(),
+            "large-file mode: plain text"
+        );
+    }
+    assert!(h.state().tabs[0].outline.folds.is_empty());
+    let _ = std::fs::remove_dir_all(&d);
+}

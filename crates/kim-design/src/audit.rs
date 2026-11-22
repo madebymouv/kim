@@ -185,12 +185,21 @@ pub fn audit(r: &Report) -> Vec<Finding> {
             expected: e,
         });
     };
-    let theme = if r.theme == "kim-light" {
-        Theme::Light
-    } else {
-        Theme::Dark
+    // DESIGN_SYSTEM §4.3: a window under a contrast theme draws with its system colours; the
+    // audit fixtures are Windows' High Contrast Black and White.
+    let contrast;
+    let pal = match r.theme.as_str() {
+        "kim-light" => Theme::Light.palette(),
+        "high-contrast-black" => {
+            contrast = crate::SystemColors::BLACK.palette();
+            &contrast
+        }
+        "high-contrast-white" => {
+            contrast = crate::SystemColors::WHITE.palette();
+            &contrast
+        }
+        _ => Theme::Dark.palette(),
     };
-    let pal = theme.palette();
     for c in r.components.iter().filter(|c| c.visible) {
         let b = c.bounds;
         let ex = expect(&c.kind);

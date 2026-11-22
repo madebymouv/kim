@@ -18,7 +18,7 @@
 //! layout only); no input is synthesized; everything happens in a temporary folder.
 #![cfg(windows)]
 
-use kim_e2e::{TempDir, bin};
+use kim_e2e::{TempDir, bin, require_e2e};
 use serde_json::Value;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
@@ -39,7 +39,18 @@ fn jarak(dir: &Path, args: &[&str]) -> (i32, Value) {
 }
 
 fn window(dir: &Path, doc: &Path, screen: &str, extra: &[&str]) -> kim_design::inspect::Report {
-    let json = dir.join(format!("{screen}.json"));
+    window_in(dir, doc, screen, extra, "off")
+}
+
+/// A window under a contrast theme (`KIM_UI_HIGH_CONTRAST`: `black`, `white` or `off`).
+fn window_in(
+    dir: &Path,
+    doc: &Path,
+    screen: &str,
+    extra: &[&str],
+    contrast: &str,
+) -> kim_design::inspect::Report {
+    let json = dir.join(format!("{screen}-{contrast}.json"));
     let mut args: Vec<String> = vec![
         "--instance".into(),
         format!("e2e-step110-{}", std::process::id()),
@@ -56,7 +67,11 @@ fn window(dir: &Path, doc: &Path, screen: &str, extra: &[&str]) -> kim_design::i
         .env("APPDATA", dir.join("Roaming"))
         .env("LOCALAPPDATA", dir.join("Local"))
         .env("KIM_UI_INSPECT", &json)
-        .env("KIM_UI_SNAPSHOT", dir.join(format!("{screen}.png")))
+        .env(
+            "KIM_UI_SNAPSHOT",
+            dir.join(format!("{screen}-{contrast}.png")),
+        )
+        .env("KIM_UI_HIGH_CONTRAST", contrast)
         .env("KIM_UI_EXIT", "1")
         .env("KIM_UI_ZOOM", "1")
         .env("KIM_UI_SCREEN", screen)
@@ -250,4 +265,32 @@ fn step110_the_remaining_built_ins() {
         .status()
         .unwrap();
     assert_eq!(st.code(), Some(2));
+}
+
+/// Step 109 (#128, `JARAK-NFR-007`, DESIGN_SYSTEM §4.3): under Windows' contrast themes the release
+/// window draws with their system colours and still passes every audit rule (text contrast
+/// included) — the editor with a selection and the Settings window, in High Contrast Black and
+/// White.
+#[test]
+#[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
+fn step109_contrast_themes_pass_the_audit() {
+    require_e2e();
+    let dir = TempDir::new("step109-contrast");
+    let doc = dir.path().join("a.rs");
+    std::fs::write(&doc, "// 고대비\nfn main() { let s = \"text\"; }\n").unwrap();
+    for contrast in ["black", "white"] {
+        for screen in ["editor-selection", "settings-general"] {
+            // `window_in` fails on any failed rule; here every colour must also be one of the
+            // contrast theme's (the palette rule, a warning otherwise).
+            let r = window_in(dir.path(), &doc, screen, &[], contrast);
+            assert_eq!(r.theme, format!("high-contrast-{contrast}"), "{screen}");
+            let f = kim_design::audit::audit(&r);
+            assert_eq!(
+                kim_design::audit::counts(&f).1,
+                0,
+                "{screen} in {contrast}: {}",
+                kim_design::audit::render(&r, &f, false)
+            );
+        }
+    }
 }
