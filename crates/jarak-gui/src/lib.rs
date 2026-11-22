@@ -21,6 +21,7 @@ pub mod hashdlg;
 pub mod images;
 pub mod keys;
 pub mod languages;
+pub mod macros;
 pub mod media;
 pub mod navmap;
 pub mod outline;
@@ -485,7 +486,22 @@ pub struct JarakApp {
     pub nav_moving: bool,
     pub quick: Option<navmap::QuickOpen>,
     pub summary_open: bool,
+    /// Step 102: the macro being recorded, the last recorded one, a playback running; the saved
+    /// macros and commands (`macros.json`, not written over when it could not be read); the
+    /// program runner; the open macro or command dialog; the web search address.
+    pub recording: Option<Vec<jarak_core::macros::Step>>,
+    pub last_macro: Option<Vec<jarak_core::macros::Step>>,
+    pub playing: bool,
+    pub user_cmds: jarak_core::macros::UserCommands,
+    pub user_cmds_broken: bool,
+    pub macros_path: Option<PathBuf>,
+    runner: Arc<dyn macros::Runner>,
+    pub macro_dialog: Option<macros::Dialog>,
+    pub search_engine: String,
 }
+
+/// Step 102: the web search's address unless the settings name another (`$(QUERY)`: the words).
+pub const DEFAULT_SEARCH: &str = "https://duckduckgo.com/?q=$(QUERY)";
 
 /// The assets dialog's content.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -548,6 +564,10 @@ impl JarakApp {
         self.copy_line = read_setting(&path, "copy_line").is_none_or(|v| v != "false");
         // Step 100: completion, hints, snippets and the typing aids.
         self.assist = assist::AssistSettings::read(&path);
+        // Step 102: the web search's address (`$(QUERY)` the words searched for).
+        if let Some(s) = read_setting(&path, "search_engine").filter(|s| s.contains("$(QUERY)")) {
+            self.search_engine = s;
+        }
         self.settings = Some(path);
         self
     }
@@ -890,6 +910,9 @@ impl JarakApp {
             palette::Run::Assist(k) => self.assist_tool(k),
             palette::Run::Nav(0) => self.doc_map = !self.doc_map,
             palette::Run::Nav(k) => self.bookmark_tool(k - 1),
+            palette::Run::Macro(k) => self.macro_tool(k),
+            palette::Run::PlayMacro(i) => self.play_saved(usize::from(i)),
+            palette::Run::RunCommand(i) => self.confirm_command(usize::from(i)),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1142,6 +1165,7 @@ impl JarakApp {
             });
         }
         entries.extend(self.language_entries());
+        entries.extend(self.macro_entries());
         let found = palette::filter(&entries, &st.query);
         st.selected = st.selected.min(found.len().saturating_sub(1));
         let (up, down, enter) = ctx.input(|i| {
@@ -1257,6 +1281,7 @@ impl JarakApp {
         }
         let mut entries = palette::entries();
         entries.extend(self.language_entries());
+        entries.extend(self.macro_entries());
         let lang = self.lang;
         let mut run = None;
         let mut show = None;
@@ -1558,6 +1583,15 @@ impl JarakApp {
             nav_moving: false,
             quick: None,
             summary_open: false,
+            recording: None,
+            last_macro: None,
+            playing: false,
+            user_cmds: jarak_core::macros::UserCommands::default(),
+            user_cmds_broken: false,
+            macros_path: None,
+            runner: Arc::new(macros::NoRunner),
+            macro_dialog: None,
+            search_engine: DEFAULT_SEARCH.into(),
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1644,7 +1678,7 @@ impl JarakApp {
             // Step 99: the same sample with the Function List open and the `if` block folded, and
             // the Go to dialog.
             "syntax" | "functions" | "goto" | "completion" | "hint" | "docmap" | "quick-open"
-            | "summary" => {
+            | "summary" | "run" | "macros" => {
                 let dir = self
                     .tab()
                     .file
@@ -1686,6 +1720,22 @@ fn main() {
                         let p = d.text().line_to_char(6);
                         d.set_selection(&jarak_core::selection::Selection::point(p));
                         d.type_text("// 고침\n");
+                    } else if screen == "run" {
+                        self.open_run();
+                        if let Some(macros::Dialog::Run { command, .. }) =
+                            self.macro_dialog.as_mut()
+                        {
+                            *command = "notepad.exe \"$(FULL_CURRENT_PATH)\"".into();
+                        }
+                    } else if screen == "macros" {
+                        self.user_cmds.macros.push(jarak_core::macros::Macro {
+                            name: "Tidy".into(),
+                            keys: Some("Ctrl+Shift+1".into()),
+                            steps: vec![jarak_core::macros::Step::Cmd(
+                                "blank.trim-trailing".into(),
+                            )],
+                        });
+                        self.macro_tool(2);
                     } else if screen == "quick-open" {
                         self.open_quick();
                     } else if screen == "summary" {
@@ -2034,6 +2084,8 @@ fn main() {
 
     /// Runs a window action (a key, or a test).
     pub fn act(&mut self, a: Action) {
+        // Step 102: a macro being recorded takes the command.
+        self.record_action(a);
         let page = self.tab().view.page_lines;
         let read_only = self.tab().file.read_only;
         match a {
@@ -2132,6 +2184,9 @@ fn main() {
             }
             Action::MatchBrace => self.match_brace(false),
             Action::Navigate(back) => self.navigate(back),
+            Action::Macro(0) => self.toggle_recording(),
+            Action::Macro(_) => self.play_recorded(),
+            Action::RunDialog => self.open_run(),
             Action::QuickOpen => self.open_quick(),
             Action::Complete(k) => match k {
                 0 => self.open_completion(assist::Trigger::All),
@@ -2245,6 +2300,8 @@ fn main() {
         }
         t.view.after_edit();
         self.after_typed(s);
+        // Step 102: a macro being recorded takes the typing.
+        self.record_typed(s);
     }
 
     /// Ctrl+V: text when the clipboard has text (also when it has an image too, as office
@@ -2800,7 +2857,8 @@ fn main() {
             || self.hash_dialog.is_some()
             || self.goto.is_some()
             || self.quick.is_some()
-            || self.summary_open;
+            || self.summary_open
+            || self.macro_dialog.is_some();
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2840,6 +2898,7 @@ fn main() {
         self.assist_ui(&ctx, &c);
         self.quick_ui(&ctx, &c);
         self.summary_ui(&ctx, &c);
+        self.macro_dialog_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
@@ -3030,6 +3089,10 @@ fn main() {
                 } => {
                     // Step 100: the completion popup, a hint or a snippet's tab stops first.
                     if self.assist_key(key, modifiers) {
+                        continue;
+                    }
+                    // Step 102: a saved macro's or command's shortcut.
+                    if self.user_shortcut(key, modifiers) {
                         continue;
                     }
                     if let Some(a) = keys::action_for(key, modifiers) {
@@ -3257,6 +3320,10 @@ fn main() {
         }
         if t.view.wrap {
             items.push((self.t("Wrap", "줄 바꿈").to_string(), c.text_muted));
+        }
+        // Step 102: a macro is being recorded.
+        if self.recording.is_some() {
+            items.push((self.t("● Recording", "● 기록 중").to_string(), c.danger));
         }
         match t.mode {
             Mode::Preview => items.push((self.t("Preview", "미리보기").to_string(), c.accent)),

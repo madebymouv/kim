@@ -24,6 +24,7 @@ pub mod file;
 pub mod history;
 pub mod infiles;
 pub mod lineops;
+pub mod macros;
 pub mod markdown;
 pub mod paths;
 pub mod search;

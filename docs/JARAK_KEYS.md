@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96; line and case keys since Step 97; comment keys since Step 98; folding and Go to since Step 99; completion since Step 100; bookmarks and navigation since Step 101) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
+Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96; line and case keys since Step 97; comment keys since Step 98; folding and Go to since Step 99; completion since Step 100; bookmarks and navigation since Step 101; macros and Run since Step 102) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -116,6 +116,9 @@ screen (smart highlighting).
 | Alt+H | Hide the selected lines (a click on the mark above shows them again) |
 | Alt+Left / Alt+Right | Back / forward in the navigation history |
 | Ctrl+P | Go to file (open documents and the workspace's files) — Notepad++ prints with it; Jarak's print key comes with Step 106 |
+| Ctrl+Shift+R | Start / stop recording a macro |
+| F9 | Play back the recorded macro (Notepad++'s Ctrl+Shift+P is Jarak's command palette) |
+| F5 | Run… (a command line, shown exactly before it runs — [JARAK_MACROS](JARAK_MACROS.md)) |
 
 The palette and the Edit menu have the rest: removing duplicate, consecutive duplicate and empty
 lines, reverse, randomize, the sorts (lexicographic, ignoring case, locale, integers, decimals,

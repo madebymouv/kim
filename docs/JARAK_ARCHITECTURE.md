@@ -1053,3 +1053,35 @@ the UI audit's rules, headless); the 10 MB map measurement. A Go to dialog opene
 no longer takes the palette's Enter (found while testing the Summary, which had the same problem).
 UI audit views `docmap`, `quick-open`, `summary`. e2e `step101_jarak_navigation.rs` — compiled; its
 first run and the real-desktop check wait until visible test windows are allowed.
+
+## 24. Macros and user commands (Step 102)
+
+`JARAK-FR-110`, `JARAK-FR-111`; matrix rows `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`,
+`VIEW-05`; the reference and the security notes are [JARAK_MACROS](JARAK_MACROS.md).
+
+- **`jarak-core::macros`** (no UI, nothing run): `Step` (a registry command by id, typed text, a
+  clipboard / indentation / save action, a find or replace with its options), `Macro`,
+  `RunCommand`, `UserCommands` (`macros.json`, `jarak.macros/1`, written atomically, a broken file an
+  error), the built-in macro and commands, `Vars` and `expand` (Notepad++'s `$(…)` names, `SYS.`),
+  and `target` (a web address, a file to open, or a program and its arguments as written).
+- **The window** (`jarak-gui::macros`): recording hooks in `act` (the actions that edit, move,
+  select, use the clipboard, indent or save), in typing and in Find Next / Replace / Replace All.
+  Playback runs the steps through the same paths with recording off, each run one undo group, and
+  stops for *until the end* at the end, no progress, a wrap, 100 000 runs or 20 seconds. Shortcuts
+  are checked against `kim_hotkeys::reserved::chord` (app scope), Jarak's bindings, typing keys and
+  each other; `user_shortcut` runs before the window's keys. The `Runner` trait
+  (`ProcessRunner`: `CreateProcess` with the arguments raw, no shell, `ERROR_ELEVATION_REQUIRED`
+  refused, not waited for) and the `Opener` (web addresses, files) do the running, both only from the
+  Run dialog's button; tests give recording fakes.
+- **Keys**: Ctrl+Shift+R record, F9 play back (Notepad++'s Ctrl+Shift+P is the palette), F5 Run….
+
+Tests: `macros` 2 (the file's round trip, defaults, unknown format and broken file; variables,
+`SYS.`, unknown names and the targets); window flows 7 (recording commands and text, F9 and undo,
+until the end and per-run undo, a macro without progress stopping; find and replace recorded with
+their options, the panel kept; shortcut conflicts, the save dialog capturing keys, the shortcut
+playing, the built-in Trim and Save; the exact line shown, nothing run before the button, saving,
+confirming a saved command, the Wikipedia and web search addresses, the browser refusal, the
+elevation refusal; the real runner; the manager changing a shortcut and removing a command, an
+HTML file opened in the browser; the dialogs under the UI audit's rules, headless). UI audit views
+`run`, `macros`. e2e `step102_jarak_macros.rs` — compiled; its first run and the real-desktop check
+(recording and playing back in the real window) wait until visible test windows are allowed.

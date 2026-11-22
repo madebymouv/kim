@@ -55,6 +55,12 @@ pub enum Run {
     /// Step 101: 0 the Document Map on/off, then `JarakApp::bookmark_tool` 0–5 (copy, cut,
     /// paste into the bookmarked lines, open the selected path, its folder, the Summary).
     Nav(u8),
+    /// Step 102: `JarakApp::macro_tool` 0–4 (save the recorded macro, run several times, the
+    /// macros and commands, search on the internet, view in the browser); a saved macro (the
+    /// user's, then the built-in ones) and a run command (likewise), by index.
+    Macro(u8),
+    PlayMacro(u16),
+    RunCommand(u16),
 }
 
 /// The menu an entry belongs to.
@@ -1389,6 +1395,57 @@ pub fn entries() -> Vec<Entry> {
             M::Edit,
         ),
         run("view.summary", "Summary…", "요약…", Run::Nav(6), M::View),
+        // Step 102: macros and run commands.
+        act(
+            "macro.record",
+            "Start / stop recording a macro",
+            "매크로 기록 시작/멈춤",
+            A::Macro(0),
+            M::Edit,
+        ),
+        act(
+            "macro.play",
+            "Play back the recorded macro",
+            "기록한 매크로 재생",
+            A::Macro(1),
+            M::Edit,
+        ),
+        run(
+            "macro.save",
+            "Save the recorded macro…",
+            "기록한 매크로 저장…",
+            Run::Macro(0),
+            M::Edit,
+        ),
+        run(
+            "macro.multi",
+            "Run a macro multiple times…",
+            "매크로 여러 번 실행…",
+            Run::Macro(1),
+            M::Edit,
+        ),
+        run(
+            "macro.manage",
+            "Macros and run commands…",
+            "매크로와 실행 명령…",
+            Run::Macro(2),
+            M::Edit,
+        ),
+        act("run.dialog", "Run…", "실행…", A::RunDialog, M::Edit),
+        run(
+            "edit.search-web",
+            "Search the selection on the internet",
+            "선택한 내용을 인터넷에서 검색",
+            Run::Macro(3),
+            M::Edit,
+        ),
+        run(
+            "view.browser",
+            "View the file in the default browser",
+            "기본 브라우저로 파일 보기",
+            Run::Macro(4),
+            M::View,
+        ),
     ]);
     for c in COMMANDS {
         let menu = if c.id.starts_with("select.") {

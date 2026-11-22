@@ -242,6 +242,8 @@ impl JarakApp {
 
     /// F3 / Shift+F3 (and the panel's Find Next): the find box's text with its options.
     pub fn find_next(&mut self, backward: bool) {
+        // Step 102: recordable, with the panel's options.
+        self.record_find("next", backward);
         if self.find.find.is_empty() {
             self.open_find(Page::Find);
             return;
@@ -327,6 +329,7 @@ impl JarakApp {
 
     /// Replace: the selected match is replaced, then the next one is selected.
     pub fn replace_one(&mut self) {
+        self.record_find("replace", false);
         if self.tab().file.read_only {
             self.refuse_read_only();
             return;
@@ -356,6 +359,7 @@ impl JarakApp {
 
     /// Replace All, as one undo step (in the selection with "in selection").
     pub fn replace_all(&mut self) {
+        self.record_find("replace_all", false);
         if self.tab().file.read_only {
             self.refuse_read_only();
             return;

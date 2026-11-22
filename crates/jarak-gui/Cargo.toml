@@ -1,6 +1,6 @@
 [package]
 name = "jarak-gui"
-version = "0.0.20"
+version = "0.0.21"
 description = "Jarak (자락): the editor window (egui + glow through kim-ui); one process per user session"
 edition.workspace = true
 rust-version.workspace = true
@@ -18,9 +18,11 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-jarak-core = { version = "0.0.20", path = "../jarak-core" }
+jarak-core = { version = "0.0.21", path = "../jarak-core" }
 kim-ui = { version = "0.0.4", path = "../kim-ui" }
 kim-design = { version = "0.0.3", path = "../kim-design" }
+# Step 102: the reserved keys of the hotkey contract (macro and command shortcuts).
+kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
 # ADR 0014: egui + glow for GUI chrome, AccessKit for UI Automation, the same pin as the other
 # Kim windows.
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }

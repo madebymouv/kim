@@ -84,6 +84,10 @@ pub enum Action {
     /// Step 101: Alt+Left / Alt+Right the navigation history (back: `true`), Ctrl+P quick open.
     Navigate(bool),
     QuickOpen,
+    /// Step 102: 0 start / stop recording (Ctrl+Shift+R), 1 play back the recorded macro (F9 —
+    /// Notepad++'s Ctrl+Shift+P is Jarak's command palette); F5 the Run dialog.
+    Macro(u8),
+    RunDialog,
     GoTo,
     MatchBrace,
     SelectBraces,
@@ -179,6 +183,9 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::F) if m.alt => Some(A::Fold(9, !shift)),
         (true, Key::G) if !shift && !m.alt => Some(A::GoTo),
         (true, Key::P) if !shift && !m.alt => Some(A::QuickOpen),
+        (true, Key::R) if shift && !m.alt => Some(A::Macro(0)),
+        (false, Key::F9) if !shift => Some(A::Macro(1)),
+        (false, Key::F5) if !shift => Some(A::RunDialog),
         (true, Key::F2) if !shift => Some(A::Cmd(C::ToggleBookmark)),
         (false, Key::F2) => Some(A::Cmd(if shift {
             C::PreviousBookmark
@@ -414,6 +421,9 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::Navigate(true) => "Alt+Left",
         A::Navigate(false) => "Alt+Right",
         A::QuickOpen => "Ctrl+P",
+        A::Macro(0) => "Ctrl+Shift+R",
+        A::Macro(_) => "F9",
+        A::RunDialog => "F5",
         A::Complete(0) => "Ctrl+Space",
         A::Complete(1) => "Ctrl+Enter",
         A::Complete(2) => "Ctrl+Alt+Space",
@@ -523,6 +533,9 @@ mod tests {
             Action::Navigate(true),
             Action::Navigate(false),
             Action::QuickOpen,
+            Action::Macro(0),
+            Action::Macro(1),
+            Action::RunDialog,
             Action::Complete(0),
             Action::Complete(1),
             Action::Complete(2),

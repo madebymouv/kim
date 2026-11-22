@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -96,7 +96,7 @@ palette, the headless CLI) follow in §2.
 | EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | planned | `JARAK-FR-027` | 103 | T | — |
 | EDIT-13 | Paste HTML / RTF clipboard content as source | planned | `JARAK-FR-087` | 110 | T | — |
 | EDIT-14 | On selection: open the selected path as a file / its folder | supported | `JARAK-FR-103` | 101 | T | Step 101: *Open the selected path* / *Show the selected path's folder*, relative to the document's folder (palette, Edit) |
-| EDIT-15 | On selection: search on the internet (explicit, configurable engine) | planned | `JARAK-FR-111` | 102 | T | — |
+| EDIT-15 | On selection: search on the internet (explicit, configurable engine) | supported | `JARAK-FR-111` | 102 | T | Step 102: the selection or the word at the caret, `search_engine` in the settings (`$(QUERY)`, DuckDuckGo by default), only on the command (`run_commands_show_the_exact_line_and_run_only_on_the_button`) |
 | EDIT-16 | Character panel (insert a character by code) | planned | `JARAK-FR-087` | 110 | T | — |
 | EDIT-17 | Clipboard history panel | planned | `JARAK-FR-087` | 110 | T | — |
 | EDIT-18 | Drag and drop of selected text inside the document | planned | `JARAK-FR-032` | 110 | M | — |
@@ -253,7 +253,7 @@ palette, the headless CLI) follow in §2.
 | VIEW-02 | Toggle full screen (F11) | planned | `JARAK-FR-036` | 110 | M | — |
 | VIEW-03 | Post-it mode (F12: borderless window) | planned | `JARAK-FR-036` | 110 | M | — |
 | VIEW-04 | Distraction-free mode | planned | `JARAK-FR-036` | 110 | M | — |
-| VIEW-05 | View the current file in a browser (explicit) | planned | `JARAK-FR-111` | 102 | T | — |
+| VIEW-05 | View the current file in a browser (explicit) | supported | `JARAK-FR-111` | 102 | T | Step 102: HTML, SVG and XML files in the default browser, others refused with the reason (`run_commands_show_the_exact_line_and_run_only_on_the_button`, `the_manager_changes_shortcuts_and_removes_commands_and_html_opens_in_the_browser`) |
 | VIEW-06 | Show spaces and tabs | planned | `JARAK-FR-037` | 103 | T | — |
 | VIEW-07 | Show end of line | planned | `JARAK-FR-037` | 103 | T | — |
 | VIEW-08 | Show non-printing and control characters, Unicode EOL | planned | `JARAK-FR-037` | 103 | T | — |
@@ -377,22 +377,22 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| MAC-01 | Start / stop recording (Ctrl+Shift+R) | planned | `JARAK-FR-110` | 102 | T, M | — |
-| MAC-02 | Playback (Ctrl+Shift+P in Notepad++; Jarak keys configurable) | planned | `JARAK-FR-110` | 102 | T | — |
-| MAC-03 | Save the recorded macro with a name and shortcut | planned | `JARAK-FR-110` | 102 | T | — |
-| MAC-04 | Run a macro multiple times / until the end of the file | planned | `JARAK-FR-110` | 102 | T | — |
-| MAC-05 | Built-in 'Trim trailing space and save' macro | planned | `JARAK-FR-110` | 102 | T | — |
-| MAC-06 | Modify shortcut / delete macro | planned | `JARAK-FR-110` | 102 | T | — |
-| MAC-07 | Search and replace actions are macro-recordable | planned | `JARAK-FR-110` | 102 | T | — |
+| MAC-01 | Start / stop recording (Ctrl+Shift+R) | supported | `JARAK-FR-110` | 102 | T, M | Step 102: Ctrl+Shift+R, commands and typed text recorded, *● Recording* in the status bar (`a_recorded_macro_plays_back_as_one_undo_step_and_runs_to_the_end_safely`; real desktop pending) |
+| MAC-02 | Playback (Ctrl+Shift+P in Notepad++; Jarak keys configurable) | supported | `JARAK-FR-110` | 102 | T | Step 102: F9 (Notepad++'s Ctrl+Shift+P is Jarak's palette), each run one undo step (`a_recorded_macro_plays_back_as_one_undo_step_and_runs_to_the_end_safely`) |
+| MAC-03 | Save the recorded macro with a name and shortcut | supported | `JARAK-FR-110` | 102 | T | Step 102: a name and a shortcut checked against reserved keys, Jarak's keys, typing keys and each other; `macros.json` (`saved_macros_get_shortcuts_checked_against_reserved_and_jarak_keys`) |
+| MAC-04 | Run a macro multiple times / until the end of the file | supported | `JARAK-FR-110` | 102 | T | Step 102: a number of times or until the end of the file, stopping at the end, without progress, on a wrap, at 100 000 runs or 20 s (`a_recorded_macro_plays_back_as_one_undo_step_and_runs_to_the_end_safely`) |
+| MAC-05 | Built-in 'Trim trailing space and save' macro | supported | `JARAK-FR-110` | 102 | T | Step 102: *Trim Trailing Space and Save* (`saved_macros_get_shortcuts_checked_against_reserved_and_jarak_keys`) |
+| MAC-06 | Modify shortcut / delete macro | supported | `JARAK-FR-110` | 102 | T | Step 102: the manager changes a shortcut (checked) and removes a macro (`the_manager_changes_shortcuts_and_removes_commands_and_html_opens_in_the_browser`, `saved_macros_get_shortcuts_checked_against_reserved_and_jarak_keys`) |
+| MAC-07 | Search and replace actions are macro-recordable | supported | `JARAK-FR-110` | 102 | T | Step 102: Find Next, Replace and Replace All with their options; playback leaves the panel's own (`find_and_replace_are_recorded_with_their_options`) |
 
 ### RUN — Run menu (sources X)
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| RUN-01 | Run… a command with variables ($(FULL_CURRENT_PATH), $(CURRENT_WORD), …) | planned | `JARAK-FR-111` | 102 | T | — |
-| RUN-02 | Save run commands with a name and shortcut | planned | `JARAK-FR-111` | 102 | T | — |
-| RUN-03 | Modify shortcut / delete command | planned | `JARAK-FR-111` | 102 | T | — |
-| RUN-04 | Launch in browsers / Wikipedia / PHP help entries | planned | `JARAK-FR-111` | 102 | T | — |
+| RUN-01 | Run… a command with variables ($(FULL_CURRENT_PATH), $(CURRENT_WORD), …) | supported | `JARAK-FR-111` | 102 | T | Step 102: F5, Notepad++'s variables, the exact line shown, run only on the button, no shell, never elevated (`macros::tests::variables_expand_and_lines_split_into_targets`, `run_commands_show_the_exact_line_and_run_only_on_the_button`, `the_process_runner_starts_programs_and_names_failures`) |
+| RUN-02 | Save run commands with a name and shortcut | supported | `JARAK-FR-111` | 102 | T | Step 102: saved with a name and a shortcut; a saved one asks with its exact line (`run_commands_show_the_exact_line_and_run_only_on_the_button`) |
+| RUN-03 | Modify shortcut / delete command | supported | `JARAK-FR-111` | 102 | T | Step 102: the manager's Run commands page changes a shortcut and removes a command (`the_manager_changes_shortcuts_and_removes_commands_and_html_opens_in_the_browser`) |
+| RUN-04 | Launch in browsers / Wikipedia / PHP help entries | supported | `JARAK-FR-111` | 102 | T | Step 102: built-in *Open the file with its default program*, *Wikipedia search*, *PHP help* (`run_commands_show_the_exact_line_and_run_only_on_the_button`) |
 | RUN-05 | Open the file in another instance | supported | `JARAK-FR-002` | 93 | T | Step 93: Open in a new window (the same as VIEWS-03) |
 
 ### PLUG — Plugins menu and bundled plugin functions (sources G)

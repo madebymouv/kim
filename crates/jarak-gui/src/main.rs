@@ -256,7 +256,8 @@ fn run(
                 jarak_core::file::system_encoding(),
             )
             .with_clipboard(Arc::new(jarak_gui::clipboard::WinClipboard))
-            .with_opener(Arc::new(jarak_gui::preview::ShellOpener));
+            .with_opener(Arc::new(jarak_gui::preview::ShellOpener))
+            .with_runner(Arc::new(jarak_gui::macros::ProcessRunner));
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
             if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());
@@ -264,6 +265,8 @@ fn run(
                 app = app.with_languages(p.languages_dir());
                 // Step 100: the snippets file and Notepad++ API files.
                 app = app.with_assist(p.config.clone());
+                // Step 102: the saved macros and run commands.
+                app = app.with_macros(p.config.join("macros.json"));
                 // Step 95: Replace in Files journals the originals here (not in a UI audit).
                 if !kim_ui::inspect::active() {
                     app = app.with_journal(p.journal_dir());

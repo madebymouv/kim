@@ -164,6 +164,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "docmap",
                 "quick-open",
                 "summary",
+                // Step 102: the Run dialog, the macros and commands.
+                "run",
+                "macros",
             ],
         ),
     ];

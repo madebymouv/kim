@@ -3993,3 +3993,473 @@ fn the_map_quick_open_and_the_summary_pass_the_ui_audit_rules() {
     }
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 102: macros, run commands, the browser ----------------------------------------------
+
+/// A program runner that records instead of starting anything (or refuses, as for a program that
+/// needs administrator rights).
+#[derive(Default)]
+struct FakeRunner {
+    ran: Mutex<Vec<(String, String)>>,
+    refuse: Option<String>,
+}
+
+impl jarak_gui::macros::Runner for FakeRunner {
+    fn run(&self, program: &str, args: &str, _dir: Option<&std::path::Path>) -> Result<(), String> {
+        if let Some(e) = &self.refuse {
+            return Err(e.clone());
+        }
+        self.ran.lock().unwrap().push((program.into(), args.into()));
+        Ok(())
+    }
+}
+
+fn macro_app(
+    name: &str,
+    file: &str,
+    content: &str,
+) -> (
+    Harness<'static, JarakApp>,
+    PathBuf,
+    Arc<FakeRunner>,
+    Arc<Recorder>,
+) {
+    let d = temp(name);
+    let f = d.join(file);
+    std::fs::write(&f, content).unwrap();
+    let fs = f.display().to_string();
+    let runner = Arc::new(FakeRunner::default());
+    let opener = Arc::new(Recorder::default());
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let a = a
+        .with_runner(runner.clone())
+        .with_opener(opener.clone())
+        .with_macros(d.join("config").join("macros.json"));
+    let mut h = harness(a);
+    h.run();
+    (h, d, runner, opener)
+}
+
+#[test]
+fn a_recorded_macro_plays_back_as_one_undo_step_and_runs_to_the_end_safely() {
+    let (mut h, d, _, _) = macro_app("macro", "a.txt", "one\ntwo\nthree\n");
+    // Record: Home, type "- ", down.
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert!(h.state().recording.is_some());
+    assert!(
+        h.query_by_label("● Recording").is_some(),
+        "the status bar says so"
+    );
+    key(&mut h, egui::Key::Home, egui::Modifiers::NONE);
+    text(&mut h, "-");
+    text(&mut h, " ");
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    use jarak_core::macros::Step;
+    assert_eq!(
+        h.state().last_macro.clone().unwrap(),
+        vec![
+            Step::Cmd("cursor.line-start".into()),
+            Step::Type("- ".into()),
+            Step::Cmd("cursor.down".into()),
+        ],
+        "commands and typed text, not keys"
+    );
+    assert_eq!(doc_text(&h), "- one\ntwo\nthree\n");
+    // F9 plays it once; one Ctrl+Z takes the whole playback back.
+    key(&mut h, egui::Key::F9, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "- one\n- two\nthree\n");
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "- one\ntwo\nthree\n");
+    // Until the end of the file: it stops there (the empty last line takes the last run).
+    palette_run(&mut h, "Run a macro multiple times");
+    h.run();
+    h.state_mut().macro_dialog = Some(jarak_gui::macros::Dialog::Multi {
+        pick: None,
+        times: "2".into(),
+        to_end: true,
+    });
+    h.run();
+    h.get_by_label("Run").click();
+    h.run();
+    // It stops at the end of the text (the empty last line is the end).
+    assert_eq!(doc_text(&h), "- one\n- two\n- three\n");
+    // Each run is one undo step: Ctrl+Z takes back the last run only.
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "- one\n- two\nthree\n");
+    assert!(h.state().macro_dialog.is_none());
+    let _ = std::fs::remove_dir_all(&d);
+    // A macro that makes no progress stops at once instead of running 100 000 times.
+    let (mut h, d, _, _) = macro_app("noprogress", "a.txt", "x\n");
+    h.state_mut().last_macro = Some(vec![Step::Cmd("cursor.doc-start".into())]);
+    h.state_mut().play(
+        &[Step::Cmd("cursor.doc-start".into())],
+        jarak_gui::macros::Times::ToEnd,
+    );
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("changed nothing")),
+        "{:?}",
+        h.state().message
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn find_and_replace_are_recorded_with_their_options() {
+    let (mut h, d, _, _) = macro_app("macrofind", "a.txt", "cat Cat cat\n");
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    h.state_mut().find.find = "cat".into();
+    h.state_mut().find.replace = "dog".into();
+    h.state_mut().find.match_case = true;
+    h.state_mut().replace_all();
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(doc_text(&h), "dog Cat dog\n");
+    // Change the panel; the playback uses the recorded options and leaves the panel's.
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    h.state_mut().find.find = "zzz".into();
+    h.state_mut().find.match_case = false;
+    key(&mut h, egui::Key::F9, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "dog Cat dog\n", "match case as recorded");
+    assert_eq!(h.state().find.find, "zzz");
+    assert!(!h.state().find.match_case);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn saved_macros_get_shortcuts_checked_against_reserved_and_jarak_keys() {
+    let (mut h, d, _, _) = macro_app("macrosave", "a.txt", "a  \nb \n");
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    key(&mut h, egui::Key::End, egui::Modifiers::NONE);
+    text(&mut h, "!");
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    // The conflicts.
+    let s = h.state();
+    assert!(
+        s.shortcut_problem("Ctrl+S", None)
+            .unwrap()
+            .contains("Jarak already uses it")
+    );
+    assert!(
+        s.shortcut_problem("Win+E", None)
+            .unwrap()
+            .contains("Reserved")
+    );
+    let typing = s
+        .shortcut_problem("A", None)
+        .expect("a typing key is refused");
+    assert!(
+        typing.contains("types text") || typing.contains("Reserved"),
+        "{typing}"
+    );
+    // Ctrl+Alt+1 is taken too: Jarak's Ctrl+1 (the first tab) takes it with Alt as well.
+    assert!(
+        s.shortcut_problem("Ctrl+Alt+1", None)
+            .unwrap()
+            .contains("Jarak already uses it")
+    );
+    assert!(
+        s.shortcut_problem("Ctrl+Shift+1", None).is_none(),
+        "{:?}",
+        s.shortcut_problem("Ctrl+Shift+1", None)
+    );
+    // Save it with Ctrl+Shift+1 through the dialog (the keys are pressed in the shortcut field).
+    palette_run(&mut h, "Save the recorded macro");
+    h.run();
+    h.state_mut().macro_dialog = Some(jarak_gui::macros::Dialog::Save {
+        name: "Shout".into(),
+        keys: String::new(),
+        capturing: true,
+        error: None,
+    });
+    h.run();
+    key(
+        &mut h,
+        egui::Key::Num1,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    h.run();
+    h.get_by_label("Save").click();
+    h.run();
+    assert!(h.state().macro_dialog.is_none());
+    let saved = std::fs::read_to_string(d.join("config").join("macros.json")).unwrap();
+    assert!(
+        saved.contains("\"Shout\"") && saved.contains("Ctrl+Shift+1"),
+        "{saved}"
+    );
+    // The shortcut plays it.
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(
+        &mut h,
+        egui::Key::Num1,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(doc_text(&h), "a  !\nb !\n");
+    // The built-in Trim Trailing Space and Save: trims, and the file on disk has it.
+    palette_run(&mut h, "Macro: Trim Trailing Space and Save");
+    h.run();
+    assert_eq!(
+        std::fs::read_to_string(d.join("a.txt")).unwrap(),
+        "a  !\nb !\n".replace(" \n", "\n")
+    );
+    assert!(!h.state().tab().file.doc.is_dirty());
+    // Removing it in the manager.
+    palette_run(&mut h, "Macros and run commands");
+    h.run();
+    h.get_by_label("Remove").click();
+    h.run();
+    assert!(h.state().user_cmds.macros.is_empty());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn run_commands_show_the_exact_line_and_run_only_on_the_button() {
+    let (mut h, d, runner, opener) = macro_app("runcmd", "a b.md", "hello 자락\n");
+    // F5: type a command with variables; nothing runs while it is typed.
+    key(&mut h, egui::Key::F5, egui::Modifiers::NONE);
+    h.run();
+    if let Some(jarak_gui::macros::Dialog::Run { command, .. }) =
+        h.state_mut().macro_dialog.as_mut()
+    {
+        *command = "notepad.exe \"$(FULL_CURRENT_PATH)\" $(CURRENT_LINE)".into();
+    }
+    h.run();
+    let full = d.join("a b.md").display().to_string();
+    let exact = format!("notepad.exe \"{full}\" 1");
+    assert!(
+        h.query_by_label(&exact).is_some(),
+        "the exact line is shown"
+    );
+    assert!(runner.ran.lock().unwrap().is_empty(), "nothing ran yet");
+    // Saving it, then Run.
+    if let Some(jarak_gui::macros::Dialog::Run { name, .. }) = h.state_mut().macro_dialog.as_mut() {
+        *name = "Notepad".into();
+    }
+    h.run();
+    h.get_by_label("Save").click();
+    h.run();
+    h.get_by_label("Run").click();
+    h.run();
+    assert_eq!(
+        *runner.ran.lock().unwrap(),
+        vec![("notepad.exe".to_string(), format!("\"{full}\" 1"))]
+    );
+    assert!(h.state().macro_dialog.is_none());
+    // A saved command from the palette asks first, showing its line.
+    palette_run(&mut h, "Run: Notepad");
+    h.run();
+    assert!(h.query_by_label(&exact).is_some());
+    assert_eq!(
+        runner.ran.lock().unwrap().len(),
+        1,
+        "not run without the button"
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    h.run();
+    assert_eq!(runner.ran.lock().unwrap().len(), 1, "cancelled");
+    // The built-in Wikipedia search opens the browser with the word at the caret.
+    key(&mut h, egui::Key::End, egui::Modifiers::NONE);
+    palette_run(&mut h, "Run: Wikipedia search");
+    h.run();
+    h.get_by_label("Run").click();
+    h.run();
+    assert_eq!(
+        opener.0.lock().unwrap().last().cloned(),
+        Some("https://en.wikipedia.org/wiki/Special:Search?search=자락".to_string())
+    );
+    // Search the selection on the internet (encoded).
+    key(&mut h, egui::Key::Home, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::End, egui::Modifiers::SHIFT);
+    palette_run(&mut h, "Search the selection on the internet");
+    assert_eq!(
+        opener.0.lock().unwrap().last().cloned(),
+        Some("https://duckduckgo.com/?q=hello%20%EC%9E%90%EB%9D%BD".to_string())
+    );
+    // A Markdown file does not open in the browser; it says why.
+    palette_run(&mut h, "View the file in the default browser");
+    assert!(h.query_by_label_contains("Only HTML").is_some());
+    let _ = std::fs::remove_dir_all(&d);
+    // A program that needs administrator rights is refused, not elevated.
+    let d = temp("runelevate");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "x\n").unwrap();
+    let fs = f.display().to_string();
+    let runner = Arc::new(FakeRunner {
+        refuse: Some("it needs administrator rights, and Jarak never elevates".into()),
+        ..FakeRunner::default()
+    });
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a.with_runner(runner));
+    h.run();
+    key(&mut h, egui::Key::F5, egui::Modifiers::NONE);
+    if let Some(jarak_gui::macros::Dialog::Run { command, .. }) =
+        h.state_mut().macro_dialog.as_mut()
+    {
+        *command = "setup.exe".into();
+    }
+    h.run();
+    h.get_by_label("Run").click();
+    h.run();
+    assert!(h.query_by_label_contains("never elevates").is_some());
+    assert!(
+        h.state().macro_dialog.is_some(),
+        "the dialog stays with the reason"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The real runner starts a program without a shell and does not wait (a console program from a
+/// console test process has no window of its own).
+#[test]
+fn the_process_runner_starts_programs_and_names_failures() {
+    use jarak_gui::macros::Runner;
+    let r = jarak_gui::macros::ProcessRunner;
+    assert!(r.run("cmd", "/c exit 0", None).is_ok());
+    assert!(r.run("no-such-program-jarak.exe", "", None).is_err());
+}
+
+/// Step 102: the Run dialog and the macros dialog pass the UI audit's rules (headless).
+#[test]
+fn the_run_and_macro_dialogs_pass_the_ui_audit_rules() {
+    let (mut h, d, _, _) = macro_app("audit102", "a.rs", RUST);
+    h.state_mut()
+        .user_cmds
+        .macros
+        .push(jarak_core::macros::Macro {
+            name: "Tidy".into(),
+            keys: Some("Ctrl+Shift+1".into()),
+            steps: vec![],
+        });
+    for screen in ["run", "macros"] {
+        if screen == "run" {
+            h.state_mut().open_run();
+        } else {
+            h.state_mut().macro_dialog = None;
+            h.state_mut().macro_tool(2);
+        }
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{screen}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        // What the e2e scenario reads from the geometry report.
+        let texts: Vec<&str> = r
+            .components
+            .iter()
+            .filter_map(|c| c.text.as_ref().map(|t| t.content.as_str()))
+            .collect();
+        if screen == "macros" {
+            assert!(texts.contains(&"Tidy"), "{texts:?}");
+        } else {
+            assert!(r.components.iter().any(|c| c.id == "run:line"));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_manager_changes_shortcuts_and_removes_commands_and_html_opens_in_the_browser() {
+    let (mut h, d, _, opener) = macro_app("manager", "page.html", "<p>x</p>\n");
+    h.state_mut()
+        .user_cmds
+        .macros
+        .push(jarak_core::macros::Macro {
+            name: "M".into(),
+            keys: Some("Ctrl+Shift+1".into()),
+            steps: vec![jarak_core::macros::Step::Type("!".into())],
+        });
+    h.state_mut()
+        .user_cmds
+        .commands
+        .push(jarak_core::macros::RunCommand {
+            name: "C".into(),
+            command: "notepad.exe".into(),
+            keys: None,
+        });
+    // A new shortcut for the macro: pressed in its row's field; a taken one is refused.
+    palette_run(&mut h, "Macros and run commands");
+    h.run();
+    h.state_mut().macro_dialog = Some(jarak_gui::macros::Dialog::Manage {
+        commands: false,
+        capturing: Some(0),
+        error: None,
+    });
+    h.run();
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    h.run();
+    assert!(h.query_by_label_contains("Jarak already uses it").is_some());
+    assert_eq!(
+        h.state().user_cmds.macros[0].keys.as_deref(),
+        Some("Ctrl+Shift+1")
+    );
+    h.state_mut().macro_dialog = Some(jarak_gui::macros::Dialog::Manage {
+        commands: false,
+        capturing: Some(0),
+        error: None,
+    });
+    h.run();
+    key(
+        &mut h,
+        egui::Key::Num2,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    h.run();
+    assert_eq!(
+        h.state().user_cmds.macros[0].keys.as_deref(),
+        Some("Ctrl+Shift+2")
+    );
+    let saved = std::fs::read_to_string(d.join("config").join("macros.json")).unwrap();
+    assert!(saved.contains("Ctrl+Shift+2"), "{saved}");
+    // The commands page: removing the command.
+    h.state_mut().macro_dialog = Some(jarak_gui::macros::Dialog::Manage {
+        commands: true,
+        capturing: None,
+        error: None,
+    });
+    h.run();
+    h.get_by_label("Remove").click();
+    h.run();
+    assert!(h.state().user_cmds.commands.is_empty());
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    h.run();
+    // An HTML file opens in the default browser (its default program).
+    palette_run(&mut h, "View the file in the default browser");
+    assert_eq!(
+        opener.0.lock().unwrap().last().cloned(),
+        Some(format!("open:{}", d.join("page.html").display()))
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
