@@ -464,3 +464,33 @@ fn line_endings_convert_in_one_undo_step() {
     f.undo();
     assert_eq!(f.text().to_string(), "a한b글");
 }
+
+/// Step 104: setting the whole text changes only what differs, as one undo step; the caret keeps
+/// its place before the change and moves with the text after it.
+#[test]
+fn setting_the_text_changes_only_what_differs() {
+    let mut d = doc("한글 head\nmiddle\ntail\n");
+    at(&mut d, 2);
+    assert!(
+        !d.set_text_minimal("한글 head\nmiddle\ntail\n"),
+        "nothing differs"
+    );
+    assert!(d.set_text_minimal("한글 head\nmiddle\ntail\ngrown 1\ngrown 2\n"));
+    assert_eq!(
+        d.selection().primary().head,
+        2,
+        "a growing file keeps the caret"
+    );
+    assert!(d.undo());
+    assert_eq!(d.text().to_string(), "한글 head\nmiddle\ntail\n");
+    // A change in the middle; the caret after it moves with the text.
+    at(&mut d, 15);
+    assert!(d.set_text_minimal("한글 head\nMIDDLE CHANGED\ntail\n"));
+    assert_eq!(d.text().to_string(), "한글 head\nMIDDLE CHANGED\ntail\n");
+    assert_eq!(d.selection().primary().head, 23);
+    assert_eq!(d.history().undo_len(), 1, "one undo step");
+    // Everything different, and shorter.
+    assert!(d.set_text_minimal("x"));
+    assert_eq!(d.text().to_string(), "x");
+    assert!(d.selection().primary().head <= 1);
+}

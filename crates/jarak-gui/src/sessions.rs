@@ -25,7 +25,12 @@ impl JarakApp {
     /// Keeps the session in `files` (the program passes `%LOCALAPPDATA%\mouv\jarak`): reads the
     /// recent files, and the documents when `files.restore` is set.
     pub fn with_session(mut self, files: SessionFiles) -> JarakApp {
-        match Session::load(&files.file) {
+        // Step 104: a damaged session file falls back to the backup (and is kept).
+        let (loaded, note) = Session::load_or_backup(&files.file);
+        if let Some(n) = note {
+            self.message = Some(n);
+        }
+        match loaded {
             Ok(s) => {
                 self.recent = s.recent.clone();
                 self.find_history = s.find_history.clone();
@@ -35,7 +40,12 @@ impl JarakApp {
                 }
             }
             Err(jarak_core::session::LoadError::Missing) => {}
-            Err(e) => self.message = Some(e.to_string()),
+            Err(e) => {
+                self.message = Some(match self.message.take() {
+                    Some(n) => format!("{e}. {n}"),
+                    None => e.to_string(),
+                });
+            }
         }
         self.session = Some(files);
         self

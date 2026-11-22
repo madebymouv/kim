@@ -170,6 +170,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 103: Show Symbol, the lossy-conversion question.
                 "symbols",
                 "encoding-question",
+                // Step 104: a file changed on disk and here, the recovery offer.
+                "disk-question",
+                "recovery",
             ],
         ),
     ];

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/jarak-recovery-v1.schema.json",
+  "title": "Jarak recovery manifest, schema version 1",
+  "description": "manifest.json of a window's recovery folder %LOCALAPPDATA%\\mouv\\jarak\\recovery\\w-<pid>-<start>\\ (Step 104, JARAK-FR-121): the window that wrote it and one entry per document with unsaved changes; each text is a UTF-8 file next to it, named by the entry. See docs/JARAK_RECOVERY.md.",
+  "type": "object",
+  "required": ["schema", "schema_version", "owner", "entries"],
+  "properties": {
+    "schema": { "const": "jarak.recovery" },
+    "schema_version": { "const": 1 },
+    "owner": { "$ref": "#/$defs/owner" },
+    "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "owner": {
+      "type": "object",
+      "required": ["pid", "started"],
+      "properties": {
+        "pid": { "type": "integer", "minimum": 0 },
+        "started": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "required": ["id", "title", "text", "encoding", "eol", "chars", "saved_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "text": { "type": "string", "pattern": "^[^./\\\\:][^/\\\\:]*$" },
+        "encoding": { "type": "string", "minLength": 1 },
+        "bom": { "type": "boolean" },
+        "eol": { "enum": ["crlf", "lf", "cr"] },
+        "caret": { "type": "integer", "minimum": 0 },
+        "chars": { "type": "integer", "minimum": 0 },
+        "saved_at": { "type": "integer", "minimum": 0 },
+        "disk_len": { "type": "integer", "minimum": 0 },
+        "disk_modified_ms": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

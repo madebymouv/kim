@@ -732,7 +732,7 @@ impl JarakApp {
 }
 
 /// A file time as local `YYYY-MM-DD HH:MM:SS` (the PC's current offset from UTC).
-fn when(t: std::time::SystemTime) -> String {
+pub(crate) fn when(t: std::time::SystemTime) -> String {
     let utc = t
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);

@@ -1,0 +1,31 @@
+{
+  "schema": "jarak.recovery",
+  "schema_version": 1,
+  "owner": { "pid": 4812, "started": 134398038110068226 },
+  "entries": [
+    {
+      "id": 1,
+      "path": "C:\\Users\\me\\notes\\notes.md",
+      "title": "notes.md",
+      "text": "doc-1.txt",
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "crlf",
+      "caret": 24,
+      "chars": 24,
+      "saved_at": 1795000000,
+      "disk_len": 9,
+      "disk_modified_ms": 1794999000000
+    },
+    {
+      "id": 2,
+      "title": "Untitled",
+      "text": "doc-2.txt",
+      "encoding": "utf-8",
+      "eol": "crlf",
+      "caret": 11,
+      "chars": 11,
+      "saved_at": 1795000000
+    }
+  ]
+}

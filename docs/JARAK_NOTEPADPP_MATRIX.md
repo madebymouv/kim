@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported; Step 104 `REL-02`…`REL-05`, `JRK-16`, `VIEW-17` supported, `SET-14` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -265,7 +265,7 @@ palette, the headless CLI) follow in §2.
 | VIEW-14 | Hide lines | supported | `JARAK-FR-104` | 101 | T | Step 101: Alt+H, the mark above shows them again, *Show all hidden lines* (`navigate::tests::hidden_lines_hide_and_show_and_the_summary_counts`, `the_change_history_shows_in_the_margin_and_hidden_lines_come_back`) |
 | VIEW-15 | Summary (characters, words, lines, bytes) | supported | `JARAK-FR-104` | 101 | T | Step 101: path, created, modified, characters, words, lines, bytes as saved, the selection (`navigate::tests::hidden_lines_hide_and_show_and_the_summary_counts`, `quick_open_finds_open_documents_and_the_workspaces_files`, UI audit `summary`) |
 | VIEW-16 | Text direction right-to-left / left-to-right | planned | `JARAK-NFR-008` | 110 | M | — |
-| VIEW-17 | Monitoring (tail -f) | planned | `JARAK-FR-122` | 104 | T | — |
+| VIEW-17 | Monitoring (tail -f) | supported | `JARAK-FR-122` | 104 | T | Step 104: *Monitoring (tail -f)* follows the file read-only at its end, a grown file gets the new lines (`monitoring_follows_a_growing_file_read_only_at_its_end`) |
 
 ### VIEWS — View → documents, views and panels (sources V, U)
 
@@ -350,7 +350,7 @@ palette, the headless CLI) follow in §2.
 | SET-11 | Preferences: Highlighting (smart highlight, mark-all options) | planned | `JARAK-FR-130` | 105 | T | — |
 | SET-12 | Preferences: Print (margins, header, footer, colour mode) | planned | `JARAK-FR-140` | 106 | T | — |
 | SET-13 | Preferences: Searching (minimum size, fill find field, confirm replace all) | planned | `JARAK-FR-130` | 105 | T | — |
-| SET-14 | Preferences: Backup (session snapshot, periodic backup, backup on save) | planned | `JARAK-FR-121` | 104 | T | — |
+| SET-14 | Preferences: Backup (session snapshot, periodic backup, backup on save) | partial | `JARAK-FR-121` | 104 | T | Step 104: the session (Step 93) and periodic recovery snapshots, on/off and the interval (`recovery_interval`); *backup on save* (a copy of the previous file) is not implemented |
 | SET-15 | Preferences: Auto-completion | planned | `JARAK-FR-094` | 105 | T | — |
 | SET-16 | Preferences: Multi-instance and date format | planned | `JARAK-FR-002` | 105 | T | — |
 | SET-17 | Preferences: Delimiter (word characters, double-click delimiters) | planned | `JARAK-FR-130` | 105 | T | — |
@@ -437,10 +437,10 @@ palette, the headless CLI) follow in §2.
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | REL-01 | Remember the session at exit and restore it at start | supported | `JARAK-FR-062` | 93 | T | Step 93: session.json (schema, atomic), restored at start (a setting), untitled text kept (window test, e2e across a restart) |
-| REL-02 | Session snapshot and periodic backup of dirty documents | planned | `JARAK-FR-121` | 104 | T, M | — |
-| REL-03 | File status auto-detection with reload prompt | planned | `JARAK-FR-120` | 104 | T, M | — |
-| REL-04 | Update silently (auto-reload unmodified documents) | planned | `JARAK-FR-120` | 104 | T | — |
-| REL-05 | Deleted file kept as an unsaved document | planned | `JARAK-FR-120` | 104 | T | — |
+| REL-02 | Session snapshot and periodic backup of dirty documents | supported | `JARAK-FR-121` | 104 | T, M | Step 104: dirty documents kept every 10 s in the window's own recovery folder, never the originals (`recovery` tests, `a_saved_document_leaves_its_snapshot_and_a_normal_exit_keeps_none`); real desktop: a killed test instance's text restored intact ([JARAK_RECOVERY](JARAK_RECOVERY.md)) |
+| REL-03 | File status auto-detection with reload prompt | supported | `JARAK-FR-120` | 104 | T, M | Step 104: checked on focus and every 2 s off the UI thread; Reload / Keep this version, and Keep mine / Reload / Compare with unsaved changes; a reload is one undo step (`a_file_changed_on_disk_is_asked_about_and_reloads_as_one_undo_step`, `a_conflict_offers_keep_mine_reload_and_compare`, `the_window_checks_its_files_by_itself`); real desktop: noticed in under 1.1 s |
+| REL-04 | Update silently (auto-reload unmodified documents) | supported | `JARAK-FR-120` | 104 | T | Step 104: *Reload unmodified documents silently* (off by default), still asking for a document with unsaved changes (`unmodified_documents_reload_silently_when_set`) |
+| REL-05 | Deleted file kept as an unsaved document | supported | `JARAK-FR-120` | 104 | T | Step 104: the text stays, unsaved, and Save writes the file again (`a_deleted_file_stays_open_unsaved_and_save_writes_it_again`; real desktop) |
 | REL-06 | Large-file mode (features turned off above a size) | planned | `JARAK-NFR-004` | 109 | T | — |
 
 ### UI — General user interface (sources U)
@@ -477,7 +477,7 @@ palette, the headless CLI) follow in §2.
 | JRK-13 | Quick open of files (Ctrl+P) and navigation history | supported | `JARAK-FR-103` | 101 | T | Step 101: Ctrl+P (open documents, the workspace's files on a worker, letters in order) and Alt+Left / Alt+Right (`quick_open_finds_open_documents_and_the_workspaces_files`, `the_document_map_scrolls_and_the_navigation_history_goes_back_and_forward`) |
 | JRK-14 | Headless CLI with --json (info, find, replace --dry-run, convert, export) | planned | `JARAK-FR-150` | 107 | T | — |
 | JRK-15 | Kim interoperability (Subak, Noeul, Ddalgak) | planned | `JARAK-FR-151` | 107 | T, M | — |
-| JRK-16 | Recovery of untitled documents after a crash | planned | `JARAK-FR-121` | 104 | T, M | — |
+| JRK-16 | Recovery of untitled documents after a crash | supported | `JARAK-FR-121` | 104 | T, M | Step 104: untitled and file documents offered at the next start (Restore / Not now / Discard twice) (`unsaved_documents_are_kept_and_offered_back_after_a_crash`, `recovery_kill.rs` with a killed child process, e2e `step104_jarak_recovery`); real desktop: a killed test instance's untitled text restored |
 
 ## 3. Counts
 

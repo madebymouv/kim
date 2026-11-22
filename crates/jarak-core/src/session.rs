@@ -5,6 +5,10 @@
 //! schema (`docs/contracts/schemas/jarak-session-v1.schema.json`), written atomically. Untitled
 //! documents keep their text in files next to it (`recovery\untitled-<n>.txt`); the session names
 //! them. A session written by a newer Jarak (another `schema_version`) is not read.
+//!
+//! Step 104: before a save replaces a good session file, that file is kept as `session.json.bak`;
+//! a damaged session file falls back to it ([`Session::load_or_backup`]), and the damaged file is
+//! kept as `session.json.broken` (never deleted, never overwritten by the next save).
 
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -171,6 +175,46 @@ impl Session {
         Ok(s)
     }
 
+    /// Step 104: reads the session; a damaged file (unreadable or not a valid session) falls back
+    /// to the backup the last save kept, and is kept as `session.json.broken`. The note says what
+    /// happened, for the window to show. A session of a newer Jarak is left as it is.
+    pub fn load_or_backup(path: &Path) -> (Result<Session, LoadError>, Option<String>) {
+        let backup = sibling(path, "bak");
+        match Session::load(path) {
+            Ok(s) => (Ok(s), None),
+            Err(LoadError::Missing) => match Session::load(&backup) {
+                Ok(s) => (
+                    Ok(s),
+                    Some("The session file was missing; the backup was opened.".into()),
+                ),
+                Err(_) => (Err(LoadError::Missing), None),
+            },
+            Err(e @ (LoadError::Io(_) | LoadError::Invalid(_))) => {
+                let broken = sibling(path, "broken");
+                let _ = std::fs::remove_file(&broken);
+                let kept = std::fs::rename(path, &broken).is_ok();
+                let where_ = if kept {
+                    format!("kept as {}", broken.display())
+                } else {
+                    "left where it is".to_string()
+                };
+                match Session::load(&backup) {
+                    Ok(s) => (
+                        Ok(s),
+                        Some(format!(
+                            "{e}; the previous session was opened instead (the damaged file is {where_})."
+                        )),
+                    ),
+                    Err(_) => (
+                        Err(e),
+                        Some(format!("The damaged session file is {where_}.")),
+                    ),
+                }
+            }
+            Err(e @ LoadError::Version(..)) => (Err(e), None),
+        }
+    }
+
     /// The indices and names point where they should.
     pub fn check(&self) -> Result<(), String> {
         let n = self.documents.len();
@@ -196,10 +240,14 @@ impl Session {
         Ok(())
     }
 
-    /// Writes the session atomically (the folder is created when needed).
+    /// Writes the session atomically (the folder is created when needed); a good session file it
+    /// replaces is kept as the backup first (Step 104).
     pub fn save(&self, path: &Path) -> io::Result<()> {
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
+        }
+        if Session::load(path).is_ok() {
+            let _ = std::fs::copy(path, sibling(path, "bak"));
         }
         let mut text = serde_json::to_string_pretty(self).map_err(io::Error::other)?;
         text.push('\n');
@@ -213,6 +261,14 @@ impl Session {
         recent.insert(0, p.to_path_buf());
         recent.truncate(RECENT_MAX);
     }
+}
+
+/// `session.json` → `session.json.<ext>` next to it.
+fn sibling(path: &Path, ext: &str) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".");
+    name.push(ext);
+    path.with_file_name(name)
 }
 
 #[cfg(test)]
@@ -259,6 +315,66 @@ mod tests {
         let f = d.join("sub").join("session.json");
         s.save(&f).unwrap();
         assert_eq!(Session::load(&f).unwrap(), s);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Step 104: a save keeps the good file it replaces; a damaged file falls back to that backup
+    /// and is kept as `.broken`; without a backup the damaged file is still kept.
+    #[test]
+    fn a_damaged_session_falls_back_to_the_backup_and_is_kept() {
+        let d = temp("backup");
+        let f = d.join("session.json");
+        let first = Session {
+            recent: vec![PathBuf::from(
+                r"C:
+otesirst.md",
+            )],
+            ..Session::default()
+        };
+        first.save(&f).unwrap();
+        assert!(
+            !d.join("session.json.bak").exists(),
+            "nothing to back up yet"
+        );
+        let second = Session {
+            recent: vec![PathBuf::from(
+                r"C:
+otes\second.md",
+            )],
+            ..Session::default()
+        };
+        second.save(&f).unwrap();
+        assert_eq!(Session::load(&d.join("session.json.bak")).unwrap(), first);
+        // A crash mid-write elsewhere, a disk error: the file is damaged.
+        std::fs::write(&f, b"{\"schema\":\"jarak.ses").unwrap();
+        let (s, note) = Session::load_or_backup(&f);
+        assert_eq!(s.unwrap(), first, "the backup is opened");
+        assert!(note.unwrap().contains("session.json.broken"));
+        assert_eq!(
+            std::fs::read(d.join("session.json.broken")).unwrap(),
+            b"{\"schema\":\"jarak.ses",
+            "the damaged file is kept as it was"
+        );
+        assert!(!f.exists());
+        // No backup either: the damaged file is kept, nothing is opened.
+        std::fs::remove_file(d.join("session.json.bak")).unwrap();
+        std::fs::write(&f, b"not json").unwrap();
+        let (s, note) = Session::load_or_backup(&f);
+        assert!(matches!(s, Err(LoadError::Invalid(_))));
+        assert!(note.unwrap().contains("broken"));
+        assert_eq!(
+            std::fs::read(d.join("session.json.broken")).unwrap(),
+            b"not json"
+        );
+        // A good file is read as it is, with no note; a newer Jarak's file is left alone.
+        second.save(&f).unwrap();
+        assert!(matches!(Session::load_or_backup(&f), (Ok(_), None)));
+        std::fs::write(&f, r#"{"schema":"jarak.session","schema_version":9}"#).unwrap();
+        assert!(matches!(
+            Session::load_or_backup(&f),
+            (Err(LoadError::Version(_, 9)), None)
+        ));
+        assert!(f.exists(), "a newer session stays where it is");
         let _ = std::fs::remove_dir_all(&d);
     }
 

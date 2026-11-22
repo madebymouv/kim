@@ -1,0 +1,16 @@
+{
+  "schema": "jarak.recovery",
+  "schema_version": 1,
+  "owner": { "pid": 4812, "started": 1 },
+  "entries": [
+    {
+      "id": 1,
+      "title": "Untitled",
+      "text": "..\\..\\secret.txt",
+      "encoding": "utf-8",
+      "eol": "crlf",
+      "chars": 3,
+      "saved_at": 1795000000
+    }
+  ]
+}

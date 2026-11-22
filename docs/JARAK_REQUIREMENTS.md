@@ -51,7 +51,9 @@ implemented `JARAK-FR-110` and `JARAK-FR-111` (macros, Run, the browser entries;
 [JARAK_MACROS](JARAK_MACROS.md)); Step 103 implemented `JARAK-FR-025`, `JARAK-FR-026`,
 `JARAK-FR-037`, the Encoding menu of `JARAK-FR-021`, the clickable status of `JARAK-FR-035` and
 binary content of `JARAK-FR-027` (the real Windows clipboard checked 2026-11-22;
-[JARAK_ARCHITECTURE §25](JARAK_ARCHITECTURE.md));
+[JARAK_ARCHITECTURE §25](JARAK_ARCHITECTURE.md)); Step 104 implemented `JARAK-FR-120`, `JARAK-FR-121`
+and `JARAK-FR-122` (files changed on disk, recovery snapshots, the session's backup;
+[JARAK_RECOVERY](JARAK_RECOVERY.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

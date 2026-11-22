@@ -71,6 +71,9 @@ pub enum Run {
     NewEncoding(u8),
     Symbols(u8),
     Binary(u8),
+    /// Step 104: `JarakApp::disk_tool` 0–4 (reload from disk, monitoring, detecting changes,
+    /// reloading unmodified documents silently, recovery snapshots).
+    Disk(u8),
 }
 
 /// The menu an entry belongs to.
@@ -1572,6 +1575,42 @@ pub fn entries() -> Vec<Entry> {
             "바이너리 내용 붙여넣기",
             Run::Binary(2),
             M::Edit,
+        ),
+        // Step 104: the file on disk and recovery.
+        run(
+            "file.reload",
+            "Reload from disk",
+            "디스크에서 다시 읽기",
+            Run::Disk(0),
+            M::File,
+        ),
+        run(
+            "view.monitor",
+            "Monitoring (tail -f): on/off",
+            "모니터링(tail -f): 켜기/끄기",
+            Run::Disk(1),
+            M::View,
+        ),
+        run(
+            "settings.detect-changes",
+            "Detect files changed by other programs: on/off",
+            "다른 프로그램이 바꾼 파일 알아채기: 켜기/끄기",
+            Run::Disk(2),
+            M::File,
+        ),
+        run(
+            "settings.reload-silently",
+            "Reload unmodified documents silently: on/off",
+            "변경 없는 문서는 묻지 않고 다시 읽기: 켜기/끄기",
+            Run::Disk(3),
+            M::File,
+        ),
+        run(
+            "settings.recovery",
+            "Recovery snapshots of unsaved documents: on/off",
+            "저장하지 않은 문서의 복구 스냅숏: 켜기/끄기",
+            Run::Disk(4),
+            M::File,
         ),
     ]);
     for c in COMMANDS {

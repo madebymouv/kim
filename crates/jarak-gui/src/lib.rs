@@ -28,11 +28,13 @@ pub mod navmap;
 pub mod outline;
 pub mod palette;
 pub mod preview;
+pub mod recover;
 pub mod results;
 pub mod sessions;
 pub mod tabs;
 pub mod view;
 pub mod views;
+pub mod watch;
 pub mod workspace;
 
 use eframe::egui::{self, Align, Layout, Rect, RichText, Vec2};
@@ -115,6 +117,13 @@ pub struct Tab {
     eol_cache: Option<(u64, bool)>,
     /// When the history state last changed (large documents recount only after a pause).
     changed_at: Option<(u64, f64)>,
+    /// Step 104: the name shown instead of the file's (the version on disk opened to compare).
+    pub label: Option<String>,
+    /// Step 104: the document follows its file (tail -f), and whether it was read-only before.
+    pub monitor: bool,
+    pub(crate) read_only_before_monitor: bool,
+    /// Step 104: another program deleted or moved its file (the text stays, unsaved).
+    pub missing: bool,
 }
 
 impl Tab {
@@ -138,7 +147,16 @@ impl Tab {
             preview: preview::PreviewState::default(),
             eol_cache: None,
             changed_at: None,
+            label: None,
+            monitor: false,
+            read_only_before_monitor: false,
+            missing: false,
         }
+    }
+
+    /// The name its tab and the window show.
+    pub fn title(&self) -> String {
+        self.label.clone().unwrap_or_else(|| self.file.title())
     }
 
     /// The parse of the document (cached per history state).
@@ -512,6 +530,14 @@ pub struct JarakApp {
     pub enc_question: Option<encoding::Question>,
     pub symbols: encoding::Symbols,
     pub new_format: file::Format,
+    /// Step 104: files changed by other programs, the settings for them, recovery snapshots and
+    /// the offer of a crashed window's documents.
+    pub watch: watch::Watch,
+    watch_auto: bool,
+    pub detect_changes: bool,
+    pub reload_unmodified: bool,
+    pub recovery: Option<recover::Recovery>,
+    pub recovery_offer: Option<recover::Offer>,
 }
 
 /// Step 102: the web search's address unless the settings name another (`$(QUERY)`: the words).
@@ -595,6 +621,11 @@ impl JarakApp {
             },
             _ => file::Format::utf8(),
         };
+        // Step 104: detecting changes on disk (on unless the file says no), reloading unmodified
+        // documents silently (off unless it says so).
+        self.detect_changes = read_setting(&path, "detect_changes").is_none_or(|v| v != "false");
+        self.reload_unmodified =
+            read_setting(&path, "reload_unmodified_silently").is_some_and(|v| v == "true");
         self.settings = Some(path);
         self
     }
@@ -950,6 +981,7 @@ impl JarakApp {
             palette::Run::NewEncoding(k) => self.new_encoding_tool(k),
             palette::Run::Symbols(k) => self.symbols_tool(k),
             palette::Run::Binary(k) => self.binary_tool(k),
+            palette::Run::Disk(k) => self.disk_tool(k),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1634,6 +1666,12 @@ impl JarakApp {
             enc_question: None,
             symbols: encoding::Symbols::default(),
             new_format: file::Format::utf8(),
+            watch: watch::Watch::default(),
+            watch_auto: false,
+            detect_changes: true,
+            reload_unmodified: false,
+            recovery: None,
+            recovery_offer: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1720,7 +1758,8 @@ impl JarakApp {
             // Step 99: the same sample with the Function List open and the `if` block folded, and
             // the Go to dialog.
             "syntax" | "functions" | "goto" | "completion" | "hint" | "docmap" | "quick-open"
-            | "summary" | "run" | "macros" | "symbols" | "encoding-question" => {
+            | "summary" | "run" | "macros" | "symbols" | "encoding-question" | "disk-question"
+            | "recovery" => {
                 let dir = self
                     .tab()
                     .file
@@ -1772,6 +1811,49 @@ fn main() {
                             wrap_symbol: true,
                             edges: vec![40],
                         };
+                    } else if screen == "disk-question" {
+                        // Step 104: the sample changed here and by another program.
+                        self.tab_mut().file.doc.type_text(
+                            "// 고침
+",
+                        );
+                        let id = self.tab().id;
+                        self.watch
+                            .questions
+                            .push_back(watch::DiskQuestion::Conflict(id));
+                    } else if screen == "recovery" {
+                        // Step 104: a crashed window's two documents offered back.
+                        let entry = |id: u64, path: Option<PathBuf>, title: &str, chars| {
+                            jarak_core::recovery::Entry {
+                                id,
+                                path,
+                                title: title.into(),
+                                text: format!("doc-{id}.txt"),
+                                encoding: "utf-8".into(),
+                                bom: false,
+                                eol: "crlf".into(),
+                                caret: 0,
+                                chars,
+                                saved_at: 1_795_000_000,
+                                disk_len: None,
+                                disk_modified_ms: None,
+                            }
+                        };
+                        self.recovery_offer = Some(recover::Offer {
+                            orphans: vec![jarak_core::recovery::Orphan {
+                                dir: dir.join("w-1-1"),
+                                manifest: jarak_core::recovery::Manifest {
+                                    schema: jarak_core::recovery::SCHEMA.into(),
+                                    schema_version: jarak_core::recovery::SCHEMA_VERSION,
+                                    owner: jarak_core::recovery::Owner { pid: 1, started: 1 },
+                                    entries: vec![
+                                        entry(1, Some(p), "sample.rs", 412),
+                                        entry(2, None, "Untitled", 38),
+                                    ],
+                                },
+                            }],
+                            confirm_discard: false,
+                        });
                     } else if screen == "encoding-question" {
                         // The sample's Korean comment cannot be written in Windows-1252.
                         if let Some(i) = encoding::targets()
@@ -2137,7 +2219,7 @@ fn main() {
         if t.file.path.is_none() && !t.file.doc.is_dirty() && self.tabs.len() == 1 {
             return TITLE.to_string();
         }
-        format!("{dirty}{} — {TITLE}", t.file.title())
+        format!("{dirty}{} — {TITLE}", t.title())
     }
 
     // ---- actions -----------------------------------------------------------------------------
@@ -2517,6 +2599,10 @@ fn main() {
         if self.tabs[i].file.path.is_none() {
             return self.save_as(i);
         }
+        // Step 104: a file another program changed is never overwritten unasked.
+        if !self.safe_to_save(i) {
+            return false;
+        }
         let r = self.tabs[i].file.save();
         self.report_save(i, r)
     }
@@ -2819,6 +2905,12 @@ fn main() {
                 column: None,
             });
         }
+        // Step 104: files changed by other programs, and the recovery snapshots (not in a UI
+        // audit, unless it keeps a session as the program does: `KIM_UI_SESSION=1`).
+        if !kim_ui::inspect::active() || self.session.is_some() {
+            self.watch_frame(&ctx);
+            self.recovery_frame(&ctx);
+        }
         // Closing the window asks about unsaved changes first.
         // (A UI audit's run closes itself without asking: it holds no user data.)
         if ctx.input(|i| i.viewport().close_requested()) && !kim_ui::inspect::active() {
@@ -2828,6 +2920,8 @@ fn main() {
                     self.save_session();
                     self.session_saved = true;
                 }
+                // Step 104: a normal exit keeps no recovery snapshots.
+                self.recovery_exit();
             } else {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             }
@@ -2837,6 +2931,7 @@ fn main() {
                 self.save_session();
                 self.session_saved = true;
             }
+            self.recovery_exit();
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         let title = self.window_title();
@@ -2921,7 +3016,9 @@ fn main() {
             || self.quick.is_some()
             || self.summary_open
             || self.macro_dialog.is_some()
-            || self.enc_question.is_some();
+            || self.enc_question.is_some()
+            || !self.watch.questions.is_empty()
+            || self.recovery_offer.is_some();
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2963,6 +3060,8 @@ fn main() {
         self.summary_ui(&ctx, &c);
         self.macro_dialog_ui(&ctx, &c);
         self.enc_question_ui(&ctx, &c);
+        self.disk_question_ui(&ctx, &c);
+        self.recovery_offer_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self

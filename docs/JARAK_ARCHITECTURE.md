@@ -1182,3 +1182,57 @@ Show all characters draws the `LF` tag. Binary content through the real Windows 
 from a NUL file (read-only, `JARAK-FR-027`) it is on the clipboard as `Jarak Binary Text` beside the
 plain text, and pasted into another document it is saved with the NUL (`78 0D 0A 61 00 62 0D 0A`);
 the maintainer's clipboard text was saved before and put back after.
+
+## 26. Files changed on disk, recovery snapshots and the session (Step 104)
+
+Requirements `JARAK-FR-120`, `JARAK-FR-121`, `JARAK-FR-122`; the user's reference is
+[JARAK_RECOVERY](JARAK_RECOVERY.md).
+
+- **`jarak-core::file`**: a `FileDocument` keeps the `DiskStamp` (size, last write) of its file,
+  taken before the bytes are read (a write in between shows as a change) and after each save;
+  `disk_state(path, seen)` says `Same`, `Changed(stamp)` or `Missing`. `reload_undoable` reads the
+  file again through `Document::set_text_minimal`, which replaces only the part between the common
+  start and end as one undo step (marks outside it stay; a grown file is an insertion at the end),
+  then marks the result saved — Ctrl+Z brings back the text from before, unsaved. The format and a
+  read-only reason follow the file; the user's own read-only choice stays.
+- **`jarak-core::recovery`**: a window's `Store` writes `w-<pid>-<start>\manifest.json` (schema
+  `jarak-recovery-v1`) and one UTF-8 text per document, texts first and the manifest last through a
+  temporary file and a rename; a text that did not change is not written again; an empty list
+  removes the folder; limits (100 documents, 512 MB) leave the largest out and name them.
+  `orphans(root, alive)` lists folders whose owner (or claimer) no longer runs; `owner_alive` and
+  `current_owner` (Windows: `OpenProcess`, `GetProcessTimes`, `GetExitCodeProcess`) compare the
+  process id *and* start time, so a reused id is not the old window. `Orphan::claim` renames a
+  folder to `claimed-<pid>-<start>-<n>` for one window; a file name outside the folder is refused.
+- **`jarak-core::session`**: `save` keeps the good file it replaces as `session.json.bak`;
+  `load_or_backup` falls back to it for a damaged file, which it keeps as `session.json.broken`.
+- **`jarak-gui::watch`**: the program turns the checks on (`with_watching`); each frame starts a
+  check on a short-lived thread when the window got the focus or 2 s passed (1 s while monitoring)
+  and takes the last answers (stale ones, for a document saved meanwhile, are dropped). A change
+  becomes a reload (monitored, or *silently* for a clean document) or a question in a queue; a
+  missing file marks the document unsaved. `save` asks `safe_to_save` first. Compare opens the
+  file's version as a read-only tab with a label (`Tab::title`) in the second view. Settings:
+  `detect_changes`, `reload_unmodified_silently`.
+- **`jarak-gui::recover`**: `with_recovery(root, owner, alive, interval)` (main.rs, Windows, with a
+  session) offers orphans at start and keeps snapshots: each frame compares the dirty documents'
+  history states with the last written ones and starts a write (a rope copy, a thread) when the set
+  shrank (saved, discarded, closed) or a text changed and the interval passed. Restore claims the
+  folders, opens the entries (a file's document gets the text by its difference, so Ctrl+Z shows
+  the file) and removes the claimed folders after its own snapshot is written; Discard asks twice.
+  A normal exit (`recovery_exit`) waits for a write and removes the folder. In a UI audit both run
+  only with `KIM_UI_SESSION=1` (as e2e and real-desktop checks use it).
+
+Tests: core file 2 (disk states including our own save and an appearing file; the undoable reload
+with bookmarks, BOM and the user's read-only choice), document 1 (setting the text by its
+difference), recovery 5 (offered text, limits and kept texts, claims, the golden example, the
+process check), session 1 (backup, fallback, `.broken`, a newer session left alone), the
+integration test `recovery_kill.rs` (a real child process writes snapshots, is killed, and the
+next scan finds its text with the real process check); window flows 12 (see JARAK_RECOVERY). UI
+audit views `disk-question`, `recovery`; schema `jarak-recovery-v1` with a golden and an invalid
+example. e2e `step104_jarak_recovery.rs` — first run: its session check failed on the test's own
+assumption (a single document hides the tab bar, so its name is not in the report); with two
+documents it passes (the window opened the backup's documents both times). Real desktop
+(2026-11-22): a test instance killed after real typing in a file and an untitled document; the
+next start offered both and Restore gave back the exact text (`# 자락␍␊저장하지 않은 편집 unsaved`,
+`untitled 메모`), which its own snapshot and the saved file hold; another program's change noticed
+in 0.7 s (1.1 s with unsaved changes), Reload then Ctrl+Z and Save gave back the original, Compare
+opened `a.txt (on disk)` beside it, Keep mine saved mine, a deleted file was written again by Save.

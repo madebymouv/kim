@@ -248,6 +248,50 @@ impl Document {
         true
     }
 
+    /// Step 104: the text becomes `new` as one undo step that replaces only what differs — the
+    /// common start and end stay, with their marks and bookmarks (a file that only grew gets an
+    /// insertion at its end). The caret keeps its place before the change, moves with the text
+    /// after it, and goes to the end of the new part from inside it. `false` when nothing differs.
+    pub fn set_text_minimal(&mut self, new: &str) -> bool {
+        let old_len = self.len_chars();
+        let new_len = new.chars().count();
+        let mut pre = 0usize;
+        for (a, b) in self.text.chars().zip(new.chars()) {
+            if a != b {
+                break;
+            }
+            pre += 1;
+        }
+        if pre == old_len && pre == new_len {
+            return false;
+        }
+        // The common end, not overlapping the common start.
+        let most = (old_len - pre).min(new_len - pre);
+        let mut suf = 0usize;
+        let mut old_back = self.text.chars_at(old_len).reversed();
+        let mut new_back = new.chars().rev();
+        while suf < most {
+            match (old_back.next(), new_back.next()) {
+                (Some(a), Some(b)) if a == b => suf += 1,
+                _ => break,
+            }
+        }
+        let byte_at = |chars: usize| new.char_indices().nth(chars).map_or(new.len(), |(i, _)| i);
+        let (from, to) = (pre, old_len - suf);
+        let middle = &new[byte_at(pre)..byte_at(new_len - suf)];
+        let inserted = new_len - suf - pre;
+        let caret = self.sel.primary().head;
+        let caret = if caret <= from {
+            caret
+        } else if caret >= to {
+            caret - (to - from) + inserted
+        } else {
+            from + inserted
+        };
+        self.replace(vec![(from, to, middle.to_string())], Some(caret));
+        true
+    }
+
     /// Step 103: the characters at char positions `at` become `with` (one undo step).
     pub fn replace_chars(&mut self, at: &[usize], with: char) {
         if at.is_empty() {

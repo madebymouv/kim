@@ -257,7 +257,9 @@ fn run(
             )
             .with_clipboard(Arc::new(jarak_gui::clipboard::WinClipboard))
             .with_opener(Arc::new(jarak_gui::preview::ShellOpener))
-            .with_runner(Arc::new(jarak_gui::macros::ProcessRunner));
+            .with_runner(Arc::new(jarak_gui::macros::ProcessRunner))
+            // Step 104: files changed by other programs are checked by the window itself.
+            .with_watching();
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
             if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());
@@ -280,6 +282,21 @@ fn run(
                         restore,
                     });
                     app.open_args(&files);
+                    // Step 104: recovery snapshots of unsaved documents, and the offer of the
+                    // documents a window that no longer runs left behind.
+                    #[cfg(windows)]
+                    {
+                        let interval =
+                            jarak_gui::read_setting(&p.settings_file(), "recovery_interval")
+                                .and_then(|v| v.trim().parse::<f64>().ok())
+                                .unwrap_or(jarak_gui::recover::DEFAULT_INTERVAL);
+                        app = app.with_recovery(
+                            &p.recovery_dir(),
+                            jarak_core::recovery::current_owner(),
+                            &jarak_core::recovery::owner_alive,
+                            interval,
+                        );
+                    }
                 }
             }
             // ADR 0099: a UI audit names the view to photograph.

@@ -4711,3 +4711,481 @@ fn the_encoding_question_and_the_symbols_pass_the_ui_audit_rules() {
     assert!(h.state().enc_question.is_some());
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 104: files changed on disk, recovery snapshots, robust sessions ----------------------
+
+fn disk_question(h: &Harness<'static, JarakApp>) -> Option<jarak_gui::watch::DiskQuestion> {
+    h.state().watch.questions.front().copied()
+}
+
+/// JARAK-FR-120, REL-03: another program's change to a document without unsaved changes is
+/// asked about; Reload is one undo step (Ctrl+Z brings the text from before back, unsaved);
+/// keeping the version here acknowledges the change (it is not asked about again).
+#[test]
+fn a_file_changed_on_disk_is_asked_about_and_reloads_as_one_undo_step() {
+    use jarak_gui::watch::DiskQuestion;
+    let (mut h, d) = open_doc("disk-changed", "a.txt", "one\n");
+    let f = d.join("a.txt");
+    h.state_mut().check_disk_now();
+    assert_eq!(disk_question(&h), None, "nothing changed");
+    std::fs::write(&f, "one\ntwo from outside\n").unwrap();
+    h.state_mut().check_disk_now();
+    h.run();
+    assert!(matches!(disk_question(&h), Some(DiskQuestion::Changed(_))));
+    assert!(
+        h.query_by_label_contains("was changed by another program")
+            .is_some()
+    );
+    h.get_by_label("Reload").click();
+    h.run();
+    assert_eq!(doc_text(&h), "one\ntwo from outside\n");
+    assert!(!h.state().tab().file.doc.is_dirty());
+    assert_eq!(disk_question(&h), None);
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(
+        doc_text(&h),
+        "one\n",
+        "Ctrl+Z brings the text from before back"
+    );
+    assert!(h.state().tab().file.doc.is_dirty());
+    key(&mut h, egui::Key::Y, egui::Modifiers::CTRL);
+    // Keeping this version: the change is acknowledged, the document differs from the file.
+    std::fs::write(&f, "three\n").unwrap();
+    h.state_mut().check_disk_now();
+    h.run();
+    h.get_by_label("Keep this version").click();
+    h.run();
+    assert_eq!(doc_text(&h), "one\ntwo from outside\n");
+    assert!(
+        h.state().tab().file.doc.is_dirty(),
+        "it is not what the file holds"
+    );
+    h.state_mut().check_disk_now();
+    assert_eq!(disk_question(&h), None, "not asked again");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// REL-04: with *Reload unmodified documents silently*, a clean document follows its file
+/// without a question; a document with unsaved changes is still asked about.
+#[test]
+fn unmodified_documents_reload_silently_when_set() {
+    use jarak_gui::watch::DiskQuestion;
+    let (mut h, d) = open_doc("disk-silent", "a.txt", "one\n");
+    let f = d.join("a.txt");
+    palette_run(&mut h, "Reload unmodified documents silently");
+    assert!(h.state().reload_unmodified);
+    std::fs::write(&f, "one\nnew\n").unwrap();
+    h.state_mut().check_disk_now();
+    h.run();
+    assert_eq!(disk_question(&h), None);
+    assert_eq!(doc_text(&h), "one\nnew\n");
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("Reloaded"))
+    );
+    text(&mut h, "mine ");
+    std::fs::write(&f, "outside again\n").unwrap();
+    h.state_mut().check_disk_now();
+    assert!(matches!(disk_question(&h), Some(DiskQuestion::Conflict(_))));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// JARAK-FR-120: a document with unsaved changes whose file changed offers keep mine, reload and
+/// compare; Compare opens the file's version read-only in the second view; keep mine lets the
+/// save write this text; Reload takes the file's text and Ctrl+Z brings mine back.
+#[test]
+fn a_conflict_offers_keep_mine_reload_and_compare() {
+    use jarak_gui::watch::DiskQuestion;
+    let (mut h, d) = open_doc("disk-conflict", "a.txt", "base\n");
+    let f = d.join("a.txt");
+    text(&mut h, "mine ");
+    std::fs::write(&f, "theirs\n").unwrap();
+    h.state_mut().check_disk_now();
+    h.run();
+    assert!(matches!(disk_question(&h), Some(DiskQuestion::Conflict(_))));
+    h.get_by_label("Compare").click();
+    h.run();
+    let disk_tab = h
+        .state()
+        .tabs
+        .iter()
+        .find(|t| t.label.is_some())
+        .expect("the version on disk opened");
+    assert_eq!(disk_tab.title(), "a.txt (on disk)");
+    assert_eq!(disk_tab.file.doc.text().to_string(), "theirs\n");
+    assert!(disk_tab.file.read_only);
+    assert!(h.state().second.is_some(), "it is beside the document");
+    assert_eq!(disk_question(&h), None);
+    let mine = h
+        .state()
+        .tabs
+        .iter()
+        .position(|t| t.file.path.is_some())
+        .unwrap();
+    assert_eq!(
+        h.state().tabs[mine].file.doc.text().to_string(),
+        "mine base\n"
+    );
+    assert!(
+        h.state_mut().save(mine),
+        "keep mine: the save writes this text"
+    );
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), "mine base\n");
+    // Again, and Reload this time.
+    h.state_mut().tabs[mine]
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::point(0));
+    h.state_mut().tabs[mine].file.doc.paste("more ");
+    std::fs::write(&f, "theirs 2\n").unwrap();
+    h.state_mut().check_disk_now();
+    h.run();
+    h.get_by_label("Reload").click();
+    h.run();
+    assert_eq!(
+        h.state().tabs[mine].file.doc.text().to_string(),
+        "theirs 2\n"
+    );
+    assert!(h.state_mut().tabs[mine].file.doc.undo());
+    assert_eq!(
+        h.state().tabs[mine].file.doc.text().to_string(),
+        "more mine base\n",
+        "nothing is lost"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// REL-05: a deleted file's document stays open with its text, unsaved; Save writes it again.
+#[test]
+fn a_deleted_file_stays_open_unsaved_and_save_writes_it_again() {
+    let (mut h, d) = open_doc("disk-deleted", "a.txt", "keep this\n");
+    let f = d.join("a.txt");
+    std::fs::remove_file(&f).unwrap();
+    h.state_mut().check_disk_now();
+    h.run();
+    assert!(h.state().tab().missing);
+    assert!(h.state().tab().file.doc.is_dirty());
+    assert_eq!(doc_text(&h), "keep this\n");
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("deleted"))
+    );
+    assert_eq!(
+        disk_question(&h),
+        None,
+        "no question: the text simply stays"
+    );
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), "keep this\n");
+    assert!(!h.state().tab().file.doc.is_dirty());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// A save never overwrites a change it has not seen: the question comes instead.
+#[test]
+fn a_save_never_overwrites_an_unseen_change() {
+    use jarak_gui::watch::DiskQuestion;
+    let (mut h, d) = open_doc("disk-unseen", "a.txt", "base\n");
+    let f = d.join("a.txt");
+    text(&mut h, "mine ");
+    std::fs::write(&f, "written meanwhile\n").unwrap();
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), "written meanwhile\n");
+    assert!(matches!(disk_question(&h), Some(DiskQuestion::Conflict(_))));
+    assert!(h.state().tab().file.doc.is_dirty());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// JARAK-FR-122, VIEW-17: monitoring follows a growing file, read-only, at its end.
+#[test]
+fn monitoring_follows_a_growing_file_read_only_at_its_end() {
+    let (mut h, d) = open_doc("disk-monitor", "log.txt", "line 1\n");
+    let f = d.join("log.txt");
+    palette_run(&mut h, "Monitoring (tail -f)");
+    assert!(h.state().tab().monitor);
+    assert!(h.state().tab().file.read_only);
+    std::fs::write(&f, "line 1\nline 2\nline 3\n").unwrap();
+    h.state_mut().check_disk_now();
+    h.run();
+    assert_eq!(doc_text(&h), "line 1\nline 2\nline 3\n");
+    assert_eq!(disk_question(&h), None, "no question while monitoring");
+    let end = h.state().tab().file.doc.len_chars();
+    assert_eq!(h.state().tab().file.doc.selection().primary().head, end);
+    text(&mut h, "typed");
+    assert_eq!(
+        doc_text(&h),
+        "line 1\nline 2\nline 3\n",
+        "read-only while monitored"
+    );
+    palette_run(&mut h, "Monitoring (tail -f)");
+    assert!(!h.state().tab().monitor);
+    assert!(!h.state().tab().file.read_only);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The window's own checks (as the program runs them): a change on disk is found off the UI
+/// thread within a few frames once the window has the focus.
+#[test]
+fn the_window_checks_its_files_by_itself() {
+    use jarak_gui::watch::DiskQuestion;
+    let d = temp("disk-auto");
+    let f = d.join("a.txt");
+    std::fs::write(
+        &f, "one
+",
+    )
+    .unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(960.0, 640.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), a.with_watching());
+    h.step();
+    std::fs::write(
+        &f, "changed
+",
+    )
+    .unwrap();
+    let mut found = false;
+    for _ in 0..400 {
+        h.step();
+        if matches!(disk_question(&h), Some(DiskQuestion::Changed(_))) {
+            found = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(found, "the window found the change by itself");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+fn wait_for(h: &mut Harness<'static, JarakApp>, what: impl Fn() -> bool) -> bool {
+    for _ in 0..100 {
+        if what() {
+            return true;
+        }
+        h.run();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    what()
+}
+
+/// JARAK-FR-121, REL-02, JRK-16: unsaved documents (one with a file, one untitled) are kept;
+/// after the window is gone, the next window offers them and Restore brings back their text,
+/// unsaved (Ctrl+Z on the file's document shows what is on disk); the old folder goes once the
+/// new window's own snapshot is written.
+#[test]
+fn unsaved_documents_are_kept_and_offered_back_after_a_crash() {
+    use jarak_core::recovery::Owner;
+    let d = temp("recovery-offer");
+    let root = d.join("recovery");
+    let f = d.join("notes.md");
+    std::fs::write(&f, "# 자락\n").unwrap();
+    let fs = f.display().to_string();
+    let first = Owner {
+        pid: 11,
+        started: 1,
+    };
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let a = a.with_recovery(&root, first, &|_| true, 10.0);
+    let mut h = harness(a);
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    text(&mut h, "편집 중");
+    key(&mut h, egui::Key::N, egui::Modifiers::CTRL);
+    text(&mut h, "untitled note");
+    let w = h.state_mut().snapshot_now().unwrap();
+    assert_eq!(w.kept.len(), 2);
+    assert!(root.join("w-11-1").join("manifest.json").is_file());
+    // The window is gone without a normal exit; the next one finds its folder.
+    let second = Owner {
+        pid: 12,
+        started: 2,
+    };
+    let (b, _) = app_with(&[], Arc::default());
+    let b = b.with_recovery(&root, second, &|o| *o == second, 10.0);
+    let mut h2 = harness(b);
+    assert!(h2.query_by_label("Recover unsaved documents?").is_some());
+    assert!(h2.query_by_label_contains("notes.md").is_some());
+    h2.get_by_label("Restore").click();
+    h2.run();
+    assert!(h2.state().recovery_offer.is_none());
+    let tabs = &h2.state().tabs;
+    let file_tab = tabs.iter().find(|t| t.file.path.is_some()).unwrap();
+    assert_eq!(file_tab.file.doc.text().to_string(), "# 자락\n편집 중");
+    assert!(file_tab.file.doc.is_dirty());
+    let untitled = tabs
+        .iter()
+        .find(|t| t.file.path.is_none() && t.file.doc.len_chars() > 0)
+        .unwrap();
+    assert_eq!(untitled.file.doc.text().to_string(), "untitled note");
+    assert_eq!(
+        std::fs::read_to_string(&f).unwrap(),
+        "# 자락\n",
+        "the file is untouched"
+    );
+    let k = h2
+        .state()
+        .tabs
+        .iter()
+        .position(|t| t.file.path.is_some())
+        .unwrap();
+    assert!(h2.state_mut().tabs[k].file.doc.undo());
+    assert_eq!(h2.state().tabs[k].file.doc.text().to_string(), "# 자락\n");
+    assert!(h2.state_mut().tabs[k].file.doc.redo());
+    h2.state_mut().snapshot_now().unwrap();
+    assert!(root.join("w-12-2").join("manifest.json").is_file());
+    assert!(
+        !std::fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().starts_with("claimed-")),
+        "the old folder goes once this window keeps the documents"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Not now keeps the documents for the next start; Discard asks twice and removes them.
+#[test]
+fn recovered_documents_wait_with_not_now_and_go_with_discard_twice() {
+    use jarak_core::recovery::Owner;
+    let d = temp("recovery-discard");
+    let root = d.join("recovery");
+    let gone = Owner {
+        pid: 21,
+        started: 1,
+    };
+    let (a, _) = app_with(&[], Arc::default());
+    let mut a = a.with_recovery(&root, gone, &|_| true, 10.0);
+    a.tab_mut().file.doc.paste("lost unless kept");
+    a.snapshot_now().unwrap();
+    let open = |pid| {
+        let me = Owner { pid, started: 3 };
+        let (b, _) = app_with(&[], Arc::default());
+        harness(b.with_recovery(&root, me, &move |o| *o == me, 10.0))
+    };
+    let mut h = open(22);
+    h.get_by_label("Not now").click();
+    h.run();
+    assert!(h.state().recovery_offer.is_none());
+    let mut h = open(23);
+    assert!(
+        h.state().recovery_offer.is_some(),
+        "offered again at the next start"
+    );
+    h.get_by_label("Discard…").click();
+    h.run();
+    assert!(
+        h.state().recovery_offer.is_some(),
+        "the first press only asks"
+    );
+    h.get_by_label("Discard for good").click();
+    h.run();
+    assert!(h.state().recovery_offer.is_none());
+    assert!(
+        std::fs::read_dir(&root).unwrap().next().is_none(),
+        "removed"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Saving a document removes its snapshot at once; a normal exit removes the window's folder.
+#[test]
+fn a_saved_document_leaves_its_snapshot_and_a_normal_exit_keeps_none() {
+    use jarak_core::recovery::Owner;
+    let d = temp("recovery-clean");
+    let root = d.join("recovery");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "a\n").unwrap();
+    let fs = f.display().to_string();
+    let me = Owner {
+        pid: 31,
+        started: 1,
+    };
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    // A snapshot every frame (a tiny interval), written by the window's own thread.
+    let mut h = harness(a.with_recovery(&root, me, &|_| true, 0.001));
+    let dir = root.join("w-31-1");
+    text(&mut h, "x");
+    assert!(wait_for(&mut h, || dir.join("manifest.json").is_file()));
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert!(
+        wait_for(&mut h, || !dir.exists()),
+        "saved: nothing left to recover"
+    );
+    text(&mut h, "y");
+    assert!(wait_for(&mut h, || dir.join("manifest.json").is_file()));
+    h.state_mut().recovery_exit();
+    assert!(!dir.exists(), "a normal exit keeps no snapshots");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 104: a damaged session file falls back to the backup the last save kept (and the
+/// window says so); the damaged file is kept.
+#[test]
+fn a_damaged_session_opens_the_backup_and_says_so() {
+    let d = temp("session-backup");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "a\n").unwrap();
+    let session = d.join("session.json");
+    let s = jarak_core::session::Session {
+        documents: vec![jarak_core::session::Doc {
+            path: Some(f.clone()),
+            ..jarak_core::session::Doc::default()
+        }],
+        active: Some(0),
+        ..jarak_core::session::Session::default()
+    };
+    s.save(&session).unwrap();
+    s.save(&session).unwrap();
+    std::fs::write(&session, "{ damaged").unwrap();
+    let (a, _) = app_with(&[], Arc::default());
+    let a = a.with_session(jarak_gui::sessions::SessionFiles {
+        file: session,
+        recovery: d.join("recovery"),
+        restore: true,
+    });
+    let h = harness(a);
+    assert_eq!(h.state().tab().file.path.as_deref(), Some(f.as_path()));
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("broken"))
+    );
+    assert!(d.join("session.json.broken").is_file());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The disk question and the recovery offer under the UI audit's rules.
+#[test]
+fn the_disk_question_and_the_recovery_offer_pass_the_ui_audit_rules() {
+    let (mut h, d) = open_doc("audit104", "a.txt", "text\n");
+    for screen in ["disk-question", "recovery"] {
+        h.state_mut().prepare_audit(screen);
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{screen}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        let id = if screen == "disk-question" {
+            "disk:question"
+        } else {
+            "recovery:row#1"
+        };
+        assert!(r.components.iter().any(|c| c.id == id), "{screen}: {id}");
+        h.state_mut().watch.questions.clear();
+        h.state_mut().recovery_offer = None;
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}

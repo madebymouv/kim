@@ -559,3 +559,87 @@ fn reinterpret_reads_the_file_again_in_another_encoding() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Step 104 (`JARAK-FR-120`): the document knows when another program changed, deleted or created
+/// its file; its own saves do not count as changes.
+#[test]
+fn the_disk_state_tells_changes_deletions_and_new_files() {
+    let d = temp("disk-state");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "one\r\n").unwrap();
+    let mut doc = FileDocument::open(&f, TextEncoding::Utf8, DEFAULT_SIZE_LIMIT).unwrap();
+    assert!(doc.disk.is_some());
+    assert_eq!(disk_state(&f, doc.disk), DiskState::Same);
+    std::fs::write(&f, "changed by another program\r\n").unwrap();
+    let DiskState::Changed(now) = disk_state(&f, doc.disk) else {
+        panic!("a change is seen");
+    };
+    assert_eq!(now.len, 28);
+    // Its own save is what it last saw.
+    doc.doc.paste("x");
+    doc.save().unwrap();
+    assert_eq!(disk_state(&f, doc.disk), DiskState::Same);
+    std::fs::remove_file(&f).unwrap();
+    assert_eq!(disk_state(&f, doc.disk), DiskState::Missing);
+    // A document for a file that does not exist yet saw none; one appearing is a change.
+    let g = d.join("new.txt");
+    let fresh = FileDocument::open(&g, TextEncoding::Utf8, DEFAULT_SIZE_LIMIT).unwrap();
+    assert_eq!(fresh.disk, None);
+    assert_eq!(disk_state(&g, fresh.disk), DiskState::Same);
+    std::fs::write(&g, "appeared").unwrap();
+    assert!(matches!(disk_state(&g, fresh.disk), DiskState::Changed(_)));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 104: a reload is one undo step that leaves the document saved; Ctrl+Z brings back the
+/// text in memory before it (unsaved); bookmarks outside the change stay; the format follows the
+/// file; the user's own read-only choice stays.
+#[test]
+fn an_undoable_reload_keeps_the_previous_text_one_undo_away() {
+    let d = temp("reload-undo");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "keep\r\nold line\r\ntail\r\n").unwrap();
+    let mut doc = FileDocument::open(&f, TextEncoding::Utf8, DEFAULT_SIZE_LIMIT).unwrap();
+    doc.doc.bookmark_lines([0, 2]);
+    doc.doc
+        .set_selection(&crate::selection::Selection::point(0));
+    doc.doc.paste("mine ");
+    assert!(doc.doc.is_dirty());
+    std::fs::write(&f, "\u{feff}keep\r\nnew line from outside\r\ntail\r\n").unwrap();
+    assert!(
+        doc.reload_undoable(TextEncoding::Utf8, DEFAULT_SIZE_LIMIT)
+            .unwrap()
+    );
+    assert_eq!(
+        doc.doc.text().to_string(),
+        "keep\r\nnew line from outside\r\ntail\r\n"
+    );
+    assert!(!doc.doc.is_dirty(), "the reloaded text is the saved one");
+    assert!(doc.format.bom, "the format follows the file");
+    assert_eq!(disk_state(&f, doc.disk), DiskState::Same);
+    assert_eq!(
+        doc.doc.bookmarked_lines(),
+        [0, 2],
+        "lines outside the change keep their bookmarks"
+    );
+    assert!(doc.doc.undo());
+    assert_eq!(
+        doc.doc.text().to_string(),
+        "mine keep\r\nold line\r\ntail\r\n"
+    );
+    assert!(doc.doc.is_dirty(), "the text from before is unsaved");
+    assert!(doc.doc.redo());
+    assert!(!doc.doc.is_dirty());
+    // Nothing differs: no undo step.
+    assert!(
+        !doc.reload_undoable(TextEncoding::Utf8, DEFAULT_SIZE_LIMIT)
+            .unwrap()
+    );
+    // The user's read-only choice stays across a reload.
+    doc.read_only = true;
+    std::fs::write(&f, "again\r\n").unwrap();
+    doc.reload_undoable(TextEncoding::Utf8, DEFAULT_SIZE_LIMIT)
+        .unwrap();
+    assert!(doc.read_only && doc.read_only_reason.is_none());
+    let _ = std::fs::remove_dir_all(&d);
+}

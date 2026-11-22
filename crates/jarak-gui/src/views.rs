@@ -98,7 +98,7 @@ pub struct Second {
 }
 
 impl Second {
-    fn new(id: u64) -> Second {
+    pub(crate) fn new(id: u64) -> Second {
         Second {
             order: vec![id],
             active: id,
@@ -593,7 +593,7 @@ impl JarakApp {
                     .map(|k| {
                         let t = &self.tabs[*k];
                         tabs::Item {
-                            title: t.file.title(),
+                            title: t.title(),
                             path: t.file.path.as_ref().map(|p| p.display().to_string()),
                             dirty: t.file.doc.is_dirty(),
                             active: *k == i,

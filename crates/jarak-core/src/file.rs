@@ -15,6 +15,10 @@
 //!   disk, and replace the original in one step (`ReplaceFileW`, which keeps the original's
 //!   attributes, or a rename for a new file); on any failure the original is untouched and the
 //!   temporary file is removed.
+//! - **The file on disk** (Step 104, `JARAK-FR-120`): a document remembers the size and time of
+//!   its file when it last read or wrote it ([`DiskStamp`]); [`disk_state`] tells whether another
+//!   program changed or deleted it since. A reload with [`FileDocument::reload_undoable`] is one
+//!   undo step, so the text in memory before it comes back with Ctrl+Z.
 
 use encoding_rs::Encoding;
 use std::io::{self, Write};
@@ -35,13 +39,25 @@ pub enum TextEncoding {
 }
 
 impl TextEncoding {
-    /// A stable name (`utf-8`, `utf-16le`, `utf-16be`, or the WHATWG label, e.g. `euc-kr`).
+    /// A stable name (`utf-8`, `utf-16le`, `utf-16be`, or the encoding's canonical name, e.g. `EUC-KR`).
     pub fn name(self) -> &'static str {
         match self {
             TextEncoding::Utf8 => "utf-8",
             TextEncoding::Utf16Le => "utf-16le",
             TextEncoding::Utf16Be => "utf-16be",
             TextEncoding::Legacy(e) => e.name(),
+        }
+    }
+
+    /// Step 104: the encoding of a [`TextEncoding::name`] (as recovery snapshots keep it).
+    pub fn from_name(name: &str) -> Option<TextEncoding> {
+        match name {
+            "utf-8" => Some(TextEncoding::Utf8),
+            "utf-16le" => Some(TextEncoding::Utf16Le),
+            "utf-16be" => Some(TextEncoding::Utf16Be),
+            other => Encoding::for_label(other.as_bytes())
+                .filter(|e| *e != encoding_rs::UTF_8)
+                .map(TextEncoding::Legacy),
         }
     }
 
@@ -656,6 +672,61 @@ impl std::fmt::Display for SaveError {
     }
 }
 
+/// Why decoded bytes open read-only (`None`: they can be edited and saved).
+fn read_only_reason(d: &Decoded) -> Option<String> {
+    if d.binary {
+        Some("the file contains zero bytes (a binary file)".to_string())
+    } else if !d.lossless {
+        Some(format!(
+            "{} cannot reproduce every byte of the file",
+            d.format.encoding.label(d.format.bom)
+        ))
+    } else {
+        None
+    }
+}
+
+/// Step 104 (`JARAK-FR-120`): the size and last-write time of a file, as a document last read or
+/// wrote it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiskStamp {
+    pub len: u64,
+    pub modified: Option<std::time::SystemTime>,
+}
+
+impl DiskStamp {
+    /// The file's stamp now.
+    pub fn of(path: &Path) -> io::Result<DiskStamp> {
+        let m = std::fs::metadata(path)?;
+        Ok(DiskStamp {
+            len: m.len(),
+            modified: m.modified().ok(),
+        })
+    }
+}
+
+/// How a file compares with what a document last saw of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiskState {
+    /// As the document saw it (or it cannot be told: an unreadable folder says nothing).
+    Same,
+    /// Another program wrote it (its new stamp); also a file that appeared where the document
+    /// had none.
+    Changed(DiskStamp),
+    /// It was there and is gone (deleted, renamed or moved away).
+    Missing,
+}
+
+/// Compares the file at `path` with `seen` (`None`: the document saw no file there).
+pub fn disk_state(path: &Path, seen: Option<DiskStamp>) -> DiskState {
+    match (DiskStamp::of(path), seen) {
+        (Ok(now), Some(s)) if now == s => DiskState::Same,
+        (Ok(now), _) => DiskState::Changed(now),
+        (Err(e), Some(_)) if e.kind() == io::ErrorKind::NotFound => DiskState::Missing,
+        (Err(_), _) => DiskState::Same,
+    }
+}
+
 /// A document and the file it belongs to (`JARAK-FR-020`).
 #[derive(Debug, Clone)]
 pub struct FileDocument {
@@ -667,6 +738,8 @@ pub struct FileDocument {
     /// Why it is read-only, for the window to say.
     pub read_only_reason: Option<String>,
     pub doc: crate::document::Document,
+    /// Step 104: the file as the document last read or wrote it (`None`: no file seen yet).
+    pub disk: Option<DiskStamp>,
 }
 
 impl FileDocument {
@@ -678,6 +751,7 @@ impl FileDocument {
             read_only: false,
             read_only_reason: None,
             doc: crate::document::Document::new(),
+            disk: None,
         }
     }
 
@@ -688,8 +762,14 @@ impl FileDocument {
         fallback: TextEncoding,
         limit: u64,
     ) -> Result<FileDocument, OpenError> {
+        // The stamp is taken before the bytes are read: a write in between shows as a change.
+        let stamp = DiskStamp::of(path).ok();
         match read(path, fallback, limit) {
-            Ok(d) => Ok(FileDocument::from_decoded(Some(path.to_path_buf()), d)),
+            Ok(d) => {
+                let mut f = FileDocument::from_decoded(Some(path.to_path_buf()), d);
+                f.disk = stamp;
+                Ok(f)
+            }
             Err(OpenError::Io(e)) if e.kind() == io::ErrorKind::NotFound => Ok(FileDocument {
                 path: Some(path.to_path_buf()),
                 ..FileDocument::untitled()
@@ -700,16 +780,7 @@ impl FileDocument {
 
     /// A document for decoded bytes.
     pub fn from_decoded(path: Option<PathBuf>, d: Decoded) -> FileDocument {
-        let reason = if d.binary {
-            Some("the file contains zero bytes (a binary file)".to_string())
-        } else if !d.lossless {
-            Some(format!(
-                "{} cannot reproduce every byte of the file",
-                d.format.encoding.label(d.format.bom)
-            ))
-        } else {
-            None
-        };
+        let reason = read_only_reason(&d);
         let mut doc = crate::document::Document::from_text(&d.text);
         drop(d.text);
         if let Some(eol) = d.eol.dominant() {
@@ -721,6 +792,7 @@ impl FileDocument {
             read_only: reason.is_some(),
             read_only_reason: reason,
             doc,
+            disk: None,
         }
     }
 
@@ -744,6 +816,7 @@ impl FileDocument {
             return Err(SaveError::ReadOnly);
         }
         self.write_to(&path)?;
+        self.disk = DiskStamp::of(&path).ok();
         self.doc.mark_saved();
         Ok(())
     }
@@ -757,6 +830,7 @@ impl FileDocument {
         self.write_to(path)?;
         self.path = Some(path.to_path_buf());
         self.read_only = false;
+        self.disk = DiskStamp::of(path).ok();
         self.doc.mark_saved();
         Ok(())
     }
@@ -787,8 +861,10 @@ impl FileDocument {
                 limit,
             });
         }
+        let stamp = DiskStamp::of(&path).ok();
         let bytes = std::fs::read(&path).map_err(OpenError::Io)?;
         *self = FileDocument::from_decoded(Some(path), decode_as(&bytes, format));
+        self.disk = stamp;
         Ok(())
     }
 
@@ -797,9 +873,39 @@ impl FileDocument {
         let Some(path) = self.path.clone() else {
             return Ok(());
         };
+        let stamp = DiskStamp::of(&path).ok();
         let d = read(&path, fallback, limit)?;
         *self = FileDocument::from_decoded(Some(path), d);
+        self.disk = stamp;
         Ok(())
+    }
+
+    /// Step 104: reads the file again as one undo step that changes only what differs (Ctrl+Z
+    /// brings back the text in memory before it, unsaved), and the result is the saved state.
+    /// The format and a read-only reason follow the file; the user's own read-only choice stays.
+    /// `true` when the text changed.
+    pub fn reload_undoable(
+        &mut self,
+        fallback: TextEncoding,
+        limit: u64,
+    ) -> Result<bool, OpenError> {
+        let Some(path) = self.path.clone() else {
+            return Ok(false);
+        };
+        let stamp = DiskStamp::of(&path).ok();
+        let d = read(&path, fallback, limit)?;
+        let users = self.read_only && self.read_only_reason.is_none();
+        let reason = read_only_reason(&d);
+        let changed = self.doc.set_text_minimal(&d.text);
+        if let Some(eol) = d.eol.dominant() {
+            self.doc.eol = eol;
+        }
+        self.format = d.format;
+        self.read_only_reason = reason;
+        self.read_only = self.read_only_reason.is_some() || users;
+        self.disk = stamp;
+        self.doc.mark_saved();
+        Ok(changed)
     }
 }
 
