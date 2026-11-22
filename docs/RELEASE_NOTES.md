@@ -1,5 +1,22 @@
 # Release notes
 
+## Jarak 0.0.34 — after the real-desktop acceptance run (preview, not yet published)
+
+- **Status:** draft (2026-11-23). The checks that needed the real desktop were run with test
+  windows and sandboxed profiles ([JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md)): installing through
+  Kim Manager, the Open and Save As dialogs, a real file drop, window modes and `--position`, the
+  context menu and dragging text, the real clipboard with WordPad, printing to PDF, the *Open
+  with* offer and its exact removal, Help, the sample extension's grant, a Noeul capture through
+  Kim into a note, `jarak open file:line` from a Subak terminal, and uninstalling.
+- **Fixed** (found by that run): the Open dialog takes several files at once (Ctrl or Shift in
+  its list); the Markdown preview — where the read-only user guide opens — runs the palette, tab,
+  settings, printing and window-mode commands instead of refusing them; *Copy as RTF* pastes
+  single-spaced (WordPad had added its own paragraph spacing); Settings → Keyboard centres the
+  *Off* of a command without keys on its row.
+- **Notepad++ parity:** 265 of 285 built-in features supported, 9 partial with their gaps named,
+  11 not intended; the 16 Jarak additions all supported
+  ([JARAK_PARITY_REPORT](JARAK_PARITY_REPORT.md)).
+
 ## Jarak 0.0.33 — the fourth Kim tool (preview, not yet published)
 
 - **Status:** draft (Step 111, 2026-11-22). Installable from the local mirror through Kim

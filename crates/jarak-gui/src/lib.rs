@@ -74,6 +74,11 @@ pub trait Dialogs: Send + Sync {
     fn open_in(&self, _dir: Option<&Path>) -> Option<PathBuf> {
         self.open()
     }
+    /// FILE-02: Ctrl+O's dialog, where several files can be picked at once (by default the
+    /// one-file dialog).
+    fn open_many(&self, dir: Option<&Path>) -> Vec<PathBuf> {
+        self.open_in(dir).into_iter().collect()
+    }
     /// Step 106: where an export goes (the Save dialog asks before it replaces a file).
     fn save_export(
         &self,
@@ -2658,7 +2663,7 @@ fn main() {
                         .or(doc_dir),
                     _ => doc_dir,
                 };
-                if let Some(p) = self.dialogs.open_in(dir.as_deref()) {
+                for p in self.dialogs.open_many(dir.as_deref()) {
                     self.open_target(&OpenTarget {
                         path: p,
                         line: None,
@@ -3754,6 +3759,21 @@ fn main() {
                                         | Action::ZoomReset
                                         | Action::NextDocument
                                         | Action::PreviousDocument
+                                        // Commands that do not edit the text work here too.
+                                        | Action::Palette
+                                        | Action::FocusOther
+                                        | Action::GoToTab(_)
+                                        | Action::MoveTabLeft
+                                        | Action::MoveTabRight
+                                        | Action::ReopenClosed
+                                        | Action::QuickOpen
+                                        | Action::Settings
+                                        | Action::Print
+                                        | Action::PrintNow
+                                        | Action::OnTop
+                                        | Action::FullScreen
+                                        | Action::PostIt
+                                        | Action::DistractionFree
                                 )
                             {
                                 self.act(a);
@@ -4226,6 +4246,9 @@ impl Dialogs for WinDialogs {
     fn open_in(&self, dir: Option<&Path>) -> Option<PathBuf> {
         win_dialog_in(true, "", dir).map(PathBuf::from)
     }
+    fn open_many(&self, dir: Option<&Path>) -> Vec<PathBuf> {
+        win_open_many(dir)
+    }
     fn save_as(&self, suggested: &str) -> Option<PathBuf> {
         win_dialog(false, suggested).map(PathBuf::from)
     }
@@ -4398,6 +4421,60 @@ fn win_export_dialog(suggested: &str, format: jarak_core::export::Format) -> Opt
 #[cfg(windows)]
 fn win_dialog(open: bool, suggested: &str) -> Option<String> {
     win_dialog_in(open, suggested, None)
+}
+
+/// FILE-02: what a multiple-selection Open dialog returns — one full path, or the folder followed
+/// by the names picked in it (each ended by a NUL, the list by a second NUL).
+pub fn multi_select_paths(buf: &[u16]) -> Vec<PathBuf> {
+    let parts: Vec<String> = buf
+        .split(|c| *c == 0)
+        .take_while(|p| !p.is_empty())
+        .map(String::from_utf16_lossy)
+        .collect();
+    match parts.as_slice() {
+        [] => Vec::new(),
+        [one] => vec![PathBuf::from(one)],
+        [dir, names @ ..] => names.iter().map(|n| Path::new(dir).join(n)).collect(),
+    }
+}
+
+/// FILE-02: the Open dialog with multiple selection (Ctrl or Shift in the list, or several
+/// quoted names in the File name box).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn win_open_many(dir: Option<&Path>) -> Vec<PathBuf> {
+    use windows_sys::Win32::UI::Controls::Dialogs::{
+        GetOpenFileNameW, OFN_ALLOWMULTISELECT, OFN_EXPLORER, OFN_FILEMUSTEXIST, OFN_PATHMUSTEXIST,
+        OPENFILENAMEW,
+    };
+    let filter: Vec<u16> =
+        "All files (*.*)\0*.*\0Text (*.txt)\0*.txt\0Markdown (*.md)\0*.md;*.markdown\0\0"
+            .encode_utf16()
+            .collect();
+    // Room for many names (the dialog fails with a too-small buffer rather than truncating).
+    let mut buf = vec![0u16; 65_536];
+    // SAFETY: OPENFILENAMEW is plain data; all-zero is its documented empty state.
+    let mut ofn: OPENFILENAMEW = unsafe { std::mem::zeroed() };
+    ofn.lStructSize = size_of::<OPENFILENAMEW>() as u32;
+    ofn.lpstrFilter = filter.as_ptr();
+    ofn.lpstrFile = buf.as_mut_ptr();
+    ofn.nMaxFile = buf.len() as u32;
+    let initial: Option<Vec<u16>> = dir.map(|d| {
+        d.as_os_str()
+            .to_string_lossy()
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect()
+    });
+    if let Some(i) = &initial {
+        ofn.lpstrInitialDir = i.as_ptr();
+    }
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_ALLOWMULTISELECT | OFN_EXPLORER;
+    // SAFETY: `ofn` points to buffers that live across the call; the dialog is modal.
+    if unsafe { GetOpenFileNameW(&raw mut ofn) } == 0 {
+        return Vec::new();
+    }
+    multi_select_paths(&buf)
 }
 
 #[cfg(windows)]

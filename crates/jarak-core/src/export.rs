@@ -417,7 +417,9 @@ pub fn code_rtf(text: &str, lang: Option<&Lang>, line_numbers: bool) -> String {
     for c in colors {
         let _ = write!(out, "\\red{}\\green{}\\blue{};", c.r, c.g, c.b);
     }
-    out.push_str("}\n\\f0\\fs20\\cf1 ");
+    // One paragraph format for every line: no space after and single line spacing, so the code
+    // keeps its lines when it is pasted (WordPad and Word otherwise add their own spacing).
+    out.push_str("}\n\\pard\\sa0\\sl240\\slmult1\\f0\\fs20\\cf1 ");
     let rows = highlight(text, lang);
     let width = rows.len().to_string().len();
     for (i, (_, runs)) in rows.iter().enumerate() {
@@ -1285,7 +1287,11 @@ mod tests {
         assert!(r.contains("\\tab "));
         assert!(r.contains("\\u233?"), "é");
         assert!(r.contains("{\\cf6 1 }"));
-        assert_eq!(r.matches("\\par").count(), 1);
+        assert_eq!(r.matches("\\par\n").count(), 1);
+        assert!(
+            r.contains("\\pard\\sa0\\sl240\\slmult1"),
+            "single-spaced lines"
+        );
     }
 
     #[test]

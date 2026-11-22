@@ -23,6 +23,8 @@ struct Scripted {
     print: Mutex<Vec<jarak_gui::print_ui::PrintChoice>>,
     /// Step 110: the folders the Open dialog was started in.
     open_dirs: Mutex<Vec<Option<PathBuf>>>,
+    /// FILE-02: several files picked in one Open dialog (used before `open`).
+    open_many: Mutex<Vec<Vec<PathBuf>>>,
 }
 
 impl Dialogs for Scripted {
@@ -52,6 +54,13 @@ impl Dialogs for Scripted {
             .unwrap()
             .push(dir.map(std::path::Path::to_path_buf));
         self.open()
+    }
+    fn open_many(&self, dir: Option<&std::path::Path>) -> Vec<PathBuf> {
+        if let Some(many) = self.open_many.lock().unwrap().pop() {
+            *self.asked.lock().unwrap() += 1;
+            return many;
+        }
+        self.open_in(dir).into_iter().collect()
     }
 }
 
@@ -7244,4 +7253,90 @@ fn the_help_dialogs_pass_the_ui_audit_rules() {
         };
         assert!(t.iter().any(|x| x == want), "{screen}: {t:?}");
     }
+}
+
+/// FILE-02 (`JARAK-FR-020`): one Ctrl+O opens every file picked in the dialog (the real check
+/// of 2026-11-23 found the Windows dialog allowed only one); a file already open is not opened
+/// twice.
+#[test]
+fn one_open_dialog_opens_several_files() {
+    let d = temp("multi-open");
+    let (a, b, c) = (d.join("a.txt"), d.join("b.md"), d.join("c.log"));
+    for (p, t) in [(&a, "A\n"), (&b, "# B\n"), (&c, "C\n")] {
+        std::fs::write(p, t).unwrap();
+    }
+    let dialogs = Arc::new(Scripted::default());
+    dialogs
+        .open_many
+        .lock()
+        .unwrap()
+        .push(vec![a.clone(), b, c]);
+    let (app, _) = app_with(&[a.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(app);
+    key(&mut h, egui::Key::O, egui::Modifiers::CTRL);
+    assert_eq!(*dialogs.asked.lock().unwrap(), 1, "one dialog");
+    assert_eq!(h.state().tabs.len(), 3, "a.txt was open already");
+    assert_eq!(h.state().window_title(), "c.log — Jarak");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// FILE-02: the multiple-selection dialog's answer — one full path, or the folder and the names
+/// picked in it.
+#[test]
+fn a_multiple_selection_answer_is_read_as_paths() {
+    use jarak_gui::multi_select_paths;
+    let w = |s: &str| s.encode_utf16().collect::<Vec<u16>>();
+    assert_eq!(
+        multi_select_paths(&w("C:\\notes\\a.txt\0\0")),
+        [PathBuf::from("C:\\notes\\a.txt")]
+    );
+    assert_eq!(
+        multi_select_paths(&w("C:\\notes\0a.txt\0자락 b.md\0\0junk")),
+        [
+            PathBuf::from("C:\\notes\\a.txt"),
+            PathBuf::from("C:\\notes\\자락 b.md")
+        ]
+    );
+    assert!(multi_select_paths(&w("\0\0")).is_empty());
+}
+
+/// `JARAK-FR-040`, HELP-11: the preview (where the read-only user guide opens) runs the commands
+/// that do not edit the text — the palette, the window modes — and still refuses typing (the real
+/// check of 2026-11-23 found Ctrl+Shift+P refused in the guide).
+#[test]
+fn the_preview_opens_the_palette_and_the_window_modes() {
+    let d = temp("preview-cmds");
+    let p = d.join("n.md");
+    std::fs::write(&p, "# Note\n\ntext\n").unwrap();
+    let (a, _) = app_with(&[p.to_str().unwrap()], Arc::default());
+    let mut h = harness(a);
+    key(&mut h, egui::Key::E, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().mode, jarak_gui::Mode::Preview);
+    key(
+        &mut h,
+        egui::Key::P,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert!(
+        h.state().palette.is_some(),
+        "the palette opens in the preview"
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state().palette.is_none());
+    key(&mut h, egui::Key::F11, egui::Modifiers::NONE);
+    assert!(h.state().modes.full_screen);
+    key(&mut h, egui::Key::F11, egui::Modifiers::NONE);
+    assert!(!h.state().modes.full_screen);
+    assert_eq!(
+        h.state().tab().mode,
+        jarak_gui::Mode::Preview,
+        "still the preview"
+    );
+    text(&mut h, "x");
+    assert_eq!(
+        h.state().tab().file.doc.text(),
+        "# Note\n\ntext\n",
+        "typing changes nothing"
+    );
+    let _ = std::fs::remove_dir_all(&d);
 }

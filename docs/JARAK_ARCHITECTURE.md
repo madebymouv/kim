@@ -1573,3 +1573,35 @@ offer and its removal, both dialogs under the audit rules). e2e `step111_jarak_r
 real package layout through a signed catalog into Kim, the installed `jarak` (version,
 capabilities, `associate` dry runs), the other tools' `--version`, uninstall keeping the settings.
 Acceptance: [JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md).
+
+## 34. The real-desktop acceptance run (2026-11-23)
+
+[JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md)'s 20 rows were run with test-started windows while the
+maintainer was away. Three faults were found and fixed in the same change:
+
+- **The Open dialog took one file.** `win_dialog_in` had no `OFN_ALLOWMULTISELECT`. Ctrl+O now
+  calls `Dialogs::open_many` (by default the one-file dialog, so the scripted test dialogs and the
+  other callers keep `open`/`open_in`); `WinDialogs` uses `OFN_ALLOWMULTISELECT | OFN_EXPLORER`
+  with a 64 K-character buffer and `multi_select_paths` reads the answer (one full path, or the
+  folder and the names). Tests: `one_open_dialog_opens_several_files`,
+  `a_multiple_selection_answer_is_read_as_paths`.
+- **The preview refused the palette.** `preview_keys` ran only a short list of actions, so in the
+  read-only user guide (which opens in the preview) Ctrl+Shift+P said "the preview cannot be
+  edited". The list now has every action that does not edit the text: the palette, tab moves,
+  quick open, Settings, printing and the window modes. Typing is still refused. Test:
+  `the_preview_opens_the_palette_and_the_window_modes`.
+- **Copied RTF pasted double-spaced.** `code_rtf` set no paragraph format, so WordPad applied its
+  own spacing after every line; it now writes `\pard\sa0\sl240\slmult1` (the golden RTF file was
+  written again).
+
+A visual fault seen in the run's screenshots: Settings → Keyboard drew the *Off* of a command
+without keys a few pixels above its *Change* button (the row's controls are top-aligned); the label
+is now centred on the compact control height.
+
+**The hand-off goes through the profile.** The single-instance claim is a `Local\` name (one per
+logon session), while the files a second start hands over are written to
+`%LOCALAPPDATA%\mouv\jarak\handoff`. A second start with another profile (here, a terminal whose
+environment had the real profile while the window ran in a sandbox) signals the window, which
+finds nothing in its own folder and only comes to the front. For a user both are always the same
+profile; the acceptance run gave the Subak terminal the sandbox profile (`subak new --env`).
+

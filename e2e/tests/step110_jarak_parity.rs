@@ -45,6 +45,9 @@ fn window(dir: &Path, doc: &Path, screen: &str, extra: &[&str]) -> kim_design::i
         format!("e2e-step110-{}", std::process::id()),
         "--new-window".into(),
         "--no-session".into(),
+        // The checks read English labels; without this the window follows the PC's language.
+        "--lang".into(),
+        "en".into(),
     ];
     args.extend(extra.iter().map(|s| (*s).to_string()));
     args.push(doc.display().to_string());

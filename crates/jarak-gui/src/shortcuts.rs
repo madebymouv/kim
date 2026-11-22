@@ -545,7 +545,20 @@ impl JarakApp {
                                 egui::WidgetInfo::labeled(egui::Role::Label, true, &a11y)
                             });
                         } else {
-                            ui.label(kim_ui::secondary(ui, label));
+                            // Centred on the buttons' height (the row's controls are top-aligned:
+                            // a bare label sat a few pixels above the Change button).
+                            let g = egui::WidgetText::from(kim_ui::secondary(ui, label))
+                                .into_galley(
+                                    ui,
+                                    Some(egui::TextWrapMode::Extend),
+                                    f32::INFINITY,
+                                    egui::TextStyle::Body,
+                                );
+                            let size = egui::vec2(
+                                g.size().x,
+                                kim_design::size::CONTROL_COMPACT.max(g.size().y),
+                            );
+                            ui.add_sized(size, egui::Label::new(g));
                         }
                     });
                     if let Some((a, k, msg, take)) = refused.as_ref().filter(|r| r.0 == *id) {

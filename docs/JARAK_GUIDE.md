@@ -41,7 +41,7 @@ documents linked above list every key, setting and command.
 
 ## 3. Opening, saving, recovering
 
-- Ctrl+O opens files, Ctrl+S saves, Ctrl+Shift+S saves as, and *Save a copy as…* writes a copy
+- Ctrl+O opens one or several files (Ctrl+click or Shift+click in the dialog's list), Ctrl+S saves, Ctrl+Shift+S saves as, and *Save a copy as…* writes a copy
   without changing the document's file. Saving is atomic: the old file stays whole until the new
   one is written.
 - **Encodings** are detected (byte-order mark, UTF-8, UTF-16, then your Windows code page).

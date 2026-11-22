@@ -304,6 +304,14 @@ fn step77_the_running_engine_loads_conditioned_rules_as_active() {
         assert!(Instant::now() < until, "the app never answered");
         std::thread::sleep(Duration::from_millis(100));
     };
+    if st["app"]["elevated"] == true {
+        // The Daily runner is an administrator: the app refuses to start its engine there
+        // (`engine_elevated`, as steps 66/68/69 and #100–#102 skip).
+        assert_eq!(st["engine"]["off_reason"], "elevated", "{st:#}");
+        eprintln!("skipped (elevated): the app refuses to turn its engine on as administrator");
+        e.run(&["quit", "--endpoint", &e.endpoint]);
+        return;
+    }
     assert_eq!(st["engine"]["state"], "running", "{st:#}");
     let mut active: Vec<String> = st["rules"]["active_rules"]
         .as_array()

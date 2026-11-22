@@ -284,8 +284,8 @@ fn a_transforms_groups_and_recovery_are_discoverable_headlessly() {
     let shown = n.ok(&["config", "show"]);
     assert_eq!(
         shown["settings"]["pins"],
-        // `backup` (Step 60) is the third key of [pins], off by default.
-        json!({"backup": "off", "border": "on", "shadow": "off"})
+        // `backup` (Step 60) is off by default; `double_click` (ADR 0094) closes the pin.
+        json!({"backup": "off", "border": "on", "double_click": "close", "shadow": "off"})
     );
 }
 

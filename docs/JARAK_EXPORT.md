@@ -23,8 +23,9 @@ itself is never changed.
   muted — the window's colours (ADR 0103).
 - **Line numbers** are an option of highlighted text (`--line-numbers`); a rendered Markdown page
   has none.
-- **RTF** is Consolas 10 pt with the same colours; every non-ASCII character is written as `\uN?`,
-  so Korean text survives any code page.
+- **RTF** is Consolas 10 pt with the same colours, single-spaced with no space after the lines
+  (`\pard\sa0\sl240\slmult1`, so WordPad and Word do not add their own paragraph spacing); every
+  non-ASCII character is written as `\uN?`, so Korean text survives any code page.
 
 ## Images in a Markdown export
 
@@ -143,8 +144,11 @@ jarak printers
   rendered Markdown sample) were rendered with Windows' own PDF renderer and reviewed: colours,
   line numbers, Korean through Malgun Gothic, header and footer, headings, table, lists, quote,
   code band, footnote.
-- **Not tested**: a paper printer (this PC has none); the Windows print dialog and Save dialog
-  opened on the real desktop, and Copy as HTML / RTF pasted from the real clipboard into another
-  program (the maintainer was at the PC; the code paths are tested with scripted dialogs and the
-  in-memory clipboard).
+- Real desktop, 2026-11-23 ([JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md)): File → Print… opened the
+  Windows print dialog; Microsoft Print to PDF asked for a file name and wrote a one-page PDF with
+  the header, footer, line numbers, colours and Korean text. *Copy as RTF* pasted into WordPad as
+  coloured Consolas code; *Copy as HTML* was read from the real clipboard by another process
+  (StartFragment offsets, 14 coloured spans). The first paste showed WordPad's own paragraph
+  spacing between the lines, so the RTF now states single spacing.
+- **Not tested**: a paper printer (this PC has none).
 - Not in Jarak: a print preview, header and footer fonts, printing in two columns.
