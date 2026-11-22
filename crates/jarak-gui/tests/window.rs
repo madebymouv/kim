@@ -90,7 +90,9 @@ fn key(h: &mut Harness<'static, JarakApp>, key: egui::Key, modifiers: egui::Modi
 
 fn text(h: &mut Harness<'static, JarakApp>, s: &str) {
     h.event(egui::Event::Text(s.into()));
-    h.run();
+    // Background threads (the image decoder, recovery snapshots) may wake the window a few more
+    // times under load, as in `key`.
+    let _ = h.try_run();
 }
 
 fn doc_text(h: &Harness<'static, JarakApp>) -> String {
@@ -1399,6 +1401,7 @@ fn the_session_restores_documents_views_carets_and_untitled_text() {
         file: d.join("local").join("session.json"),
         recovery: d.join("local").join("recovery"),
         restore: true,
+        save: true,
     };
     let (a, _) = app_with(&[], Arc::default());
     let mut h = harness(a.with_session(sf.clone()));
@@ -1475,6 +1478,7 @@ fn the_session_restores_documents_views_carets_and_untitled_text() {
     let (c, _) = app_with(&[], Arc::default());
     let h3 = harness(c.with_session(SessionFiles {
         restore: false,
+        save: true,
         ..sf
     }));
     assert_eq!(h3.state().tabs.len(), 1);
@@ -1928,6 +1932,7 @@ fn the_find_history_walks_with_the_arrows_and_lives_in_the_session() {
         file: d.join("session.json"),
         recovery: d.join("recovery"),
         restore: true,
+        save: true,
     };
     let (a, _) = app_with(&[], Arc::default());
     let mut h = harness(a.with_session(sf.clone()));
@@ -5168,6 +5173,7 @@ fn a_damaged_session_opens_the_backup_and_says_so() {
         file: session,
         recovery: d.join("recovery"),
         restore: true,
+        save: true,
     });
     let h = harness(a);
     assert_eq!(h.state().tab().file.path.as_deref(), Some(f.as_path()));
@@ -5985,4 +5991,125 @@ fn the_publish_question_passes_the_ui_audit_rules() {
         h.state_mut().publish_question = None;
     }
     let _ = std::fs::remove_dir_all(&d);
+}
+
+// ---- Step 107: command-line options of the window --------------------------------------------
+
+/// HELP-03, HELP-04: `--language <name>` and `--read-only` apply to the files after them (also
+/// when a running window gets them through the hand-off); an unknown language says so.
+#[test]
+fn language_and_read_only_options_apply_to_the_files_after_them() {
+    use jarak_gui::LangChoice;
+    let d = temp("open-options");
+    for (f, t) in [
+        ("a.txt", "fn main() {}\n"),
+        ("b.txt", "plain\n"),
+        ("c.txt", "x\n"),
+    ] {
+        std::fs::write(d.join(f), t).unwrap();
+    }
+    let p = |f: &str| d.join(f).display().to_string();
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    h.state_mut().open_args(&[
+        "--language".into(),
+        "rust".into(),
+        p("a.txt"),
+        "--read-only".into(),
+        p("b.txt"),
+    ]);
+    h.run();
+    let tab = |h: &Harness<'static, JarakApp>, name: &str| {
+        h.state()
+            .tabs
+            .iter()
+            .find(|t| t.file.path.as_deref().is_some_and(|x| x.ends_with(name)))
+            .cloned()
+            .unwrap()
+    };
+    let a = tab(&h, "a.txt");
+    assert_eq!(a.lang_choice, LangChoice::Named("Rust".into()));
+    assert!(!a.file.read_only, "read-only comes after a.txt");
+    let b = tab(&h, "b.txt");
+    assert_eq!(
+        b.lang_choice,
+        LangChoice::Named("Rust".into()),
+        "the language stays"
+    );
+    assert!(b.file.read_only);
+    assert!(
+        b.file
+            .read_only_reason
+            .as_deref()
+            .is_some_and(|r| r.contains("--read-only"))
+    );
+    h.state_mut()
+        .open_args(&["--language".into(), "klingon".into(), p("c.txt")]);
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("klingon"))
+    );
+    assert_eq!(tab(&h, "c.txt").lang_choice, LangChoice::Auto);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// HELP-05: `--session <file>` opens a saved session's documents; `--no-session` (save off)
+/// leaves the saved session as it is at exit.
+#[test]
+fn session_options_open_a_session_file_and_leave_the_saved_one() {
+    use jarak_gui::sessions::SessionFiles;
+    let d = temp("session-options");
+    std::fs::write(d.join("x.md"), "# X\n").unwrap();
+    let saved = jarak_core::session::Session {
+        documents: vec![jarak_core::session::Doc {
+            path: Some(d.join("x.md")),
+            ..jarak_core::session::Doc::default()
+        }],
+        active: Some(0),
+        ..jarak_core::session::Session::default()
+    };
+    saved.save(&d.join("work.json")).unwrap();
+    let (a, _) = app_with(&[], Arc::default());
+    let local = d.join("local");
+    let mut h = harness(a.with_session(SessionFiles {
+        file: local.join("session.json"),
+        recovery: local.join("recovery"),
+        restore: false,
+        save: false,
+    }));
+    h.state_mut().open_args(&[
+        "--session".into(),
+        d.join("work.json").display().to_string(),
+    ]);
+    h.run();
+    assert!(
+        h.state()
+            .tabs
+            .iter()
+            .any(|t| t.file.path.as_deref() == Some(d.join("x.md").as_path()))
+    );
+    h.state_mut().save_session();
+    assert!(
+        !local.join("session.json").exists(),
+        "--no-session writes no session"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// HELP-10: Window → Copy debug info puts the versions and files on the clipboard.
+#[test]
+fn copy_debug_info_names_the_version_and_windows() {
+    let (mut h, clip) = app_clip(&[], Arc::default());
+    let e = jarak_gui::palette::entries();
+    let i = e.iter().position(|x| x.id == "window.debug-info").unwrap();
+    h.state_mut().run_entry(e[i].run);
+    let t = clip.text.lock().unwrap().clone().unwrap_or_default();
+    assert!(
+        t.starts_with(&format!("Jarak {} (jarak-gui)", jarak_core::VERSION)),
+        "{t}"
+    );
+    assert!(t.contains("Windows 10."), "{t}");
+    assert_eq!(h.state().message.as_deref(), Some("Debug info copied"));
 }

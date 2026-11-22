@@ -1,0 +1,22 @@
+{
+  "command": "convert",
+  "data": {
+    "changed": true,
+    "dry_run": true,
+    "from": {
+      "bytes": 34,
+      "encoding": "UTF-8",
+      "eol": "lf"
+    },
+    "path": "C:\\Users\\me\\Documents\\main.rs",
+    "to": {
+      "bytes": 37,
+      "encoding": "UTF-8",
+      "eol": "crlf"
+    },
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

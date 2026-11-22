@@ -1,0 +1,28 @@
+{
+  "command": "hotkeys.disable",
+  "data": {
+    "changes": [
+      {
+        "action": "run.dialog",
+        "after": {
+          "bindings": [],
+          "source": "disabled"
+        },
+        "before": {
+          "bindings": [
+            "F5"
+          ],
+          "source": "default"
+        }
+      }
+    ],
+    "conflicts": [],
+    "dry_run": true,
+    "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\hotkeys.json",
+    "tool": "jarak",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

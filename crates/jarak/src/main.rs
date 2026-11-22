@@ -24,7 +24,7 @@ Usage: jarak [OPTIONS] <COMMAND>
 Commands:
   open          Start the Jarak window with files (file, file:line, file:line:column) or a
                 folder (its workspace), or hand them to the running window; --new-window starts
-                another window
+                another window; --language <name> and --read-only apply to the files after them
   info          A file's encoding, byte-order mark, line endings, size and line count, and
                 whether Jarak can save it unchanged (read-only); --fallback <encoding> reads
                 text that is neither UTF-8 nor UTF-16 in that code page
@@ -58,6 +58,26 @@ Commands:
                 needs --output <file> (an existing one only with --overwrite); no dialog ever
                 opens; --dry-run lays the pages out and prints nothing
   printers      The printers Windows knows, the default one and those that write a file
+                (read-only)
+  new <file>    Creates a text file (never replacing one) in --encoding (utf-8, utf-8-bom,
+                utf-16le, utf-16be, ansi or a label such as euc-kr; the setting new_encoding
+                by default) with --text <text> in --eol (crlf, lf, cr; new_eol by default);
+                --dry-run checks only
+  convert <file>
+                Saves a file again in another --encoding and/or with other --eol line endings
+                (atomically; a character the encoding cannot hold is refused and named);
+                --dry-run checks only
+  session list  The documents of the saved session, its views, workspace and recent files
+                (read-only)
+  assets add <doc.md> <image>
+                Copies a local image into the document's assets folder (never replacing a
+                file) and inserts its reference before --line <n> or at the end (--alt <text>);
+                --dry-run checks only
+  interop invoke
+                Runs one Kim interop capability from a kim.interop.request on stdin
+                (document.info, text.find, document.export, markdown.insert-image,
+                document.open; docs/INTEROP.md)
+  debug-info    Jarak's version, programs, folders, files and Windows build, for a bug report
                 (read-only)
   journal list  The Replace in Files batches kept for undo (read-only)
   journal undo <batch>
@@ -134,7 +154,7 @@ impl Fail {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Global {
     json: bool,
     dry_run: bool,
@@ -166,7 +186,17 @@ struct Global {
     /// Step 106: `jarak print` options.
     printer: Option<String>,
     pages: Option<String>,
+    /// Step 107: `jarak new` / `convert` options, `assets add`, `open`.
+    encoding: Option<String>,
+    eol: Option<String>,
+    text: Option<String>,
+    line: Option<String>,
+    alt: Option<String>,
+    language: Option<String>,
+    read_only: bool,
 }
+
+mod interop;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -221,6 +251,31 @@ fn run(args: &[String]) -> ExitCode {
                 }
                 None => missing_value = Some("--output"),
             },
+            "--encoding" => match it.next() {
+                Some(v) => g.encoding = Some(v.clone()),
+                None => missing_value = Some("--encoding"),
+            },
+            "--eol" => match it.next() {
+                Some(v) => g.eol = Some(v.clone()),
+                None => missing_value = Some("--eol"),
+            },
+            "--text" => match it.next() {
+                Some(v) => g.text = Some(v.clone()),
+                None => missing_value = Some("--text"),
+            },
+            "--line" => match it.next() {
+                Some(v) => g.line = Some(v.clone()),
+                None => missing_value = Some("--line"),
+            },
+            "--alt" => match it.next() {
+                Some(v) => g.alt = Some(v.clone()),
+                None => missing_value = Some("--alt"),
+            },
+            "--language" => match it.next() {
+                Some(v) => g.language = Some(v.clone()),
+                None => missing_value = Some("--language"),
+            },
+            "--read-only" => g.read_only = true,
             "--printer" => match it.next() {
                 Some(v) => g.printer = Some(v.clone()),
                 None => missing_value = Some("--printer"),
@@ -303,14 +358,17 @@ fn run(args: &[String]) -> ExitCode {
         (Some("hotkeys"), Some("disable")) => "hotkeys.disable",
         (Some("hotkeys"), Some("reset")) => "hotkeys.reset",
         (Some("hotkeys"), Some("check")) => "hotkeys.check",
+        (Some("session"), Some("list")) => "session.list",
+        (Some("assets"), Some("add")) => "assets.add",
+        (Some("interop"), Some("invoke")) => "interop.invoke",
         (Some("settings"), Some("list")) => "settings.list",
         (Some("settings"), Some("get")) => "settings.get",
         (Some("settings"), Some("set")) => "settings.set",
         (Some("settings"), Some("reset")) => "settings.reset",
         (
             Some(
-                c @ ("open" | "info" | "find" | "replace" | "export" | "print" | "printers"
-                | "paths" | "version" | "capabilities"),
+                c @ ("open" | "info" | "find" | "replace" | "export" | "print" | "printers" | "new"
+                | "convert" | "debug-info" | "paths" | "version" | "capabilities"),
             ),
             _,
         ) => c,
@@ -347,12 +405,34 @@ fn run(args: &[String]) -> ExitCode {
         ))
     } else if (g.printer.is_some() || g.pages.is_some()) && command != "print" {
         Err(Fail::usage("--printer and --pages belong to `jarak print`"))
+    } else if g.encoding.is_some() && !matches!(command, "new" | "convert") {
+        Err(Fail::usage(
+            "--encoding belongs to `jarak new` and `jarak convert`",
+        ))
+    } else if g.eol.is_some() && !matches!(command, "new" | "convert") {
+        Err(Fail::usage(
+            "--eol belongs to `jarak new` and `jarak convert`",
+        ))
+    } else if g.text.is_some() && command != "new" {
+        Err(Fail::usage("--text belongs to `jarak new`"))
+    } else if (g.line.is_some() || g.alt.is_some()) && command != "assets.add" {
+        Err(Fail::usage("--line and --alt belong to `jarak assets add`"))
+    } else if (g.language.is_some() || g.read_only) && command != "open" {
+        Err(Fail::usage(
+            "--language and --read-only belong to `jarak open`",
+        ))
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
         Err(Fail::usage(match (words.first(), words.get(1)) {
-            (Some(&"assets"), Some(w)) => format!("unknown command `assets {w}` (list, rename)"),
-            (Some(&"assets"), None) => "`jarak assets` needs list or rename".into(),
+            (Some(&"assets"), Some(w)) => {
+                format!("unknown command `assets {w}` (list, add, rename)")
+            }
+            (Some(&"assets"), None) => "`jarak assets` needs list, add or rename".into(),
+            (Some(&"session"), Some(w)) => format!("unknown command `session {w}` (list)"),
+            (Some(&"session"), None) => "`jarak session` needs list".into(),
+            (Some(&"interop"), Some(w)) => format!("unknown command `interop {w}` (invoke)"),
+            (Some(&"interop"), None) => "`jarak interop` needs invoke".into(),
             (Some(&"journal"), Some(w)) => format!("unknown command `journal {w}` (list, undo)"),
             (Some(&"journal"), None) => "`jarak journal` needs list or undo".into(),
             (Some(&"settings"), Some(w)) => {
@@ -378,6 +458,10 @@ fn run(args: &[String]) -> ExitCode {
                 | "replace"
                 | "export"
                 | "print"
+                | "new"
+                | "convert"
+                | "assets.add"
+                | "interop.invoke"
                 | "journal.undo"
                 | "settings.set"
                 | "settings.reset"
@@ -387,7 +471,7 @@ fn run(args: &[String]) -> ExitCode {
         )
     {
         Err(Fail::usage(format!(
-            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak export`, `jarak print`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak export`, `jarak print`, `jarak new`, `jarak convert`, `jarak assets add`, `jarak interop invoke`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
             command.replace('.', " ")
         )))
     } else {
@@ -401,7 +485,9 @@ type Done = (Value, String);
 
 fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
     match command {
-        "version" | "capabilities" | "paths" | "printers" if !rest.is_empty() => {
+        "version" | "capabilities" | "paths" | "printers" | "debug-info" | "interop.invoke"
+            if !rest.is_empty() =>
+        {
             Err(Fail::usage(format!(
                 "`jarak {command}` takes no arguments (got `{}`)",
                 rest.join(" ")
@@ -432,6 +518,20 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "export" => export(rest, g),
         "print" => print(rest, g),
         "printers" => printers(),
+        "new" => new_file(rest, g),
+        "convert" => convert(rest, g),
+        "session.list" => session_list(rest),
+        "assets.add" => assets_add(rest, g),
+        "interop.invoke" => {
+            let mut req = String::new();
+            std::io::Read::read_to_string(
+                &mut std::io::Read::take(std::io::stdin(), 64 * 1024 + 1),
+                &mut req,
+            )
+            .map_err(|e| Fail::new("io", 1, format!("cannot read the request: {e}")))?;
+            interop_invoke(&req, g)
+        }
+        "debug-info" => debug_info(),
         "journal.list" | "journal.undo" => journal(command, rest, g),
         "assets.list" => assets_list(rest),
         "assets.rename" => assets_rename(rest, g),
@@ -1055,6 +1155,518 @@ fn printers() -> Result<Done, Fail> {
             .join("\n")
     };
     Ok((json!({ "printers": data }), human))
+}
+
+/// Step 107: the encoding a `--encoding` value names (`utf-8-bom`, `ansi`, labels).
+fn format_of(name: &str) -> Result<jarak_core::file::Format, Fail> {
+    jarak_core::file::Format::from_name(name).ok_or_else(|| Fail {
+        hint: Some(
+            "utf-8, utf-8-bom, utf-16le, utf-16be, ansi or a label such as euc-kr, windows-1252, shift_jis"
+                .into(),
+        ),
+        ..Fail::usage(format!("unknown encoding `{name}`"))
+    })
+}
+
+/// Step 107: the line ending an `--eol` value names.
+fn eol_of(name: &str) -> Result<jarak_core::document::Eol, Fail> {
+    use jarak_core::document::Eol;
+    match name.to_ascii_lowercase().as_str() {
+        "crlf" => Ok(Eol::CrLf),
+        "lf" => Ok(Eol::Lf),
+        "cr" => Ok(Eol::Cr),
+        _ => Err(Fail::usage(format!(
+            "--eol takes crlf, lf or cr (got `{name}`)"
+        ))),
+    }
+}
+
+fn eol_name(e: jarak_core::document::Eol) -> &'static str {
+    use jarak_core::document::Eol;
+    match e {
+        Eol::CrLf => "crlf",
+        Eol::Lf => "lf",
+        Eol::Cr => "cr",
+    }
+}
+
+/// The settings file's value of `key` (its default when unset).
+fn setting(key: &str) -> Option<String> {
+    let p = Paths::from_env()?;
+    jarak_core::settings::Settings::new(&p.settings_file()).get(key)
+}
+
+/// A character position as a 1-based line and column of `text`.
+fn line_col(text: &str, at: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    for (i, c) in text.chars().enumerate() {
+        if i == at {
+            break;
+        }
+        if c == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
+/// Step 107: `jarak new <file> [--encoding] [--eol] [--text]` — a new text file, never replacing
+/// one.
+fn new_file(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::file;
+    let [arg] = rest else {
+        return Err(Fail::usage("`jarak new` needs one file"));
+    };
+    let path = absolute(Path::new(arg));
+    let encoding = g
+        .encoding
+        .clone()
+        .or_else(|| setting("new_encoding"))
+        .unwrap_or_else(|| "utf-8".into());
+    let format = format_of(&encoding)?;
+    let eol = eol_of(
+        &g.eol
+            .clone()
+            .or_else(|| setting("new_eol"))
+            .unwrap_or_else(|| "crlf".into()),
+    )?;
+    if path.exists() {
+        return Err(Fail {
+            hint: Some("`jarak convert` changes an existing file's encoding".into()),
+            ..Fail::new(
+                "file_exists",
+                7,
+                format!("{} already exists; nothing was written", path.display()),
+            )
+        });
+    }
+    if !path.parent().is_some_and(Path::is_dir) {
+        return Err(Fail::usage(format!(
+            "the folder of {} does not exist",
+            path.display()
+        )));
+    }
+    let text = jarak_core::export::lines(g.text.as_deref().unwrap_or("")).join(eol.as_str());
+    let text = if g.text.as_deref().is_some_and(|t| t.ends_with(['\n', '\r'])) {
+        format!("{text}{}", eol.as_str())
+    } else if g.text.as_deref().is_none_or(str::is_empty) {
+        String::new()
+    } else {
+        text
+    };
+    let bytes = file::encode(&text, format).map_err(|u| {
+        let (line, col) = line_col(&text, u.at);
+        Fail::new(
+            "text_unencodable",
+            7,
+            format!(
+                "{} cannot hold `{}` (line {line}, column {col}); nothing was written",
+                format.encoding.label(format.bom),
+                u.ch
+            ),
+        )
+    })?;
+    if !g.dry_run {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    Fail::new(
+                        "file_exists",
+                        7,
+                        format!("{} already exists", path.display()),
+                    )
+                } else {
+                    Fail::new("io", 1, format!("cannot create {}: {e}", path.display()))
+                }
+            })?;
+        f.write_all(&bytes)
+            .and_then(|()| f.sync_all())
+            .map_err(|e| Fail::new("io", 1, format!("cannot write {}: {e}", path.display())))?;
+    }
+    let label = format.encoding.label(format.bom);
+    Ok((
+        json!({
+            "path": path.display().to_string(),
+            "encoding": label,
+            "eol": eol_name(eol),
+            "bytes": bytes.len(),
+            "dry_run": g.dry_run,
+            "written": !g.dry_run,
+        }),
+        format!(
+            "{} {} ({label}, {}, {} bytes).",
+            if g.dry_run { "Would create" } else { "Created" },
+            path.display(),
+            eol_name(eol).to_uppercase(),
+            bytes.len()
+        ),
+    ))
+}
+
+/// Step 107: `jarak convert <file> [--encoding] [--eol]` — the file saved again in another
+/// encoding and/or line endings (atomically; never lossy).
+fn convert(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::file::{self, FileDocument, SaveError};
+    let [arg] = rest else {
+        return Err(Fail::usage("`jarak convert` needs one file"));
+    };
+    if g.encoding.is_none() && g.eol.is_none() {
+        return Err(Fail::usage(
+            "`jarak convert` needs --encoding <name> and/or --eol crlf|lf|cr",
+        ));
+    }
+    let path = absolute(Path::new(arg));
+    let _ = read_file(&path, file::system_encoding())?;
+    let mut f = FileDocument::open(&path, file::system_encoding(), file::DEFAULT_SIZE_LIMIT)
+        .map_err(|e| Fail::new("io", 1, format!("cannot read {}: {e}", path.display())))?;
+    if f.read_only {
+        return Err(Fail::new(
+            "document_read_only",
+            7,
+            format!(
+                "{} opens read-only in Jarak ({}); converting it could change bytes nobody edited",
+                path.display(),
+                f.read_only_reason.clone().unwrap_or_default()
+            ),
+        ));
+    }
+    let before = (f.format.encoding.label(f.format.bom), eol_name(f.doc.eol));
+    let size_before = std::fs::metadata(&path).map_or(0, |m| m.len());
+    if let Some(e) = &g.encoding {
+        f.format = format_of(e)?;
+    }
+    if let Some(e) = &g.eol {
+        f.doc.convert_eol(eol_of(e)?);
+    }
+    let after = (f.format.encoding.label(f.format.bom), eol_name(f.doc.eol));
+    let text = f.doc.text().to_string();
+    let bytes = file::encode(&text, f.format).map_err(|u| {
+        let (line, col) = line_col(&text, u.at);
+        Fail::new(
+            "text_unencodable",
+            7,
+            format!(
+                "{} cannot hold `{}` (line {line}, column {col}); nothing was written",
+                after.0, u.ch
+            ),
+        )
+    })?;
+    let changed = std::fs::read(&path).map_or(true, |old| old != bytes);
+    if changed && !g.dry_run {
+        f.save().map_err(|e| match e {
+            SaveError::Unmappable(_) | SaveError::ReadOnly | SaveError::NoPath => {
+                Fail::new("text_unencodable", 7, format!("{e}; nothing was written"))
+            }
+            SaveError::Io(e) => Fail::new("io", 1, format!("cannot save {}: {e}", path.display())),
+        })?;
+    }
+    Ok((
+        json!({
+            "path": path.display().to_string(),
+            "from": { "encoding": before.0, "eol": before.1, "bytes": size_before },
+            "to": { "encoding": after.0, "eol": after.1, "bytes": bytes.len() },
+            "changed": changed,
+            "dry_run": g.dry_run,
+            "written": changed && !g.dry_run,
+        }),
+        if !changed {
+            format!(
+                "{} is already {} with {}.",
+                path.display(),
+                after.0,
+                after.1.to_uppercase()
+            )
+        } else {
+            format!(
+                "{} {}: {} {} -> {} {}.",
+                if g.dry_run {
+                    "Would convert"
+                } else {
+                    "Converted"
+                },
+                path.display(),
+                before.0,
+                before.1.to_uppercase(),
+                after.0,
+                after.1.to_uppercase()
+            )
+        },
+    ))
+}
+
+/// Step 107: `jarak session list` — the saved session (read-only).
+fn session_list(rest: &[&str]) -> Result<Done, Fail> {
+    if !rest.is_empty() {
+        return Err(Fail::usage("`jarak session list` takes no arguments"));
+    }
+    let p = Paths::from_env()
+        .ok_or_else(|| Fail::new("io", 1, "APPDATA or LOCALAPPDATA is not set"))?;
+    session_list_in(&p.session_file())
+}
+
+/// `jarak session list` of the session file `file`.
+fn session_list_in(file: &Path) -> Result<Done, Fail> {
+    use jarak_core::session::Session;
+    let file = file.to_path_buf();
+    if !file.exists() {
+        return Ok((
+            json!({ "file": file.display().to_string(), "exists": false, "documents": [], "recent": [] }),
+            "No saved session.".into(),
+        ));
+    }
+    let s = Session::load(&file).map_err(|e| {
+        Fail::new(
+            "session_invalid",
+            4,
+            format!("{} cannot be read: {e}", file.display()),
+        )
+    })?;
+    let docs: Vec<Value> = s
+        .documents
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            json!({
+                "path": d.path.as_ref().map(|p| p.display().to_string()),
+                "untitled": d.path.is_none(),
+                "active": s.active == Some(i),
+                "shown": format!("{:?}", d.shown).to_lowercase(),
+                "caret": d.caret,
+            })
+        })
+        .collect();
+    let mut human: Vec<String> = s
+        .documents
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            format!(
+                "{}{}",
+                if s.active == Some(i) { "* " } else { "  " },
+                d.path
+                    .as_ref()
+                    .map_or_else(|| "(untitled)".to_string(), |p| p.display().to_string())
+            )
+        })
+        .collect();
+    if human.is_empty() {
+        human.push("The session has no documents.".into());
+    }
+    Ok((
+        json!({
+            "file": file.display().to_string(),
+            "exists": true,
+            "documents": docs,
+            "second_view": s.second.as_ref().map(|v| json!({ "documents": v.order, "vertical": v.vertical })),
+            "workspace": s.workspace.as_ref().map(|w| w.display().to_string()),
+            "recent": s.recent.iter().map(|r| r.display().to_string()).collect::<Vec<_>>(),
+        }),
+        human.join("\n"),
+    ))
+}
+
+/// Step 107: `jarak assets add <doc.md> <image> [--line <n>] [--alt <text>]`.
+fn assets_add(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::assets;
+    let [doc, image] = rest else {
+        return Err(Fail::usage(
+            "`jarak assets add` needs a Markdown document and an image file",
+        ));
+    };
+    let line = match g.line.as_deref() {
+        None => None,
+        Some(l) => Some(l.parse::<usize>().ok().filter(|n| *n > 0).ok_or_else(|| {
+            Fail::usage(format!("--line takes a line number from 1 (got `{l}`)"))
+        })?),
+    };
+    let doc = absolute(Path::new(doc));
+    let image = absolute(Path::new(image));
+    if !doc.is_file() {
+        return Err(Fail::new(
+            "file_not_found",
+            3,
+            format!("{} does not exist", doc.display()),
+        ));
+    }
+    if !image.is_file() {
+        return Err(Fail::new(
+            "file_not_found",
+            3,
+            format!("{} does not exist", image.display()),
+        ));
+    }
+    let folder = setting("image_folder").unwrap_or_else(|| assets::ASSET_DIR.into());
+    assets_add_in(
+        &doc,
+        &image,
+        line,
+        g,
+        &folder,
+        jarak_core::print::local_date(),
+    )
+}
+
+/// `jarak assets add` into the folder `folder` on the date `date`.
+fn assets_add_in(
+    doc: &Path,
+    image: &Path,
+    line: Option<usize>,
+    g: &Global,
+    folder: &str,
+    date: (i32, u32, u32),
+) -> Result<Done, Fail> {
+    use jarak_core::assets::{self, AddError};
+    let added = assets::add_image(
+        doc,
+        image,
+        line,
+        g.alt.as_deref().unwrap_or(""),
+        folder,
+        date,
+        g.dry_run,
+    )
+    .map_err(|e| match e {
+        AddError::NotMarkdown | AddError::NotAnImage(_) => Fail::usage(e.to_string()),
+        AddError::ReadOnly(_) => {
+            Fail::new("document_read_only", 7, format!("{e}; nothing was changed"))
+        }
+        AddError::Save(_) => Fail::new("text_unencodable", 7, format!("{e}; nothing was changed")),
+        AddError::Open(_) | AddError::Io(_) => {
+            Fail::new("io", 1, format!("{e}; nothing was changed"))
+        }
+    })?;
+    Ok((
+        json!({
+            "document": doc.display().to_string(),
+            "image": image.display().to_string(),
+            "asset": added.asset.path.display().to_string(),
+            "reference": added.asset.reference,
+            "line": added.line,
+            "text": added.text,
+            "dry_run": g.dry_run,
+            "written": !g.dry_run,
+        }),
+        format!(
+            "{} {} as {} (line {} of {}).",
+            if g.dry_run { "Would add" } else { "Added" },
+            image.display(),
+            added.asset.reference,
+            added.line,
+            doc.display()
+        ),
+    ))
+}
+
+/// Step 107: `jarak interop invoke` — one capability for Kim (`docs/INTEROP.md`), through the
+/// matching command.
+fn interop_invoke(req: &str, outer: &Global) -> Result<Done, Fail> {
+    let (cap, params, dry_run) =
+        interop::parse(req).map_err(|(code, exit, msg)| Fail::new(code, exit, msg))?;
+    let refuse = |(code, exit, msg): interop::Refusal| Fail::new(code, exit, msg);
+    let mut g = Global {
+        dry_run: dry_run || outer.dry_run,
+        ..Global::default()
+    };
+    let (data, text) = match cap.as_str() {
+        "document.info" => {
+            let path = interop::text(&params, "path").map_err(refuse)?;
+            info(&[path], None)?
+        }
+        "text.find" => {
+            let path = interop::text(&params, "path").map_err(refuse)?;
+            let what = interop::text(&params, "text").map_err(refuse)?;
+            if interop::flag(&params, "regex") {
+                g.search.mode = jarak_core::search::Mode::Regex;
+            }
+            g.search.match_case = interop::flag(&params, "match_case");
+            g.search.whole_word = interop::flag(&params, "whole_word");
+            g.search_flags = true;
+            find(&[path, what], &g)?
+        }
+        "document.export" => {
+            let path = interop::text(&params, "path").map_err(refuse)?;
+            g.output = Some(
+                interop::text(&params, "output")
+                    .map_err(refuse)?
+                    .to_string(),
+            );
+            g.to = params["format"].as_str().map(str::to_string);
+            g.overwrite = interop::flag(&params, "overwrite");
+            g.export_flags = true;
+            export(&[path], &g)?
+        }
+        "markdown.insert-image" => {
+            let doc = interop::text(&params, "document").map_err(refuse)?;
+            let image = interop::text(&params, "image").map_err(refuse)?;
+            g.line = interop::number(&params, "line")
+                .map_err(refuse)?
+                .map(|n| n.to_string());
+            g.alt = params["alt"].as_str().map(str::to_string);
+            assets_add(&[doc, image], &g)?
+        }
+        "document.open" => {
+            let path = interop::text(&params, "path").map_err(refuse)?;
+            let line = interop::number(&params, "line").map_err(refuse)?;
+            let column = interop::number(&params, "column").map_err(refuse)?;
+            let mut target = path.to_string();
+            if let Some(l) = line {
+                target.push_str(&format!(":{l}"));
+                if let Some(c) = column {
+                    target.push_str(&format!(":{c}"));
+                }
+            }
+            open(&[&target], &g)?
+        }
+        _ => unreachable!("checked by interop::parse"),
+    };
+    Ok((data, text))
+}
+
+/// Step 107: `jarak debug-info` — what a bug report needs (read-only; no file contents).
+fn debug_info() -> Result<Done, Fail> {
+    let exe = std::env::current_exe().ok();
+    let gui = gui_exe();
+    let paths = Paths::from_env();
+    let file = |p: Option<PathBuf>| {
+        p.map(|p| json!({ "path": p.display().to_string(), "exists": p.exists() }))
+    };
+    let build = jarak_core::about::windows_build();
+    let data = json!({
+        "tool": "jarak",
+        "version": jarak_core::VERSION,
+        "cli_contract": 1,
+        "exe": exe.as_ref().map(|e| e.display().to_string()),
+        "gui": gui.as_ref().map(|e| e.display().to_string()),
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "windows_build": build,
+        "settings": file(paths.as_ref().map(Paths::settings_file)),
+        "hotkeys": file(paths.as_ref().map(Paths::hotkeys_file)),
+        "session": file(paths.as_ref().map(Paths::session_file)),
+        "languages": file(paths.as_ref().map(Paths::languages_dir)),
+        "printers": jarak_core::print::gdi::printers().len(),
+    });
+    let human = format!(
+        "Jarak {} (CLI contract 1)\nexe: {}\ngui: {}\nWindows: {} {}\nsettings: {}",
+        jarak_core::VERSION,
+        exe.map_or_else(|| "?".into(), |e| e.display().to_string()),
+        gui.map_or_else(
+            || "(not next to jarak.exe)".into(),
+            |e| e.display().to_string()
+        ),
+        build.as_deref().unwrap_or("?"),
+        std::env::consts::ARCH,
+        paths.map_or_else(|| "?".into(), |p| p.settings_file().display().to_string()),
+    );
+    Ok((data, human))
 }
 
 /// What values a setting takes, for the CLI's JSON.
@@ -2004,7 +2616,16 @@ fn open(rest: &[&str], g: &Global) -> Result<Done, Fail> {
             })
         })
         .collect();
-    let mut argv: Vec<String> = targets.iter().map(OpenTarget::to_arg).collect();
+    let mut argv: Vec<String> = Vec::new();
+    // Step 107: options the window applies to the files after them (also through a hand-off).
+    if let Some(l) = &g.language {
+        argv.push("--language".into());
+        argv.push(l.clone());
+    }
+    if g.read_only {
+        argv.push("--read-only".into());
+    }
+    argv.extend(targets.iter().map(OpenTarget::to_arg));
     if g.new_window {
         argv.push("--new-window".into());
     }
@@ -2012,6 +2633,8 @@ fn open(rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "gui": gui,
         "targets": listed,
         "new_window": g.new_window,
+        "language": g.language,
+        "read_only": g.read_only,
         "dry_run": g.dry_run,
         "started": false,
     });
@@ -2132,6 +2755,12 @@ mod tests {
                 "export",
                 "print",
                 "printers",
+                "new",
+                "convert",
+                "session.list",
+                "assets.add",
+                "interop.invoke",
+                "debug-info",
                 "journal.list",
                 "journal.undo",
                 "assets.list",
@@ -2397,6 +3026,260 @@ mod tests {
             assert_eq!(e.code, "export_into_source");
         }
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn temp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("jarak-cli-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// Step 107 (`JARAK-FR-150`): `jarak new` writes the encoding, line endings and text asked
+    /// for, never replaces a file and refuses a character the encoding cannot hold.
+    #[test]
+    fn new_creates_a_file_and_never_replaces_one() {
+        let d = temp("new");
+        let f = d.join("a.txt");
+        let s = f.to_string_lossy().into_owned();
+        let g = Global {
+            encoding: Some("utf-8-bom".into()),
+            eol: Some("lf".into()),
+            text: Some("a\r\nb".into()),
+            ..Global::default()
+        };
+        let (data, _) = new_file(&[&s], &g).unwrap();
+        assert_eq!(
+            (data["encoding"].as_str(), data["eol"].as_str()),
+            (Some("UTF-8 BOM"), Some("lf"))
+        );
+        assert_eq!(std::fs::read(&f).unwrap(), b"\xEF\xBB\xBFa\nb");
+        let e = new_file(&[&s], &g).unwrap_err();
+        assert_eq!((e.code, e.exit), ("file_exists", 7));
+        let other = d.join("b.txt");
+        let o = other.to_string_lossy().into_owned();
+        let dry = Global { dry_run: true, ..g };
+        assert_eq!(new_file(&[&o], &dry).unwrap().0["written"], false);
+        assert!(!other.exists());
+        let ansi = Global {
+            encoding: Some("windows-1252".into()),
+            eol: Some("crlf".into()),
+            text: Some("ok\n한".into()),
+            ..Global::default()
+        };
+        let e = new_file(&[&o], &ansi).unwrap_err();
+        assert_eq!((e.code, e.exit), ("text_unencodable", 7));
+        assert!(e.message.contains("line 2, column 1"), "{}", e.message);
+        assert!(!other.exists(), "nothing written");
+        let bad = Global {
+            encoding: Some("klingon".into()),
+            eol: Some("lf".into()),
+            ..Global::default()
+        };
+        assert_eq!(new_file(&[&o], &bad).unwrap_err().code, "usage");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// `jarak convert` saves the file again in another encoding and line endings, atomically and
+    /// never lossy; a dry run writes nothing.
+    #[test]
+    fn convert_changes_encoding_and_line_endings_without_losing_text() {
+        let d = temp("convert");
+        let f = d.join("a.txt");
+        std::fs::write(&f, "a\r\n한\r\n").unwrap();
+        let s = f.to_string_lossy().into_owned();
+        let to = |enc: Option<&str>, eol: Option<&str>, dry_run: bool| Global {
+            encoding: enc.map(str::to_string),
+            eol: eol.map(str::to_string),
+            dry_run,
+            ..Global::default()
+        };
+        assert_eq!(
+            convert(&[&s], &Global::default()).unwrap_err().code,
+            "usage"
+        );
+        let (data, _) = convert(&[&s], &to(None, Some("lf"), true)).unwrap();
+        assert_eq!(
+            (data["changed"].as_bool(), data["written"].as_bool()),
+            (Some(true), Some(false))
+        );
+        assert_eq!(std::fs::read(&f).unwrap(), "a\r\n한\r\n".as_bytes());
+        convert(&[&s], &to(None, Some("lf"), false)).unwrap();
+        assert_eq!(std::fs::read(&f).unwrap(), "a\n한\n".as_bytes());
+        let (data, _) = convert(&[&s], &to(Some("utf-16le"), None, false)).unwrap();
+        assert_eq!(data["to"]["encoding"], "UTF-16 LE BOM");
+        assert!(std::fs::read(&f).unwrap().starts_with(b"\xFF\xFEa\0\n\0"));
+        let e = convert(&[&s], &to(Some("windows-1252"), None, false)).unwrap_err();
+        assert_eq!((e.code, e.exit), ("text_unencodable", 7));
+        assert!(
+            std::fs::read(&f).unwrap().starts_with(b"\xFF\xFE"),
+            "unchanged"
+        );
+        let (data, _) = convert(&[&s], &to(Some("utf-16le"), Some("lf"), false)).unwrap();
+        assert_eq!(data["changed"], false, "already so");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// `jarak session list` reads a session file and lists its documents (read-only).
+    #[test]
+    fn session_list_reads_the_saved_session() {
+        let d = temp("session");
+        let file = d.join("session.json");
+        let (data, _) = session_list_in(&file).unwrap();
+        assert_eq!(data["exists"], false);
+        let s = jarak_core::session::Session {
+            documents: vec![
+                jarak_core::session::Doc {
+                    path: Some(d.join("a.md")),
+                    ..jarak_core::session::Doc::default()
+                },
+                jarak_core::session::Doc {
+                    untitled: Some("untitled-1.txt".into()),
+                    ..jarak_core::session::Doc::default()
+                },
+            ],
+            active: Some(1),
+            recent: vec![d.join("old.txt")],
+            ..jarak_core::session::Session::default()
+        };
+        s.save(&file).unwrap();
+        let before = std::fs::read(&file).unwrap();
+        let (data, text) = session_list_in(&file).unwrap();
+        assert_eq!(data["documents"].as_array().unwrap().len(), 2);
+        assert_eq!(data["documents"][1]["untitled"], true);
+        assert_eq!(data["documents"][1]["active"], true);
+        assert!(text.contains("* (untitled)"), "{text}");
+        assert_eq!(std::fs::read(&file).unwrap(), before, "read-only");
+        std::fs::write(&file, "{ not json").unwrap();
+        assert_eq!(session_list_in(&file).unwrap_err().code, "session_invalid");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// `jarak assets add` copies the image under a new name and references it; a dry run writes
+    /// nothing; a non-image or a text file is refused.
+    #[test]
+    fn assets_add_copies_and_references_an_image() {
+        let d = temp("assets-add");
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0";
+        let img = d.join("shot.png");
+        std::fs::write(&img, png).unwrap();
+        let doc = d.join("n.md");
+        std::fs::write(&doc, "# N\n").unwrap();
+        let date = (2026, 11, 22);
+        let dry = Global {
+            dry_run: true,
+            alt: Some("a [shot]".into()),
+            ..Global::default()
+        };
+        let (data, _) = assets_add_in(&doc, &img, None, &dry, "assets", date).unwrap();
+        assert_eq!(data["reference"], "assets/n-20261122-001.png");
+        assert_eq!(data["text"], "![a shot](assets/n-20261122-001.png)");
+        assert!(!d.join("assets").exists());
+        let (data, _) =
+            assets_add_in(&doc, &img, Some(1), &Global::default(), "assets", date).unwrap();
+        assert_eq!(data["line"], 1);
+        assert_eq!(
+            std::fs::read_to_string(&doc).unwrap(),
+            "![](assets/n-20261122-001.png)\n# N\n"
+        );
+        let e = assets_add_in(&doc, &doc, None, &Global::default(), "assets", date).unwrap_err();
+        assert_eq!(e.code, "usage", "not an image");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// `jarak interop invoke`: requests are checked (schema, capability, interface) and run
+    /// through the matching command; `provides` in capabilities.json is the module's list.
+    #[test]
+    fn interop_requests_are_checked_and_run_through_the_commands() {
+        let d = temp("interop");
+        let f = d.join("a.rs");
+        std::fs::write(&f, "fn main() {}\nlet x = 1;\n").unwrap();
+        let req = |cap: &str, interface: &str, params: Value| {
+            json!({ "schema": "kim.interop.request", "schema_version": 1, "capability": cap,
+                "interface": interface, "params": params, "dry_run": false,
+                "caller": { "tool": "kim", "version": "0.0.1" } })
+            .to_string()
+        };
+        let g = Global::default();
+        let path = f.to_string_lossy().into_owned();
+        let (data, _) =
+            interop_invoke(&req("document.info", "1", json!({ "path": path })), &g).unwrap();
+        assert_eq!(data["encoding"], "utf-8");
+        let (data, _) = interop_invoke(
+            &req("text.find", "1", json!({ "path": path, "text": "let" })),
+            &g,
+        )
+        .unwrap();
+        assert_eq!(data["count"], 1, "{data}");
+        let e = interop_invoke(&req("pin.list", "1", json!({})), &g).unwrap_err();
+        assert_eq!((e.code, e.exit), ("capability_missing", 5));
+        let e =
+            interop_invoke(&req("document.info", "2", json!({ "path": path })), &g).unwrap_err();
+        assert_eq!((e.code, e.exit), ("tool_incompatible", 5));
+        let e = interop_invoke(&req("document.info", "1", json!({})), &g).unwrap_err();
+        assert_eq!(e.code, "usage", "a missing parameter");
+        let e = interop_invoke("not json", &g).unwrap_err();
+        assert_eq!(e.code, "usage");
+        let doc: Value = serde_json::from_str(CAPABILITIES).unwrap();
+        let listed: Vec<(&str, &str, &str, bool)> = doc["provides"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                (
+                    p["id"].as_str().unwrap(),
+                    p["version"].as_str().unwrap(),
+                    p["effect"].as_str().unwrap(),
+                    p["opens_window"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        let module: Vec<(&str, &str, &str, bool)> = interop::PROVIDES
+            .iter()
+            .map(|(id, v, e, w, _)| (*id, *v, *e, *w))
+            .collect();
+        assert_eq!(listed, module);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// `jarak debug-info` names the version and the system, and reads nothing private.
+    #[test]
+    fn debug_info_names_the_version_and_windows() {
+        let (data, text) = debug_info().unwrap();
+        assert_eq!(data["version"], jarak_core::VERSION);
+        assert_eq!(data["os"], "windows");
+        assert!(
+            data["windows_build"]
+                .as_str()
+                .is_some_and(|b| b.starts_with("10.")),
+            "{data}"
+        );
+        assert!(text.starts_with("Jarak "));
+    }
+
+    /// Step 107: every command of the capabilities document has a golden JSON example
+    /// (`docs/contracts/examples/cli-envelope-v1/jarak-*.json`, checked by `cargo xtask
+    /// schema-check`).
+    #[test]
+    fn every_command_has_a_golden_json_example() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/contracts/examples/cli-envelope-v1");
+        let mut seen = std::collections::BTreeSet::new();
+        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with("jarak-") && name.ends_with(".json") {
+                let v: Value =
+                    serde_json::from_str(&std::fs::read_to_string(e.path()).unwrap()).unwrap();
+                if let Some(c) = v["command"].as_str() {
+                    seen.insert(c.to_string());
+                }
+            }
+        }
+        let doc: Value = serde_json::from_str(CAPABILITIES).unwrap();
+        for c in doc["commands"].as_array().unwrap() {
+            let name = c["name"].as_str().unwrap();
+            assert!(seen.contains(name), "no example of `jarak {name}`");
+        }
     }
 
     #[test]

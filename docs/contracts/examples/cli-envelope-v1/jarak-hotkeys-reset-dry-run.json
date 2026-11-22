@@ -1,0 +1,30 @@
+{
+  "command": "hotkeys.reset",
+  "data": {
+    "changes": [
+      {
+        "action": "run.dialog",
+        "after": {
+          "bindings": [
+            "F5"
+          ],
+          "source": "default"
+        },
+        "before": {
+          "bindings": [
+            "F5"
+          ],
+          "source": "default"
+        }
+      }
+    ],
+    "conflicts": [],
+    "dry_run": true,
+    "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\hotkeys.json",
+    "tool": "jarak",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

@@ -1,0 +1,360 @@
+{
+  "command": "capabilities",
+  "data": {
+    "cli_contract": 1,
+    "commands": [
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "capabilities",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "This document",
+        "usage": "jarak capabilities [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "version",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Jarak's version and the contract and schema versions it speaks",
+        "usage": "jarak version [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "paths",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Where Jarak keeps its settings, session and recovery files; reads nothing and creates nothing",
+        "usage": "jarak paths [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "open",
+        "network": false,
+        "opens_window": true,
+        "requires_yes": false,
+        "summary": "Start the Jarak window (jarak-gui.exe next to jarak.exe) with these files or a folder (the workspace), or hand them to the running window; a missing file opens as a new document and is created only when you save",
+        "usage": "jarak open [<file>[:<line>[:<column>]]...] [--language <name>] [--read-only] [--new-window] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "info",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "A file's encoding, byte-order mark, line endings, size and line count, and whether Jarak can save it unchanged (lossless) or opens it read-only; changes nothing",
+        "usage": "jarak info <file> [--fallback <encoding>] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "find",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The matches of a text, an escaped text or a regular expression in a file or in a folder's files (Notepad++-style filters, sub-folders, hidden folders; binary files skipped) with their line and column (at most 10 000 listed); changes nothing",
+        "usage": "jarak find <file|folder> <text> [--extended|--regex] [--match-case] [--whole-word] [--dot-all] [--count] [--filters <filters>] [--no-subfolders] [--hidden] [--fallback <encoding>] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "destructive",
+        "name": "replace",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": true,
+        "summary": "Replace in Files: --dry-run lists every change and writes nothing; with --yes each file is checked against the plan, its original bytes journaled, and saved atomically in its own encoding, byte-order mark and line endings; lossy, binary and unencodable files are skipped",
+        "usage": "jarak replace <file|folder> <text> <with> [--extended|--regex] [--match-case] [--whole-word] [--dot-all] [--filters <filters>] [--no-subfolders] [--hidden] [--fallback <encoding>] [--dry-run] [--yes] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "export",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Exports locally: highlighted text as HTML or RTF, a Markdown document rendered as HTML with its images embedded (or linked), or published to a folder with copies of its images, or PDF through Microsoft Print to PDF (--to pdf); nothing is fetched or uploaded; the document is never changed and an existing output is replaced only with --overwrite",
+        "usage": "jarak export <file> --output <path> [--to html|rtf|folder|pdf] [--line-numbers] [--linked] [--source] [--overwrite] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "print",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Prints with the print settings on the default printer or --printer (a Markdown document rendered, other text highlighted); a printer that writes a file (Microsoft Print to PDF) needs --output; no dialog ever opens; --dry-run lays out the pages and prints nothing",
+        "usage": "jarak print <file> [--printer <name>] [--output <file>] [--pages <a-b>] [--overwrite] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "printers",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The printers Windows knows, the default one and those that write a file; changes nothing",
+        "usage": "jarak printers [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "new",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Creates a text file, never replacing one, in an encoding and line endings (the new-document settings by default); a character the encoding cannot hold is refused",
+        "usage": "jarak new <file> [--encoding <name>] [--eol crlf|lf|cr] [--text <text>] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "convert",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Saves a file again in another encoding and/or line endings, atomically; a character the encoding cannot hold is refused and named; a file Jarak opens read-only is refused",
+        "usage": "jarak convert <file> [--encoding <name>] [--eol crlf|lf|cr] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "session.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The documents of the saved session, its views, workspace and recent files; changes nothing",
+        "usage": "jarak session list [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "assets.add",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Copies a local image into the Markdown document's assets folder under a new name (never replacing a file) and inserts its reference on a line of its own; the document is saved atomically in its own encoding and line endings",
+        "usage": "jarak assets add <doc.md> <image> [--line <n>] [--alt <text>] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "interop.invoke",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Runs one Kim interop capability Jarak provides through the matching command (docs/INTEROP.md)",
+        "usage": "jarak interop invoke --json --no-input (stdin: one kim.interop.request)"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "debug-info",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Jarak's version, programs, folders, files and the Windows build, for a bug report (no file contents); changes nothing",
+        "usage": "jarak debug-info [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "journal.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The Replace in Files batches kept for undo (the newest 20), with their files; changes nothing",
+        "usage": "jarak journal list [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "destructive",
+        "name": "journal.undo",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": true,
+        "summary": "Gives the files of a Replace in Files batch their original bytes back, leaving any file changed since the batch as it is",
+        "usage": "jarak journal undo <batch> [--dry-run] [--yes] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "assets.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The images a Markdown document refers to (found, missing, remote, outside its folder) and the files in its assets folder no Markdown file there refers to; changes and deletes nothing",
+        "usage": "jarak assets list <doc.md> [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "assets.rename",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Renames an image asset of a Markdown document and rewrites the document's references to it (encoding and line endings kept); never replaces a file and refuses an asset other documents in the folder use",
+        "usage": "jarak assets rename <doc.md> <asset> <new-name> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "settings.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Every setting of settings.toml (or one section's) with its value, its default and what values it takes; changes nothing",
+        "usage": "jarak settings list [<section>] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "settings.get",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "One setting's value (the default when the file does not set it, or sets a value it does not take); changes nothing",
+        "usage": "jarak settings get <key> [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "settings.set",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Checks the value against the setting and writes it into settings.toml atomically, keeping the file's other lines; a running window applies it when it gets the focus",
+        "usage": "jarak settings set <key> <value> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "settings.reset",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Removes the setting's line from settings.toml, so its default applies",
+        "usage": "jarak settings reset <key> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "hotkeys.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Every remappable command with its keys (the user's or the defaults), where they come from and conflicts (the shared hotkey contract); changes nothing",
+        "usage": "jarak hotkeys list [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "hotkeys.show",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "One command's keys and conflicts; changes nothing",
+        "usage": "jarak hotkeys show <action> [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "hotkeys.set",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Gives a command these keys in hotkeys.json (checked by the hotkey contract: syntax, reserved keys, conflicts — another of the user's bindings only with --replace); written atomically",
+        "usage": "jarak hotkeys set <action> <keys>... [--replace] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "hotkeys.disable",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The command gets no keys (hotkeys.json)",
+        "usage": "jarak hotkeys disable <action> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "hotkeys.reset",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The command's default keys again (its override leaves hotkeys.json)",
+        "usage": "jarak hotkeys reset <action> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "hotkeys.check",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Conflicts of Jarak's shortcuts with each other and with keys Windows, Kim and the input method reserve; changes nothing",
+        "usage": "jarak hotkeys check [--json]"
+      }
+    ],
+    "implementation": "placeholder",
+    "json_schema_version": 1,
+    "provides": [
+      {
+        "effect": "read",
+        "id": "document.info",
+        "network": false,
+        "opens_window": false,
+        "summary": "A text file's encoding, byte-order mark, line endings, lines, language and whether Jarak opens it read-only (params: path)",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "read",
+        "id": "text.find",
+        "network": false,
+        "opens_window": false,
+        "summary": "Find text in a file or a folder (params: path, text, regex, match_case, whole_word); every hit with its line and column",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "write",
+        "id": "document.export",
+        "network": false,
+        "opens_window": false,
+        "summary": "Export a document as HTML, RTF, a published folder or PDF (params: path, output, format, overwrite); nothing remote is fetched and the document is never changed",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "write",
+        "id": "markdown.insert-image",
+        "network": false,
+        "opens_window": false,
+        "summary": "Copy a local image into a Markdown document's assets folder (never replacing a file) and insert its reference at a line or at the end (params: document, image, line, alt)",
+        "version": "1.0.0"
+      },
+      {
+        "effect": "write",
+        "id": "document.open",
+        "network": false,
+        "opens_window": true,
+        "summary": "Open a file in Jarak's window at a line and column (params: path, line, column); the running window takes it",
+        "version": "1.0.0"
+      }
+    ],
+    "schema": "kim.capabilities",
+    "schema_version": 1,
+    "summary": "Pre-alpha (Step 91): the headless CLI (file inspection, image assets of Markdown documents) and the editor window (editing, files, Markdown preview, Ctrl+V images)",
+    "tool": "jarak",
+    "version": "0.0.29"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

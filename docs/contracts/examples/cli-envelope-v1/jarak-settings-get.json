@@ -1,0 +1,12 @@
+{
+  "command": "settings.get",
+  "data": {
+    "default": "4",
+    "is_default": true,
+    "key": "tab_width",
+    "value": "4"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

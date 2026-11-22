@@ -10,8 +10,13 @@ const HELP: &str = "\
 jarak-gui: Jarak's editor window.
 
 Usage: jarak-gui [<file>[:<line>[:<column>]]...] [--new-window] [--lang en|ko]
+                 [--language <name>] [--read-only] [--session <file>] [--no-session]
 
 A running Jarak window takes the files instead (no second window) unless --new-window is given.
+  --language <name>  The files after it open in that language (Rust, Markdown, …)
+  --read-only        The files after it open read-only
+  --session <file>   Opens a saved session's documents too
+  --no-session       Starts without the last session and does not save one at exit
 Use `jarak` for the command line (`jarak --help`).
 ";
 
@@ -110,6 +115,7 @@ fn main() -> ExitCode {
     let mut new_window = false;
     let mut lang = None;
     let mut tag: Option<String> = None;
+    let mut no_session = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -134,6 +140,18 @@ fn main() -> ExitCode {
                 i += 1;
                 tag = args.get(i).cloned();
             }
+            // Step 107: options for the files after them (kept in order: a running window gets
+            // them through the hand-off too).
+            "--language" | "--session" => {
+                files.push(args[i].clone());
+                i += 1;
+                match args.get(i) {
+                    Some(v) => files.push(v.clone()),
+                    None => return ExitCode::from(2),
+                }
+            }
+            "--read-only" => files.push(args[i].clone()),
+            "--no-session" => no_session = true,
             "--" => files.extend(args[i + 1..].iter().cloned()),
             a if a.starts_with("--") => return ExitCode::from(2),
             a => files.push(a.to_string()),
@@ -143,22 +161,46 @@ fn main() -> ExitCode {
         }
         i += 1;
     }
-    run(&files, new_window, lang, tag.as_deref())
+    run(&files, new_window, lang, tag.as_deref(), no_session)
 }
 
-/// Absolute targets, so the running window resolves them against the right folder.
+/// Absolute targets, so the running window resolves them against the right folder; the options
+/// (`--language <name>`, `--read-only`, `--session <file>`) stay where they are.
 fn absolute_args(files: &[String]) -> Vec<String> {
-    files
-        .iter()
-        .filter_map(|a| jarak_core::target::OpenTarget::parse(a))
-        .map(|t| {
-            jarak_core::target::OpenTarget {
-                path: std::path::absolute(&t.path).unwrap_or(t.path.clone()),
-                ..t
+    let mut out = Vec::new();
+    let mut it = files.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--read-only" => out.push(a.clone()),
+            "--language" => {
+                out.push(a.clone());
+                out.extend(it.next().cloned());
             }
-            .to_arg()
-        })
-        .collect()
+            "--session" => {
+                out.push(a.clone());
+                if let Some(p) = it.next() {
+                    out.push(
+                        std::path::absolute(p)
+                            .unwrap_or_else(|_| p.into())
+                            .display()
+                            .to_string(),
+                    );
+                }
+            }
+            _ => {
+                if let Some(t) = jarak_core::target::OpenTarget::parse(a) {
+                    out.push(
+                        jarak_core::target::OpenTarget {
+                            path: std::path::absolute(&t.path).unwrap_or(t.path.clone()),
+                            ..t
+                        }
+                        .to_arg(),
+                    );
+                }
+            }
+        }
+    }
+    out
 }
 
 #[cfg(windows)]
@@ -167,6 +209,7 @@ fn run(
     new_window: bool,
     lang: Option<kim_design::Lang>,
     tag: Option<&str>,
+    no_session: bool,
 ) -> ExitCode {
     use eframe::egui;
     use jarak_gui::{Incoming, JarakApp, handoff};
@@ -291,12 +334,15 @@ fn run(
                     app = app.with_journal(p.journal_dir());
                 }
                 if with_session {
-                    let restore = jarak_gui::read_setting(&p.settings_file(), "restore_session")
-                        .is_none_or(|v| v != "false");
+                    let restore = !no_session
+                        && jarak_gui::read_setting(&p.settings_file(), "restore_session")
+                            .is_none_or(|v| v != "false");
                     app = app.with_session(jarak_gui::sessions::SessionFiles {
                         file: p.session_file(),
                         recovery: p.recovery_dir(),
                         restore,
+                        // Step 107 (HELP-05): --no-session leaves the saved session as it is.
+                        save: !no_session,
                     });
                     app.open_args(&files);
                     // Step 104: recovery snapshots of unsaved documents, and the offer of the

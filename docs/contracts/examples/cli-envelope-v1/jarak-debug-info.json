@@ -1,0 +1,33 @@
+{
+  "command": "debug-info",
+  "data": {
+    "arch": "x86_64",
+    "cli_contract": 1,
+    "exe": "C:\\Users\\me\\AppData\\Local\\mouv\\kim\\tools\\jarak\\0.0.1\\jarak.exe",
+    "gui": "C:\\Users\\me\\AppData\\Local\\mouv\\kim\\tools\\jarak\\0.0.1\\jarak-gui.exe",
+    "hotkeys": {
+      "exists": false,
+      "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\hotkeys.json"
+    },
+    "languages": {
+      "exists": false,
+      "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\languages"
+    },
+    "os": "windows",
+    "printers": 4,
+    "session": {
+      "exists": false,
+      "path": "C:\\Users\\me\\AppData\\Local\\mouv\\jarak\\session.json"
+    },
+    "settings": {
+      "exists": false,
+      "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\settings.toml"
+    },
+    "tool": "jarak",
+    "version": "0.0.29",
+    "windows_build": "10.0.19041"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

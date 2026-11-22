@@ -77,6 +77,8 @@ pub enum Run {
     /// Step 106: `JarakApp::export_tool` 0–5 (export as HTML, as RTF, publish to a folder, copy
     /// as HTML, copy as RTF, export as PDF).
     Export(u8),
+    /// Step 107 (HELP-10): the debug information to the clipboard.
+    DebugInfo,
 }
 
 /// The menu an entry belongs to.
@@ -1617,6 +1619,13 @@ pub fn entries() -> Vec<Entry> {
             "바로 인쇄(기본 프린터)",
             Action::PrintNow,
             M::File,
+        ),
+        run(
+            "window.debug-info",
+            "Copy debug info (versions, Windows, files)",
+            "디버그 정보 복사(버전, Windows, 파일)",
+            Run::DebugInfo,
+            M::Window,
         ),
         run(
             "file.export-pdf",

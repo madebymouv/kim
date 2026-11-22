@@ -1,0 +1,14 @@
+{
+  "command": "new",
+  "data": {
+    "bytes": 13,
+    "dry_run": false,
+    "encoding": "UTF-8 BOM",
+    "eol": "lf",
+    "path": "C:\\Users\\me\\Documents\\new.txt",
+    "written": true
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

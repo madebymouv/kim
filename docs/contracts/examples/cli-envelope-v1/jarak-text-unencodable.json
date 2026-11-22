@@ -1,0 +1,12 @@
+{
+  "command": "convert",
+  "error": {
+    "code": "text_unencodable",
+    "details": [],
+    "exit_code": 7,
+    "hint": null,
+    "message": "windows-1252 cannot hold `한` (line 1, column 1); nothing was written"
+  },
+  "ok": false,
+  "schema_version": 1
+}

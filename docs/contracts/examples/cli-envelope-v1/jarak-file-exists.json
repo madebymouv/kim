@@ -1,0 +1,12 @@
+{
+  "command": "new",
+  "error": {
+    "code": "file_exists",
+    "details": [],
+    "exit_code": 7,
+    "hint": "`jarak convert` changes an existing file's encoding",
+    "message": "C:\\Users\\me\\Documents\\new.txt already exists; nothing was written"
+  },
+  "ok": false,
+  "schema_version": 1
+}

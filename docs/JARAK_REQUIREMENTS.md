@@ -59,7 +59,10 @@ hotkey contract, `jarak hotkeys`; [JARAK_SETTINGS](JARAK_SETTINGS.md)); Step 106
 `JARAK-FR-140` and `JARAK-FR-141` (exports, publishing, Copy as HTML / RTF, printing through the
 Windows print dialog and GDI, PDF through Microsoft Print to PDF, `jarak export`, `jarak print`,
 `jarak printers`; [JARAK_EXPORT](JARAK_EXPORT.md); the real print dialog is still to be opened on
-the desktop);
+the desktop); Step 107 implements `JARAK-FR-150` and `JARAK-FR-151` (the headless command line with
+golden examples, `new`, `convert`, `session list`, `assets add`, `debug-info`, the window's
+command-line options, the interop capabilities for Kim and Ddalgak; [JARAK_CLI](JARAK_CLI.md); the
+desktop demonstrations with Subak and Noeul are still to be done);
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

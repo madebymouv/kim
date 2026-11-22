@@ -41,6 +41,37 @@ fn comment_tokens(l: &Lang) -> (Option<String>, Option<(String, String)>) {
 }
 
 impl JarakApp {
+    /// Step 107 (`--language <name>`): the active document in the language called `name` (any
+    /// case; the user's languages first); an unknown name says so and changes nothing.
+    pub fn choose_language_named(&mut self, name: &str) {
+        let found = self
+            .user_langs
+            .iter()
+            .find(|l| l.name.eq_ignore_ascii_case(name))
+            .map(|l| l.name.clone())
+            .or_else(|| syntax::builtin(name).map(|l| l.name.clone()));
+        match found {
+            Some(n) => {
+                let i = self.active;
+                if let Some(t) = self.tabs.get_mut(i) {
+                    t.lang_choice = LangChoice::Named(n);
+                }
+            }
+            None if name.eq_ignore_ascii_case("text") || name.eq_ignore_ascii_case("plain") => {
+                let i = self.active;
+                if let Some(t) = self.tabs.get_mut(i) {
+                    t.lang_choice = LangChoice::Plain;
+                }
+            }
+            None => {
+                self.message = Some(format!(
+                    "{} `{name}`",
+                    self.t("No language called", "이런 이름의 언어가 없습니다:")
+                ));
+            }
+        }
+    }
+
     /// The language of tab `i`: the chosen one, none (plain text) or the detected one.
     pub fn lang_for(&self, i: usize) -> Option<&Lang> {
         let t = self.tabs.get(i)?;

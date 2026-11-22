@@ -1,0 +1,15 @@
+{
+  "command": "paths",
+  "data": {
+    "config": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak",
+    "hotkeys": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\hotkeys.json",
+    "journal": "C:\\Users\\me\\AppData\\Local\\mouv\\jarak\\replace-journal",
+    "local": "C:\\Users\\me\\AppData\\Local\\mouv\\jarak",
+    "recovery": "C:\\Users\\me\\AppData\\Local\\mouv\\jarak\\recovery",
+    "session": "C:\\Users\\me\\AppData\\Local\\mouv\\jarak\\session.json",
+    "settings": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\settings.toml"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

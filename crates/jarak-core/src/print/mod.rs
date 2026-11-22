@@ -1415,6 +1415,19 @@ impl Printers for RecordingPrinters {
     }
 }
 
+/// Today's local date (year, month, day), as asset names use it.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn local_date() -> (i32, u32, u32) {
+    // SAFETY: GetLocalTime fills the structure it is given.
+    let t = unsafe {
+        let mut t: windows_sys::Win32::Foundation::SYSTEMTIME = std::mem::zeroed();
+        windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut t);
+        t
+    };
+    (i32::from(t.wYear), u32::from(t.wMonth), u32::from(t.wDay))
+}
+
 /// Today's local date and time as `yyyy-MM-dd` and `HH:mm`.
 #[cfg(windows)]
 #[allow(unsafe_code)]

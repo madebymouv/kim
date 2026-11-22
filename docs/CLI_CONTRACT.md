@@ -191,7 +191,7 @@ Since Step 35 the `sftp`, `transfer` and `ssh connect` forwarding options
 | `remote_error` | 1 | The SSH server refused an SFTP operation (no such file, permission denied, a failure); `details` carry its status name. |
 | `unsafe_path` | 4 | The server listed a file name that is not safe as a local name (`..`, a separator or drive, a Windows device name); nothing was transferred. |
 | `ssh_failed` | 6 | ssh could not connect, verify the host key (transfers never trust a new host), or authenticate, or the connection broke off; the message carries ssh's own words. |
-| `file_exists` | 7 | The destination of a transfer or `sftp mkdir` already exists; pass `--overwrite` or `--resume`. Nothing was changed. |
+| `file_exists` | 7 | The destination of a transfer or `sftp mkdir` already exists; pass `--overwrite` or `--resume`. Nothing was changed. Step 107: `jarak new` of a file that exists (never replaced). |
 | `port_in_use` | 7 | A local port of `--forward` is already taken; nothing was started. |
 
 **Noeul codes** (Step 49 foundation: the resident instance, Noeul IPC v1, region pins requested
@@ -356,10 +356,12 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `asset_not_found` | 3 | Step 91: `jarak assets rename` of an asset the document does not refer to, or whose file does not exist. Nothing was changed. |
 | `asset_exists` | 7 | Step 91: a file with the new name exists; it is never replaced. Nothing was changed. |
 | `asset_shared` | 7 | Step 91: other Markdown files of the folder refer to the asset too; `details` list them (`{"document": …}`). Nothing was changed. |
-| `document_read_only` | 7 | Step 91: the document opens read-only in Jarak (binary, or an encoding that cannot reproduce every byte), so its references are not rewritten. Nothing was changed. |
+| `document_read_only` | 7 | Step 91: the document opens read-only in Jarak (binary, or an encoding that cannot reproduce every byte), so its references are not rewritten. Nothing was changed. Step 107: also `jarak convert` and `jarak assets add` of such a document. |
 | `reference_unlocated` | 7 | Step 91: a reference to the asset cannot be located exactly in the text (rename it by hand). Nothing was changed. |
 | `batch_not_found` | 3 | Step 95: `jarak journal undo` of a batch the journal does not hold (`jarak journal list`). Nothing was changed. |
 | `setting_not_found` | 3 | Step 105: `jarak settings get/set/reset` of a key that is not a setting (`jarak settings list` names them). Nothing was changed. |
+| `text_unencodable` | 7 | Step 107: `jarak new` or `jarak convert` (or `assets add`) would need a character the target encoding cannot hold (named with its line and column); nothing was written. |
+| `session_invalid` | 4 | Step 107: `jarak session list` found a session file that is not a valid `jarak-session-v1` document (the window keeps it as `session.json.broken` and uses its backup). |
 | `export_exists` | 7 | Step 106: `jarak export` would replace files that exist (`details` lists them); pass `--overwrite`. Nothing was written. |
 | `printer_not_found` | 3 | Step 106: `jarak print --printer` (or `jarak export --to pdf`) names a printer Windows does not have, or there is no default printer; `jarak printers` lists them. Nothing was printed. |
 | `print_failed` | 1 | Step 106: the printer or the spooler refused the job (it could not start, a page failed, or the PDF was not written within 60 s). |
@@ -395,6 +397,19 @@ writes a file needs `--output` (`usage`: it would ask, and the CLI never asks); 
 is `printer_not_found` (exit 3); a spooler failure `print_failed` (exit 1). `jarak printers` reads.
 Examples: `jarak-export.json`, `jarak-export-exists.json`, `jarak-export-folder-dry-run.json`,
 `jarak-printers.json`, `jarak-print-dry-run.json`, `jarak-printer-not-found.json`.
+
+Step 107 ([JARAK_CLI](JARAK_CLI.md)): `jarak new <file> [--encoding] [--eol] [--text]` (`write`,
+never replacing a file: `file_exists`), `jarak convert <file> [--encoding] [--eol]` (`write`,
+atomic, never lossy: `text_unencodable`; a read-only document: `document_read_only`),
+`jarak session list` (`read`; `session_invalid`), `jarak assets add <doc.md> <image> [--line]
+[--alt]` (`write`), `jarak debug-info` (`read`), `jarak interop invoke` (the capabilities Jarak
+provides, §9 and [INTEROP](INTEROP.md)), and `jarak open --language <name> --read-only`. Every
+command has a golden example (`jarak-*.json`; a test checks it): among them `jarak-version.json`,
+`jarak-capabilities.json`, `jarak-paths.json`, `jarak-debug-info.json`, `jarak-info.json`,
+`jarak-open-dry-run.json`, `jarak-new.json`, `jarak-file-exists.json`,
+`jarak-convert-dry-run.json`, `jarak-text-unencodable.json`, `jarak-session-list.json`,
+`jarak-assets-add-dry-run.json`, `jarak-interop-invoke.json`,
+`jarak-interop-capability-missing.json`, the settings and hotkeys commands.
 
 Step 105: `jarak settings list [<section>] | get <key> | set <key> <value> | reset <key>` read and
 write `%APPDATA%\mouv\jarak\settings.toml` (the registry of [JARAK_SETTINGS](JARAK_SETTINGS.md),

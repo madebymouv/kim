@@ -1,0 +1,16 @@
+{
+  "command": "assets.add",
+  "data": {
+    "asset": "C:\\Users\\me\\Documents\\assets\\notes-20261122-001.png",
+    "document": "C:\\Users\\me\\Documents\\notes.md",
+    "dry_run": true,
+    "image": "C:\\Users\\me\\Documents\\capture.png",
+    "line": 4,
+    "reference": "assets/notes-20261122-001.png",
+    "text": "![capture](assets/notes-20261122-001.png)",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

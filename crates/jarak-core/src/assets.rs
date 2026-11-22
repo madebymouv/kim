@@ -138,6 +138,188 @@ pub fn write_new_in(
     ))
 }
 
+/// Step 107: the name [`write_new_in`] would give the next image (nothing is written).
+pub fn plan_new_in(doc: &Path, dir: &str, ext: &str, date: (i32, u32, u32)) -> io::Result<Asset> {
+    if dir.is_empty() || dir.contains(['/', '\\', ':']) || dir.starts_with('.') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("not a plain folder name: {dir}"),
+        ));
+    }
+    let folder = doc
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "the document has no folder"))?;
+    let stem = portable_stem(
+        &doc.file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default(),
+    );
+    let (y, m, d) = date;
+    for n in 1..=MAX_PER_DAY {
+        let name = format!("{stem}-{y:04}{m:02}{d:02}-{n:03}.{ext}");
+        let path = folder.join(dir).join(&name);
+        if !path.exists() {
+            return Ok(Asset {
+                path,
+                reference: format!("{dir}/{name}"),
+            });
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!("{MAX_PER_DAY} images for this document today already"),
+    ))
+}
+
+/// Step 107: an image added to a Markdown document (or planned, in a dry run).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Added {
+    pub asset: Asset,
+    /// The 1-based line the reference is on.
+    pub line: usize,
+    /// The inserted line (without its line ending).
+    pub text: String,
+}
+
+/// Why an image was not added; nothing was changed.
+#[derive(Debug)]
+pub enum AddError {
+    NotMarkdown,
+    NotAnImage(String),
+    /// The document opens read-only in Jarak (binary, or an encoding that cannot reproduce it).
+    ReadOnly(String),
+    Open(crate::file::OpenError),
+    Save(crate::file::SaveError),
+    Io(io::Error),
+}
+
+impl std::fmt::Display for AddError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AddError::NotMarkdown => write!(f, "images are added to Markdown documents (.md)"),
+            AddError::NotAnImage(why) => write!(f, "{why}"),
+            AddError::ReadOnly(why) => write!(f, "the document opens read-only: {why}"),
+            AddError::Open(e) => write!(f, "{e}"),
+            AddError::Save(e) => write!(f, "{e}"),
+            AddError::Io(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+/// The largest image [`add_image`] copies.
+pub const MAX_ADD_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Step 107 (`JARAK-FR-151`): copies the local image `image` into the folder `dir` next to the
+/// Markdown document `doc` under a new name (never replacing a file) and inserts
+/// `![alt](reference)` as a line of its own before line `line` (1-based; at the end without one or
+/// past the end); the document is saved atomically in its own encoding and line endings. A dry run
+/// plans both and writes nothing. When the document cannot be saved, the image this call copied is
+/// removed again (only that file).
+pub fn add_image(
+    doc: &Path,
+    image: &Path,
+    line: Option<usize>,
+    alt: &str,
+    dir: &str,
+    date: (i32, u32, u32),
+    dry_run: bool,
+) -> Result<Added, AddError> {
+    use crate::file::{self, FileDocument};
+    if !crate::markdown::is_markdown_path(doc) {
+        return Err(AddError::NotMarkdown);
+    }
+    let meta = std::fs::metadata(image).map_err(AddError::Io)?;
+    if !meta.is_file() {
+        return Err(AddError::NotAnImage(format!(
+            "{} is not a file",
+            image.display()
+        )));
+    }
+    if meta.len() > MAX_ADD_BYTES {
+        return Err(AddError::NotAnImage(format!(
+            "{} has more than 64 MiB",
+            image.display()
+        )));
+    }
+    let Some(ext) = image_format(&file_head(image)) else {
+        return Err(AddError::NotAnImage(format!(
+            "{} is not an image Jarak knows (PNG, JPEG, GIF, BMP, WebP)",
+            image.display()
+        )));
+    };
+    let ext = if ext == "jpeg" { "jpg" } else { ext };
+    let mut f = FileDocument::open(doc, file::system_encoding(), file::DEFAULT_SIZE_LIMIT)
+        .map_err(AddError::Open)?;
+    if f.read_only {
+        return Err(AddError::ReadOnly(
+            f.read_only_reason.clone().unwrap_or_default(),
+        ));
+    }
+    let planned = plan_new_in(doc, dir, ext, date).map_err(AddError::Io)?;
+    let alt: String = alt
+        .chars()
+        .filter(|c| !matches!(c, '[' | ']' | '\r' | '\n'))
+        .collect();
+    let eol = f.doc.eol.as_str();
+    let text = f.doc.text().clone();
+    let lines = text.len_lines();
+    // Where the new line goes, and whether the document lacks a final line break there.
+    let target = line.map_or(lines, |l| l.saturating_sub(1)).min(lines);
+    let ends_with_break = {
+        let n = text.len_chars();
+        n == 0 || matches!(text.char(n - 1), '\n' | '\r')
+    };
+    let (at, insert, shown_line) =
+        if target >= lines || (target == lines - 1 && !ends_with_break && line.is_none()) {
+            // At the end.
+            let n = text.len_chars();
+            let lead = if ends_with_break { "" } else { eol };
+            let shown = if n == 0 {
+                1
+            } else if ends_with_break {
+                lines
+            } else {
+                lines + 1
+            };
+            (
+                n,
+                format!("{lead}![{alt}]({}){eol}", planned.reference),
+                shown,
+            )
+        } else {
+            (
+                text.line_to_char(target),
+                format!("![{alt}]({}){eol}", planned.reference),
+                target + 1,
+            )
+        };
+    let line_text = format!("![{alt}]({})", planned.reference);
+    if dry_run {
+        return Ok(Added {
+            asset: planned,
+            line: shown_line,
+            text: line_text,
+        });
+    }
+    let bytes = std::fs::read(image).map_err(AddError::Io)?;
+    let asset = write_new_in(doc, dir, ext, date, &bytes).map_err(AddError::Io)?;
+    // The name may differ from the plan if another program took it meanwhile.
+    let insert = insert.replace(&planned.reference, &asset.reference);
+    let line_text = line_text.replace(&planned.reference, &asset.reference);
+    f.doc.replace(vec![(at, at, insert)], None);
+    if let Err(e) = f.save() {
+        // Only the file this call wrote is removed.
+        let _ = std::fs::remove_file(&asset.path);
+        return Err(AddError::Save(e));
+    }
+    Ok(Added {
+        asset,
+        line: shown_line,
+        text: line_text,
+    })
+}
+
 /// The file a relative reference in the document at `doc` points to, when it stays inside the
 /// document's folder (`..` and absolute references are not followed; remote ones are not files).
 pub fn resolve(doc: &Path, reference: &str) -> Option<PathBuf> {
@@ -649,6 +831,55 @@ pub fn move_no_replace(from: &Path, to: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Step 107: an image is copied under a new name and referenced on its own line, in the
+    /// document's line endings; a dry run writes nothing; a text file or a non-image is refused.
+    #[test]
+    fn an_added_image_is_copied_and_referenced() {
+        let d = std::env::temp_dir().join(format!("jarak-add-image-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0";
+        let img = d.join("capture.png");
+        std::fs::write(&img, png).unwrap();
+        let doc = d.join("note.md");
+        std::fs::write(&doc, "# Note\r\n\r\nend").unwrap();
+        let date = (2026, 11, 22);
+        let dry = add_image(&doc, &img, None, "shot", ASSET_DIR, date, true).unwrap();
+        assert_eq!(dry.asset.reference, "assets/note-20261122-001.png");
+        assert_eq!(dry.line, 4);
+        assert!(!d.join("assets").exists(), "a dry run writes nothing");
+        assert_eq!(std::fs::read_to_string(&doc).unwrap(), "# Note\r\n\r\nend");
+        let a = add_image(&doc, &img, None, "shot", ASSET_DIR, date, false).unwrap();
+        assert_eq!(a.text, "![shot](assets/note-20261122-001.png)");
+        assert_eq!(
+            std::fs::read_to_string(&doc).unwrap(),
+            "# Note\r\n\r\nend\r\n![shot](assets/note-20261122-001.png)\r\n"
+        );
+        assert_eq!(std::fs::read(&a.asset.path).unwrap(), png);
+        let b = add_image(&doc, &img, Some(2), "", ASSET_DIR, date, false).unwrap();
+        assert_eq!(
+            b.asset.reference, "assets/note-20261122-002.png",
+            "never replaced"
+        );
+        assert_eq!(b.line, 2);
+        assert!(
+            std::fs::read_to_string(&doc)
+                .unwrap()
+                .starts_with("# Note\r\n![](assets/note-20261122-002.png)\r\n\r\nend")
+        );
+        let txt = d.join("a.txt");
+        std::fs::write(&txt, "x").unwrap();
+        assert!(matches!(
+            add_image(&txt, &img, None, "", ASSET_DIR, date, false),
+            Err(AddError::NotMarkdown)
+        ));
+        assert!(matches!(
+            add_image(&doc, &txt, None, "", ASSET_DIR, date, false),
+            Err(AddError::NotAnImage(_))
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn temp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("jarak-assets-{name}-{}", std::process::id()));

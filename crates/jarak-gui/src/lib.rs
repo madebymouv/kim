@@ -1046,6 +1046,19 @@ impl JarakApp {
             palette::Run::Binary(k) => self.binary_tool(k),
             palette::Run::Disk(k) => self.disk_tool(k),
             palette::Run::Export(k) => self.export_tool(k),
+            palette::Run::DebugInfo => {
+                let text = jarak_core::about::debug_text("jarak-gui");
+                self.message = Some(if self.clipboard.set_text(&text) {
+                    self.t("Debug info copied", "디버그 정보를 복사했습니다")
+                        .into()
+                } else {
+                    self.t(
+                        "The clipboard is busy; nothing was copied",
+                        "클립보드를 쓸 수 없어 복사하지 않았습니다",
+                    )
+                    .into()
+                });
+            }
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -2238,11 +2251,50 @@ fn main() {
     }
 
     /// Opens the files named by `path[:line[:column]]` arguments (an open file is shown again,
-    /// a missing one becomes a new document created on the first save).
+    /// a missing one becomes a new document created on the first save). Step 107: `--language
+    /// <name>` and `--read-only` apply to the files after them (HELP-03, HELP-04), `--session
+    /// <file>` opens a saved session's documents (HELP-05).
     pub fn open_args(&mut self, args: &[String]) {
-        for a in args {
+        let mut language: Option<String> = None;
+        let mut read_only = false;
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            match a.as_str() {
+                "--language" => {
+                    language = it.next().cloned();
+                    continue;
+                }
+                "--read-only" => {
+                    read_only = true;
+                    continue;
+                }
+                "--session" => {
+                    if let Some(p) = it.next() {
+                        self.open_session_file(Path::new(p));
+                    }
+                    continue;
+                }
+                "--new-window" => continue,
+                _ => {}
+            }
             if let Some(t) = OpenTarget::parse(a) {
+                let before = self.tabs.len();
                 self.open_target(&t);
+                let opened = t.path.is_file() || self.tabs.len() > before;
+                if !opened || t.path.is_dir() {
+                    continue;
+                }
+                if let Some(l) = &language {
+                    self.choose_language_named(l);
+                }
+                if read_only {
+                    let reason = self
+                        .t("opened with --read-only", "--read-only로 열었습니다")
+                        .to_string();
+                    let tab = self.tab_mut();
+                    tab.file.read_only = true;
+                    tab.file.read_only_reason = Some(reason);
+                }
             }
         }
     }

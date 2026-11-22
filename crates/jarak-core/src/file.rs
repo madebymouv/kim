@@ -236,6 +236,25 @@ pub struct Format {
 }
 
 impl Format {
+    /// Step 107 (`jarak new` / `jarak convert --encoding`): `utf-8`, `utf-8-bom`, `utf-16le` and
+    /// `utf-16be` (with their byte-order marks), `ansi` (the system's code page) or a label such as
+    /// `euc-kr`, `windows-1252`, `shift_jis`.
+    pub fn from_name(name: &str) -> Option<Format> {
+        let n = name.trim().to_ascii_lowercase();
+        let f = |encoding, bom| Some(Format { encoding, bom });
+        match n.as_str() {
+            "utf-8" | "utf8" => f(TextEncoding::Utf8, false),
+            "utf-8-bom" | "utf8-bom" | "utf-8 bom" => f(TextEncoding::Utf8, true),
+            "utf-16le" | "utf-16" | "utf-16 le" => f(TextEncoding::Utf16Le, true),
+            "utf-16be" | "utf-16 be" => f(TextEncoding::Utf16Be, true),
+            "ansi" => f(system_encoding(), false),
+            other => encoding_for_label(other).map(|encoding| Format {
+                encoding,
+                bom: false,
+            }),
+        }
+    }
+
     pub fn utf8() -> Format {
         Format {
             encoding: TextEncoding::Utf8,

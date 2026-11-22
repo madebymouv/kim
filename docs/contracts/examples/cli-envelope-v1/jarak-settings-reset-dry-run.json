@@ -1,0 +1,14 @@
+{
+  "command": "settings.reset",
+  "data": {
+    "changed": false,
+    "dry_run": true,
+    "file": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\settings.toml",
+    "key": "tab_width",
+    "previous": "4",
+    "value": "4"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

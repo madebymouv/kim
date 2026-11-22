@@ -1,0 +1,25 @@
+{
+  "command": "info",
+  "data": {
+    "binary": false,
+    "bom": false,
+    "chars": 18,
+    "encoding": "utf-8",
+    "eol": "crlf",
+    "eol_counts": {
+      "cr": 0,
+      "crlf": 3,
+      "lf": 0
+    },
+    "fallback": "EUC-KR",
+    "label": "UTF-8",
+    "lines": 3,
+    "lossless": true,
+    "path": "C:\\Users\\me\\Documents\\notes.md",
+    "read_only": false,
+    "size": 18
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

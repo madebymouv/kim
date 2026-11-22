@@ -90,8 +90,13 @@ check their own limits as well (Subak never starts a program of the caller's cho
 | `rules.list` | 1.0.0 | Ddalgak | read | `{profile?, mode?}` → titles, triggers, step types, states (never typed text, paths or URLs) |
 | `mode.status` | 1.0.0 | Ddalgak | read | — → the active profile's modes and the active one |
 | `mode.set` | 1.0.0 | Ddalgak | write | `{mode}` → the running engine switches mode |
+| `document.info` | 1.0.0 | Jarak | read | `{path}` → encoding, byte-order mark, line endings, lines, language, read-only (`jarak info`) |
+| `text.find` | 1.0.0 | Jarak | read | `{path, text, regex?, match_case?, whole_word?}` → every hit with line and column (`jarak find`) |
+| `document.export` | 1.0.0 | Jarak | write | `{path, output, format?, overwrite?}` → the files written (`jarak export`; HTML, RTF, folder, PDF) |
+| `markdown.insert-image` | 1.0.0 | Jarak | write | `{document, image, line?, alt?}` → the image copied into the note's assets folder and its reference line (`jarak assets add`) |
+| `document.open` | 1.0.0 | Jarak | write, opens a window | `{path, line?, column?}` → the running Jarak window shows it (`jarak open`); needs `--allow-window`, even for `--dry-run` |
 
-Noeul provides since Step 62 ([NOEUL_CLI](NOEUL_CLI.md)); Ddalgak provides since Step 81 and calls through its
+Jarak provides since Step 107 ([JARAK_CLI](JARAK_CLI.md)). Noeul provides since Step 62 ([NOEUL_CLI](NOEUL_CLI.md)); Ddalgak provides since Step 81 and calls through its
 `tool` step since Step 79 ([DDALGAK_MCP](DDALGAK_MCP.md));
 until then the workflows below are run by an agent or a script through `kim tools invoke`.
 
@@ -105,6 +110,15 @@ allowed):
 kim tools invoke terminal.paste-path --allow-write `
     --params '{"target":"claude","path":"C:\\Users\\me\\Pictures\\capture.png"}' --json
 ```
+
+**A Noeul screenshot into a Jarak note** (Step 107): `screen.capture-file` writes the PNG, then
+`kim tools invoke markdown.insert-image --allow-write --params
+'{"document":"C:\\Users\\me\\notes\\day.md","image":"C:\\Users\\me\\Pictures\\shot.png"}'` copies it
+into the note's assets folder and adds its reference; a Ddalgak rule can chain both `tool` steps.
+
+**A file at a line in the running editor** (from a Subak terminal or an agent):
+`jarak open src\main.rs:42`, or `kim tools invoke document.open --allow-write --allow-window
+--params '{"path":"…","line":42}'`.
 
 **A shortcut that opens a Subak Terminal** (a Ddalgak launch rule):
 `kim tools invoke terminal.open --allow-write --params '{"name":"scratch"}' --json`.

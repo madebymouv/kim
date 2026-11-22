@@ -1,0 +1,12 @@
+{
+  "command": "session.list",
+  "data": {
+    "documents": [],
+    "exists": false,
+    "file": "C:\\Users\\me\\AppData\\Local\\mouv\\jarak\\session.json",
+    "recent": []
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

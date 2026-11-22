@@ -1,0 +1,29 @@
+{
+  "command": "hotkeys.show",
+  "data": {
+    "action": {
+      "bindable": true,
+      "bindings": [
+        {
+          "active": true,
+          "keys": "F5",
+          "registration": "not_applicable",
+          "scope": "app",
+          "trigger": "press"
+        }
+      ],
+      "defaults": [
+        "F5"
+      ],
+      "id": "run.dialog",
+      "scope": "app",
+      "source": "default",
+      "title": "Run…"
+    },
+    "conflicts": [],
+    "tool": "jarak"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

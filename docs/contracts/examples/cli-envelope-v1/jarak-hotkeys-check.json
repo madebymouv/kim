@@ -1,0 +1,160 @@
+{
+  "command": "hotkeys.check",
+  "data": {
+    "conflicts": [
+      {
+        "action": "case.sentence",
+        "code": "altgr_collision",
+        "keys": "Ctrl+Alt+U",
+        "message": "Ctrl+Alt+U may block a character typed with AltGr on some keyboard layouts (jarak's \"Sentence case\").",
+        "offers": [
+          {
+            "kind": "disable"
+          },
+          {
+            "kind": "keep"
+          }
+        ],
+        "scope": "app",
+        "severity": "warning",
+        "source": "default",
+        "tool": "jarak",
+        "with": null
+      },
+      {
+        "action": "case.sentence-blend",
+        "code": "altgr_collision",
+        "keys": "Ctrl+Alt+Shift+U",
+        "message": "Ctrl+Alt+Shift+U may block a character typed with AltGr on some keyboard layouts (jarak's \"Sentence case (blend)\").",
+        "offers": [
+          {
+            "kind": "disable"
+          },
+          {
+            "kind": "keep"
+          }
+        ],
+        "scope": "app",
+        "severity": "warning",
+        "source": "default",
+        "tool": "jarak",
+        "with": null
+      },
+      {
+        "action": "edit.complete",
+        "code": "ime_toggle",
+        "keys": "Ctrl+Space",
+        "message": "Ctrl+Space may block switching the input method on some systems (jarak's \"Complete the word\").",
+        "offers": [
+          {
+            "keys": "Ctrl+Alt+Shift+Space",
+            "kind": "rebind"
+          },
+          {
+            "kind": "disable"
+          },
+          {
+            "kind": "keep"
+          }
+        ],
+        "scope": "app",
+        "severity": "warning",
+        "source": "default",
+        "tool": "jarak",
+        "with": null
+      },
+      {
+        "action": "edit.select-braces",
+        "code": "altgr_collision",
+        "keys": "Ctrl+Alt+B",
+        "message": "Ctrl+Alt+B may block a character typed with AltGr on some keyboard layouts (jarak's \"Select everything between the matching brackets\").",
+        "offers": [
+          {
+            "kind": "disable"
+          },
+          {
+            "kind": "keep"
+          }
+        ],
+        "scope": "app",
+        "severity": "warning",
+        "source": "default",
+        "tool": "jarak",
+        "with": null
+      },
+      {
+        "action": "search.incremental",
+        "code": "altgr_collision",
+        "keys": "Ctrl+Alt+I",
+        "message": "Ctrl+Alt+I may block a character typed with AltGr on some keyboard layouts (jarak's \"Incremental search\").",
+        "offers": [
+          {
+            "kind": "disable"
+          },
+          {
+            "kind": "keep"
+          }
+        ],
+        "scope": "app",
+        "severity": "warning",
+        "source": "default",
+        "tool": "jarak",
+        "with": null
+      },
+      {
+        "action": "view.fold-current",
+        "code": "altgr_collision",
+        "keys": "Ctrl+Alt+F",
+        "message": "Ctrl+Alt+F may block a character typed with AltGr on some keyboard layouts (jarak's \"Fold the current level\").",
+        "offers": [
+          {
+            "kind": "disable"
+          },
+          {
+            "kind": "keep"
+          }
+        ],
+        "scope": "app",
+        "severity": "warning",
+        "source": "default",
+        "tool": "jarak",
+        "with": null
+      },
+      {
+        "action": "view.unfold-current",
+        "code": "altgr_collision",
+        "keys": "Ctrl+Alt+Shift+F",
+        "message": "Ctrl+Alt+Shift+F may block a character typed with AltGr on some keyboard layouts (jarak's \"Unfold the current level\").",
+        "offers": [
+          {
+            "kind": "disable"
+          },
+          {
+            "kind": "keep"
+          }
+        ],
+        "scope": "app",
+        "severity": "warning",
+        "source": "default",
+        "tool": "jarak",
+        "with": null
+      }
+    ],
+    "summary": {
+      "errors": 0,
+      "infos": 0,
+      "warnings": 7
+    },
+    "tools": [
+      {
+        "enabled": true,
+        "source": "self",
+        "tool": "jarak",
+        "version": "0.0.29"
+      }
+    ]
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

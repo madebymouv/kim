@@ -1,0 +1,12 @@
+{
+  "command": "interop.invoke",
+  "error": {
+    "code": "capability_missing",
+    "details": [],
+    "exit_code": 5,
+    "hint": null,
+    "message": "Jarak does not provide `pin.list` (`jarak capabilities --json` lists what it does)"
+  },
+  "ok": false,
+  "schema_version": 1
+}

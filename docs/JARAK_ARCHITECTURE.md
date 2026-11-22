@@ -1389,3 +1389,40 @@ printer without `--output`, a dry run on the real Microsoft Print to PDF, `expor
 dialog for a PDF printer, Print now, Export as PDF; no printers; the print settings live). e2e
 `step106_jarak_export.rs` section 5: a real PDF through Microsoft Print to PDF, PASS. Real PDFs of
 both samples were rendered with `Windows.Data.Pdf` and reviewed.
+
+## 29. Headless command line and Kim interoperability (Step 107)
+
+[JARAK_CLI](JARAK_CLI.md) is the user reference.
+
+- `jarak` (CLI): `new` (`file::Format::from_name`, `file::encode` refusing unmappable characters,
+  `create_new` so a file is never replaced), `convert` (`FileDocument` opened, its format changed,
+  `Document::convert_eol`, the bytes encoded first so nothing lossy is written, then the atomic
+  `FileDocument::save`), `session list` (`Session::load`, read-only), `assets add`
+  (`assets::add_image`), `debug-info` (`about::windows_build`, the files' existence), and
+  `open --language/--read-only` (passed to the window as tokens before the files). Global options
+  are checked against their command before anything runs. A test checks that every command of the
+  capabilities document has a golden JSON example.
+- `jarak-core::assets::add_image`: the image checked by its first bytes and size (64 MiB), the
+  document opened as the window would (a read-only one refused), the next free name planned
+  (`plan_new_in`) for a dry run, then copied with `write_new_in` (`create_new`, never replacing)
+  and a Markdown image line (alt text, then the path `assets/…`) inserted as a line of its own in the document's line endings; the
+  document saved atomically; on a failed save only the copied image is removed.
+- `jarak interop invoke` (`crates/jarak/src/interop.rs`): one `kim.interop.request` from stdin
+  (64 KiB at most; schema, capability and interface major checked: `capability_missing`,
+  `tool_incompatible`), then the matching command's own function, so the answer is that command's
+  data and its rules hold (no file replaced without `overwrite`, no window in a dry run). A test
+  keeps `PROVIDES` and `provides` in `capabilities.json` equal. Kim enforces consent (`write`,
+  `opens_window`).
+- `jarak-gui`: `open_args` reads `--language <name>`, `--read-only` and `--session <file>` tokens
+  for the files after them (the first start and every hand-off), `choose_language_named`
+  (`LangChoice::Named`, the user's languages first), read-only with its reason, and
+  `open_session_file`; `main` takes `--no-session` (`SessionFiles { restore: false, save: false }`:
+  the saved session and its untitled texts are left alone). Window → Copy debug info
+  (`about::debug_text`).
+
+Tests: core about 1, assets 1 (`add_image`: dry run, line endings, never replacing, refusals); CLI
+7 more (new, convert, session list, assets add, interop, debug info, the examples); window flows 3
+(language and read-only options, session options, debug info). e2e `step107_jarak_cli_interop.rs`:
+the real commands, and the release `jarak` installed by the debug `kim` from a test-signed
+loopback catalog, its five capabilities found and invoked with Kim's consent rules — PASS on its
+first full run.

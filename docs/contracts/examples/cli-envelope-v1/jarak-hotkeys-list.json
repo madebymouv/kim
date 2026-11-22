@@ -1,0 +1,75 @@
+{
+  "command": "hotkeys.list",
+  "data": {
+    "actions": [
+      {
+        "bindable": true,
+        "bindings": [
+          {
+            "active": true,
+            "keys": "Ctrl+N",
+            "registration": "not_applicable",
+            "scope": "app",
+            "trigger": "press"
+          }
+        ],
+        "defaults": [
+          "Ctrl+N"
+        ],
+        "id": "file.new",
+        "scope": "app",
+        "source": "default",
+        "title": "New document"
+      },
+      {
+        "bindable": true,
+        "bindings": [
+          {
+            "active": true,
+            "keys": "Ctrl+O",
+            "registration": "not_applicable",
+            "scope": "app",
+            "trigger": "press"
+          }
+        ],
+        "defaults": [
+          "Ctrl+O"
+        ],
+        "id": "file.open",
+        "scope": "app",
+        "source": "default",
+        "title": "Open…"
+      },
+      {
+        "bindable": true,
+        "bindings": [
+          {
+            "active": true,
+            "keys": "Ctrl+S",
+            "registration": "not_applicable",
+            "scope": "app",
+            "trigger": "press"
+          }
+        ],
+        "defaults": [
+          "Ctrl+S"
+        ],
+        "id": "file.save",
+        "scope": "app",
+        "source": "default",
+        "title": "Save"
+      }
+    ],
+    "config": {
+      "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\hotkeys.json",
+      "state": "default"
+    },
+    "disabled_scopes": [],
+    "enabled": true,
+    "leaders": [],
+    "tool": "jarak"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

@@ -1,0 +1,12 @@
+{
+  "command": "settings.get",
+  "error": {
+    "code": "setting_not_found",
+    "details": [],
+    "exit_code": 3,
+    "hint": "`jarak settings list` names every setting",
+    "message": "there is no setting `tabwidth`; nothing was changed"
+  },
+  "ok": false,
+  "schema_version": 1
+}

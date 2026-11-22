@@ -1,6 +1,6 @@
 [package]
 name = "jarak"
-version = "0.0.28"
+version = "0.0.29"
 description = "Jarak (자락): the headless CLI of Kim's native text editor; never opens a window except `jarak open` (ADR 0102)"
 edition.workspace = true
 rust-version.workspace = true
@@ -19,7 +19,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-jarak-core = { version = "0.0.28", path = "../jarak-core" }
+jarak-core = { version = "0.0.29", path = "../jarak-core" }
 # Step 105: `jarak hotkeys` on the shared hotkey contract library (headless).
 kim-hotkeys = { version = "0.0.1", path = "../kim-hotkeys" }
 serde_json = "1.0.154"

@@ -16,6 +16,7 @@
 //! - Step 93: the session and the recent files ([`session`]).
 //! - Step 94: find and replace in a document ([`search`]); markers on the document.
 
+pub mod about;
 pub mod assets;
 pub mod assist;
 pub mod command;

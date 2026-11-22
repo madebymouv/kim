@@ -1,0 +1,46 @@
+{
+  "command": "hotkeys.set",
+  "data": {
+    "changes": [
+      {
+        "action": "file.print",
+        "after": {
+          "bindings": [
+            "Ctrl+P"
+          ],
+          "source": "user"
+        },
+        "before": {
+          "bindings": [],
+          "source": "default"
+        }
+      }
+    ],
+    "conflicts": [
+      {
+        "action": "go.quick-open",
+        "code": "default_suppressed",
+        "keys": "Ctrl+P",
+        "message": "Your binding Ctrl+P for jarak's \"Print…\" replaces the default Ctrl+P of jarak's \"Go to file…\".",
+        "offers": [],
+        "scope": "app",
+        "severity": "info",
+        "source": "default",
+        "tool": "jarak",
+        "with": {
+          "action": "file.print",
+          "keys": "Ctrl+P",
+          "scope": "app",
+          "tool": "jarak"
+        }
+      }
+    ],
+    "dry_run": true,
+    "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\hotkeys.json",
+    "tool": "jarak",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

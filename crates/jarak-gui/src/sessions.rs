@@ -19,6 +19,8 @@ pub struct SessionFiles {
     pub file: PathBuf,
     pub recovery: PathBuf,
     pub restore: bool,
+    /// Step 107: write the session at exit (not with `--no-session`).
+    pub save: bool,
 }
 
 impl JarakApp {
@@ -139,6 +141,10 @@ impl JarakApp {
         let Some(files) = self.session.clone() else {
             return;
         };
+        // Step 107: `--no-session` leaves the saved session (and its untitled texts) as it is.
+        if !files.save {
+            return;
+        }
         let (mut s, texts) = self.session_now();
         if !files.restore {
             s.documents.clear();
@@ -201,6 +207,12 @@ impl JarakApp {
         let Some(p) = self.dialogs.open() else {
             return;
         };
+        self.open_session_file(&p);
+    }
+
+    /// Step 107 (HELP-05, `--session <file>`): opens the documents of the session file `p`.
+    pub fn open_session_file(&mut self, p: &Path) {
+        let p = p.to_path_buf();
         match Session::load(&p) {
             Ok(s) => {
                 self.restore(&s, Path::new(""));
