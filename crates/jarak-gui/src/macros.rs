@@ -84,12 +84,14 @@ pub const PLAY_MAX: u32 = 100_000;
 /// The open macro or command dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Dialog {
-    /// Save the recorded macro: its name, keys, whether keys are being recorded, a problem.
+    /// Save the recorded macro: its name, keys, whether keys are being recorded, a problem, and
+    /// whether the name field still has to take the keyboard focus (when the dialog opens).
     Save {
         name: String,
         keys: String,
         capturing: bool,
         error: Option<String>,
+        focus: bool,
     },
     /// Run a macro several times: the macro (`None` the recorded one), times or to the end.
     Multi {
@@ -104,7 +106,8 @@ pub enum Dialog {
         error: Option<String>,
     },
     /// Run…: the line, whether it is a saved command being confirmed (its name), the name and keys
-    /// to save it with, a problem.
+    /// to save it with, a problem, and whether the command field still has to take the keyboard
+    /// focus (F5 opens it ready to type, as Notepad++'s Run box).
     Run {
         command: String,
         saved: Option<String>,
@@ -112,6 +115,7 @@ pub enum Dialog {
         keys: String,
         capturing: bool,
         error: Option<String>,
+        focus: bool,
     },
 }
 
@@ -559,6 +563,7 @@ impl JarakApp {
             keys: String::new(),
             capturing: false,
             error: None,
+            focus: true,
         });
     }
 
@@ -578,6 +583,7 @@ impl JarakApp {
             keys: String::new(),
             capturing: false,
             error: None,
+            focus: false,
         });
     }
 
@@ -705,6 +711,7 @@ impl JarakApp {
                     keys: String::new(),
                     capturing: false,
                     error: None,
+                    focus: true,
                 });
             }
             1 => {
@@ -815,6 +822,7 @@ impl JarakApp {
                 keys,
                 capturing,
                 error,
+                focus,
             } => {
                 if *capturing {
                     if let Some(k) = Self::captured(ctx) {
@@ -835,13 +843,17 @@ impl JarakApp {
                     .to_string();
                 kim_ui::dialog_sized(ctx, "jarak-macro-save", &title, 420.0, |ui| {
                     let w = ui.available_width();
-                    kim_ui::text_field(
+                    let r = kim_ui::text_field(
                         ui,
                         name,
                         lang.pick("Name", "이름"),
                         lang.pick("e.g. Tidy the list", "예: 목록 정리"),
                         w,
                     );
+                    if *focus {
+                        r.request_focus();
+                        *focus = false;
+                    }
                     ui.add_space(space::S);
                     let f = kim_ui::shortcut_field(
                         ui,
@@ -1118,6 +1130,7 @@ impl JarakApp {
                 keys,
                 capturing,
                 error,
+                focus,
             } => {
                 if *capturing {
                     if let Some(k) = Self::captured(ctx) {
@@ -1142,13 +1155,17 @@ impl JarakApp {
                 kim_ui::dialog_sized(ctx, "jarak-run", &title, 560.0, |ui| {
                     let w = ui.available_width();
                     if saved.is_none() {
-                        kim_ui::text_field(
+                        let r = kim_ui::text_field(
                             ui,
                             command,
                             lang.pick("Command", "명령"),
                             "notepad.exe \"$(FULL_CURRENT_PATH)\"",
                             w,
                         );
+                        if *focus {
+                            r.request_focus();
+                            *focus = false;
+                        }
                         ui.label(RichText::new(format!("{} $(FULL_CURRENT_PATH) $(CURRENT_DIRECTORY) $(FILE_NAME) $(NAME_PART) $(EXT_PART) $(CURRENT_WORD) $(CURRENT_LINE) $(CURRENT_COLUMN) $(CURRENT_LINESTR) $(JARAK_DIRECTORY) $(SYS.…)", lang.pick("Variables:", "변수:"))).size(font::CAPTION).color(c.text_muted));
                         ui.add_space(space::S);
                     }

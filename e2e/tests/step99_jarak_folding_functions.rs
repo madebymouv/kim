@@ -111,6 +111,16 @@ fn step99_the_function_list_and_a_folded_block_and_the_go_to_dialog() {
     assert_eq!(std::fs::read_to_string(&doc).unwrap(), text);
     let r = window(&dir, &doc, "goto");
     let t = texts(&r);
-    assert!(t.iter().any(|s| s == "Go to"), "{t:?}");
-    assert!(t.iter().any(|s| s.starts_with("You are on line")), "{t:?}");
+    // The Go to dialog (its title is drawn by the dialog frame, not in the report): Line / Offset,
+    // Go, and where the caret is.
+    for s in ["Line", "Offset", "Go"] {
+        assert!(t.iter().any(|x| x == s), "{s}: {t:?}");
+    }
+    assert!(
+        r.components.iter().any(|c| c.id == "goto:where"
+            && c.text
+                .as_ref()
+                .is_some_and(|x| x.content.starts_with("You are on line"))),
+        "{t:?}"
+    );
 }

@@ -553,12 +553,32 @@ impl JarakApp {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(lang.pick("Function list", "함수 목록"))
+                    let title = lang.pick("Function list", "함수 목록");
+                    let r = ui.label(
+                        RichText::new(title)
                             .size(font::CAPTION)
                             .strong()
                             .color(c.text_secondary),
                     );
+                    // The panel's title is in the geometry report, so the audit rules check it.
+                    if kim_ui::inspect::active() {
+                        kim_ui::inspect::record(
+                            ui,
+                            "functions:title",
+                            "label",
+                            r.rect,
+                            Some(kim_ui::inspect::Painted {
+                                content: title,
+                                rect: r.rect,
+                                size: font::CAPTION,
+                                truncated: false,
+                            }),
+                            false,
+                            &[],
+                            Some(c.text_secondary),
+                            Some(c.bg_raised),
+                        );
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add(kim_ui::Button::ghost(lang.pick("Close", "닫기")))
@@ -742,7 +762,26 @@ impl JarakApp {
                         lang.pick("last", "마지막")
                     )
                 };
-                ui.label(RichText::new(info).size(font::CAPTION).color(c.text_muted));
+                let r = ui.label(RichText::new(&info).size(font::CAPTION).color(c.text_muted));
+                // Where the caret is, in the geometry report (so the audit rules check it).
+                if kim_ui::inspect::active() {
+                    kim_ui::inspect::record(
+                        ui,
+                        "goto:where",
+                        "label",
+                        r.rect,
+                        Some(kim_ui::inspect::Painted {
+                            content: &info,
+                            rect: r.rect,
+                            size: font::CAPTION,
+                            truncated: false,
+                        }),
+                        false,
+                        &[],
+                        Some(c.text_muted),
+                        None,
+                    );
+                }
                 if let Some(e) = &g.error {
                     ui.label(RichText::new(e).size(font::CAPTION).color(c.danger));
                 }

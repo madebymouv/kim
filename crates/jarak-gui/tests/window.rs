@@ -3351,6 +3351,14 @@ fn the_structure_views_pass_the_ui_audit_rules() {
             .filter_map(|c| c.text.as_ref().map(|t| t.content.as_str()))
             .collect();
         assert_eq!(rows, ["main  fn", "other  fn"]);
+        // The panel's title is in the report too (found by the e2e first run: it was not).
+        assert!(
+            r.components.iter().any(|c| c.id == "functions:title"
+                && c.text
+                    .as_ref()
+                    .is_some_and(|t| t.content == "Function list")),
+            "the Function list title is checked by the audit"
+        );
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -4193,11 +4201,21 @@ fn saved_macros_get_shortcuts_checked_against_reserved_and_jarak_keys() {
     // Save it with Ctrl+Shift+1 through the dialog (the keys are pressed in the shortcut field).
     palette_run(&mut h, "Save the recorded macro");
     h.run();
+    // The name field has the keyboard focus when the dialog opens: the name is typed at once.
+    text(&mut h, "Shout");
+    assert!(
+        matches!(
+            h.state().macro_dialog.as_ref(),
+            Some(jarak_gui::macros::Dialog::Save { name, .. }) if name == "Shout"
+        ),
+        "typed into the name field"
+    );
     h.state_mut().macro_dialog = Some(jarak_gui::macros::Dialog::Save {
         name: "Shout".into(),
         keys: String::new(),
         capturing: true,
         error: None,
+        focus: false,
     });
     h.run();
     key(
@@ -4242,15 +4260,23 @@ fn saved_macros_get_shortcuts_checked_against_reserved_and_jarak_keys() {
 #[test]
 fn run_commands_show_the_exact_line_and_run_only_on_the_button() {
     let (mut h, d, runner, opener) = macro_app("runcmd", "a b.md", "hello 자락\n");
-    // F5: type a command with variables; nothing runs while it is typed.
+    // F5: the command field has the keyboard focus, so the command is typed straight away (found
+    // in the real window: typing went nowhere before); nothing runs while it is typed.
     key(&mut h, egui::Key::F5, egui::Modifiers::NONE);
     h.run();
-    if let Some(jarak_gui::macros::Dialog::Run { command, .. }) =
-        h.state_mut().macro_dialog.as_mut()
-    {
-        *command = "notepad.exe \"$(FULL_CURRENT_PATH)\" $(CURRENT_LINE)".into();
+    text(
+        &mut h,
+        "notepad.exe \"$(FULL_CURRENT_PATH)\" $(CURRENT_LINE)",
+    );
+    if let Some(jarak_gui::macros::Dialog::Run { command, .. }) = h.state().macro_dialog.as_ref() {
+        assert_eq!(
+            command, "notepad.exe \"$(FULL_CURRENT_PATH)\" $(CURRENT_LINE)",
+            "typed into the command field"
+        );
+    } else {
+        panic!("the Run dialog is open");
     }
-    h.run();
+    assert_eq!(doc_text(&h), "hello 자락\n", "the document took none of it");
     let full = d.join("a b.md").display().to_string();
     let exact = format!("notepad.exe \"{full}\" 1");
     assert!(

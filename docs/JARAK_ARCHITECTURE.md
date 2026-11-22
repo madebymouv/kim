@@ -885,9 +885,9 @@ Python, CSS and plain text; user languages loaded, a Notepad++ UDL imported thro
 exported); a highlighted keystroke-frame measurement. UI audit views `syntax`, `palette-language`
 (165 runs, 0 failures). e2e `step98_jarak_syntax_languages.rs` (a Rust file, a JSON user language
 and an imported Notepad++ UDL picked by extension in the release window, the Language menu) —
-compiled; its first run waits until the maintainer is away from the PC (2026-11-22: the maintainer
-is using the mouse, keyboard and monitor, so no visible test windows), as does the real-desktop
-check. Folding with the markers: Step 99 (§21).
+first run PASS (2026-11-22). Real desktop (2026-11-22, a test-started window): a Rust file is shown
+as Rust with its colours, the status bar's language opens the 26 `Language:` entries, Language:
+Python and back to Rust. Folding with the markers: Step 99 (§21).
 
 ## 21. Folding, the Function List and structure navigation (Step 99)
 
@@ -955,8 +955,13 @@ untouched; Go to and the matching brackets opening folds; the Function List with
 headings, a filter, next / previous symbol, a Rust file, closing it; Python by indentation; the
 Function List, the margin and the Go to dialog under the UI audit's rules, headless); the 10 MB
 measurement. UI audit views `functions`, `goto`; the line numbers on screen are in the geometry
-report (`gutter:line#n`). e2e `step99_jarak_folding_functions.rs` — compiled; its first run and the
-real-desktop check wait until the maintainer is away from the PC.
+report (`gutter:line#n`). e2e `step99_jarak_folding_functions.rs`: its first run (2026-11-22) found
+that the Function List's title and the Go to dialog's position line were not in the geometry
+report, so the audit rules never saw them; both are recorded now (`functions:title`, `goto:where`)
+and the run passes. Real desktop: Alt+0 folds a Rust file to 7 drawn lines and Alt+Shift+0 unfolds
+it to 13; the Function List lists `alpha`, `beta`, `Gamma`, and a click on `beta` puts the caret on
+line 6; a Markdown file folds 8 → 3 lines and lists its headings (a click on `Three` goes to line
+6); a Python file folds by indentation 7 → 4 and lists `first`, `Box`, `size`.
 
 ## 22. Editing assistance (Step 100)
 
@@ -1000,8 +1005,14 @@ pairs, tags and the three indentation modes, bounded bracket and tag matching); 
 tags only when on, smart and kept indentation; hints following the call and the bracket highlight;
 the user's snippets and API files with a broken one named; paths, tag matching and overloads; the
 popup and the hint under the UI audit's rules, headless; one structure worker at a time); the 10 MB
-measurement. UI audit views `completion`, `hint`. e2e `step100_jarak_assist.rs` — compiled; its
-first run and the real-desktop check wait until the maintainer allows visible test windows.
+measurement. UI audit views `completion`, `hint`. e2e `step100_jarak_assist.rs` — first run PASS
+(2026-11-22). Real desktop: typing `ap` opens the popup (apple, apricot), Down then Enter inserts
+`apricot`, Esc closes it, and Ctrl+Space with one answer inserts it at once (`ba` → `banana`);
+`print(` shows its hint and Esc closes it; the `def` snippet's two stops give `def go(x):` and
+`pass`; closing brackets give `(1)` (the typed closer steps over); `<div>` closes to `</div>`; smart
+indentation indents after `if v:`; the matching brackets are boxed. Each aid turned off in the
+real window stops it (completion, hints, snippets, closing brackets, tags, indentation, the
+highlight).
 
 ## 23. Bookmarks, the change history, the Document Map and quick navigation (Step 101)
 
@@ -1051,8 +1062,13 @@ documents; the change bars, Alt+H and the margin; the map's click and the histor
 forward; quick open with the workspace and the Summary; the map, quick open and the Summary under
 the UI audit's rules, headless); the 10 MB map measurement. A Go to dialog opened from the palette
 no longer takes the palette's Enter (found while testing the Summary, which had the same problem).
-UI audit views `docmap`, `quick-open`, `summary`. e2e `step101_jarak_navigation.rs` — compiled; its
-first run and the real-desktop check wait until visible test windows are allowed.
+UI audit views `docmap`, `quick-open`, `summary`. e2e `step101_jarak_navigation.rs` — first run
+PASS (2026-11-22). Real desktop: Ctrl+F2 on line 5, then F2 from the end comes back to it; the
+Document Map shows and a click near its bottom scrolls a 60-line file (first line 1 → 17);
+Ctrl+P, `words`, Enter opens that file; Alt+Left returns to the first file on line 5; Alt+H hides
+lines 3–5 (numbers 1, 2, 6, …) and *Show all hidden lines* shows them; *Copy the bookmarked lines*
+puts `line 1`, `line 3` on the real clipboard (the maintainer's text put back after); the Summary
+shows the path, dates and counts.
 
 ## 24. Macros and user commands (Step 102)
 
@@ -1083,8 +1099,12 @@ playing, the built-in Trim and Save; the exact line shown, nothing run before th
 confirming a saved command, the Wikipedia and web search addresses, the browser refusal, the
 elevation refusal; the real runner; the manager changing a shortcut and removing a command, an
 HTML file opened in the browser; the dialogs under the UI audit's rules, headless). UI audit views
-`run`, `macros`. e2e `step102_jarak_macros.rs` — compiled; its first run and the real-desktop check
-(recording and playing back in the real window) wait until visible test windows are allowed.
+`run`, `macros`. e2e `step102_jarak_macros.rs` — first run PASS (2026-11-22). Real desktop: a macro
+recorded with real keys (Home, `- `, Down) plays back with F9; one Ctrl+Z takes back one run; Until
+the end of the file stops at the end (Played: 3); the recorded macro is saved by typing its name;
+the Run dialog shows the typed line expanded and runs nothing on Esc. The real check found that
+the Save and Run dialogs did not give their first field the keyboard focus (the typed name or line
+went nowhere); both do now, as Notepad++'s Run box does, and the window tests type into them.
 
 ## 25. The Encoding menu, line endings and Show Symbol (Step 103)
 
@@ -1154,5 +1174,11 @@ Tests:
 The real `jarak info --fallback` reads files that Python's codecs wrote (Shift-JIS, EUC-KR, KOI8-R,
 Windows-874, GB18030, Windows-1256) as those encodings, losslessly, without changing them. UI
 audit views `symbols`, `encoding-question`. e2e `step103_jarak_encodings.rs` (every character set
-through the real `jarak info`, the two views) is compiled. Its first run, the real-desktop check
-and the real Windows clipboard (binary content) wait until the maintainer is away from the PC.
+through the real `jarak info`, the two views) — first run PASS (2026-11-22). Real desktop: a Shift-JIS
+file opens read-only as EUC-KR (that reading would lose characters); Reinterpret as Shift-JIS shows
+it and makes it writable without touching the bytes; the status bar's encoding opens the
+`Encoding:` entries; Convert to UTF-8 and to UTF-16 LE BOM and EOL Unix save exactly those bytes;
+Show all characters draws the `LF` tag. Binary content through the real Windows clipboard: copied
+from a NUL file (read-only, `JARAK-FR-027`) it is on the clipboard as `Jarak Binary Text` beside the
+plain text, and pasted into another document it is saved with the NUL (`78 0D 0A 61 00 62 0D 0A`);
+the maintainer's clipboard text was saved before and put back after.

@@ -2,7 +2,7 @@
   "schema": "kim.capabilities",
   "schema_version": 1,
   "tool": "jarak",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "cli_contract": 1,
   "json_schema_version": 1,
   "implementation": "placeholder",

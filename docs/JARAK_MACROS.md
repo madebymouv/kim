@@ -10,7 +10,7 @@ Keys: [JARAK_KEYS](JARAK_KEYS.md)
 | --- | --- |
 | Start / stop recording | Ctrl+Shift+R (the status bar says *● Recording*) |
 | Play back the recorded macro | F9 — Notepad++ uses Ctrl+Shift+P, which is Jarak's command palette |
-| Save the recorded macro… | a name and a shortcut (press the keys in the field; Backspace clears, Esc cancels) |
+| Save the recorded macro… | a name (the field has the keyboard focus when the dialog opens) and a shortcut (press the keys in the field; Backspace clears, Esc cancels) |
 | Run a macro multiple times… | the recorded one or a saved one, a number of times or *until the end of the file* |
 | Macros and run commands… | change a shortcut (click its field, press the keys), remove a macro or a command |
 | A saved macro | the palette's *Macro: name*, or its shortcut |
@@ -55,8 +55,9 @@ Keys: [JARAK_KEYS](JARAK_KEYS.md)
 
 ## Run (Notepad++'s Run menu)
 
-- **F5** (*Run…*) opens a dialog: type a command line with variables. The dialog shows the exact
-  line that will run, with the variables replaced, and runs it only when **Run** is pressed. *Save*
+- **F5** (*Run…*) opens a dialog with the keyboard focus in its command field: type a command line
+  with variables. The dialog shows the exact line that will run, with the variables replaced, and
+  runs it only when **Run** is pressed. *Save*
   keeps it with a name and an optional shortcut. A saved command (*Run: name* in the palette, or
   its shortcut) opens the same dialog showing its exact line; nothing runs without the button.
 - **Variables** (Notepad++'s names): `$(FULL_CURRENT_PATH)`, `$(CURRENT_DIRECTORY)`, `$(FILE_NAME)`,

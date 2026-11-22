@@ -50,7 +50,7 @@ quick open of `JARAK-FR-103` ([JARAK_ARCHITECTURE §23](JARAK_ARCHITECTURE.md));
 implemented `JARAK-FR-110` and `JARAK-FR-111` (macros, Run, the browser entries;
 [JARAK_MACROS](JARAK_MACROS.md)); Step 103 implemented `JARAK-FR-025`, `JARAK-FR-026`,
 `JARAK-FR-037`, the Encoding menu of `JARAK-FR-021`, the clickable status of `JARAK-FR-035` and
-binary content of `JARAK-FR-027` (the real Windows clipboard path not tested yet;
+binary content of `JARAK-FR-027` (the real Windows clipboard checked 2026-11-22;
 [JARAK_ARCHITECTURE §25](JARAK_ARCHITECTURE.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
