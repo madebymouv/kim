@@ -40,6 +40,8 @@ pub enum Run {
     /// every open document, 3 undo the last Replace in Files, 4 copy the result lines, 5 their
     /// paths, 6 Find in Files, 7 Replace in Files (the Files page's folder and filters).
     InFiles(u8),
+    /// Step 96: the multi-selection commands (see `JarakApp::multi`).
+    Multi(u8),
 }
 
 /// The menu an entry belongs to.
@@ -443,6 +445,148 @@ pub fn entries() -> Vec<Entry> {
             menu: M::Markdown,
         },
     ];
+    v.extend([
+        act(
+            "edit.add-next-occurrence",
+            "Multi-select: add the next occurrence",
+            "다중 선택: 다음 위치 추가",
+            A::AddNextOccurrence,
+            M::Selection,
+        ),
+        act(
+            "edit.select-all-occurrences",
+            "Multi-select: all occurrences",
+            "다중 선택: 모든 위치",
+            A::SelectAllOccurrences,
+            M::Selection,
+        ),
+        act(
+            "edit.single-caret",
+            "Back to one caret",
+            "캐럿 하나로",
+            A::SingleCaret,
+            M::Selection,
+        ),
+        act(
+            "edit.column-editor",
+            "Column Editor…",
+            "열 편집기…",
+            A::ColumnEditor,
+            M::Edit,
+        ),
+        act(
+            "edit.block-up",
+            "Column selection: up",
+            "열 선택: 위",
+            A::BlockUp,
+            M::Selection,
+        ),
+        act(
+            "edit.block-down",
+            "Column selection: down",
+            "열 선택: 아래",
+            A::BlockDown,
+            M::Selection,
+        ),
+        act(
+            "edit.block-left",
+            "Column selection: left",
+            "열 선택: 왼쪽",
+            A::BlockLeft,
+            M::Selection,
+        ),
+        act(
+            "edit.block-right",
+            "Column selection: right",
+            "열 선택: 오른쪽",
+            A::BlockRight,
+            M::Selection,
+        ),
+        run(
+            "edit.all-ignore",
+            "Multi-select all: ignore case and whole word",
+            "모두 다중 선택: 대소문자·단어 무시",
+            Run::Multi(2),
+            M::Selection,
+        ),
+        run(
+            "edit.all-case",
+            "Multi-select all: match case only",
+            "모두 다중 선택: 대소문자만 구분",
+            Run::Multi(3),
+            M::Selection,
+        ),
+        run(
+            "edit.all-word",
+            "Multi-select all: whole word only",
+            "모두 다중 선택: 단어 단위만",
+            Run::Multi(4),
+            M::Selection,
+        ),
+        run(
+            "edit.all-case-word",
+            "Multi-select all: match case and whole word",
+            "모두 다중 선택: 대소문자·단어 단위",
+            Run::Multi(5),
+            M::Selection,
+        ),
+        run(
+            "edit.next-ignore",
+            "Multi-select next: ignore case and whole word",
+            "다음 다중 선택: 대소문자·단어 무시",
+            Run::Multi(6),
+            M::Selection,
+        ),
+        run(
+            "edit.next-case",
+            "Multi-select next: match case only",
+            "다음 다중 선택: 대소문자만 구분",
+            Run::Multi(7),
+            M::Selection,
+        ),
+        run(
+            "edit.next-word",
+            "Multi-select next: whole word only",
+            "다음 다중 선택: 단어 단위만",
+            Run::Multi(8),
+            M::Selection,
+        ),
+        run(
+            "edit.next-case-word",
+            "Multi-select next: match case and whole word",
+            "다음 다중 선택: 대소문자·단어 단위",
+            Run::Multi(9),
+            M::Selection,
+        ),
+        run(
+            "edit.skip-occurrence",
+            "Multi-select: skip this occurrence and add the next",
+            "다중 선택: 이곳 건너뛰고 다음 추가",
+            Run::Multi(10),
+            M::Selection,
+        ),
+        run(
+            "edit.begin-end-select",
+            "Begin/End Select",
+            "선택 시작/끝",
+            Run::Multi(11),
+            M::Selection,
+        ),
+        run(
+            "edit.begin-end-select-column",
+            "Begin/End Select in column mode",
+            "열 모드로 선택 시작/끝",
+            Run::Multi(12),
+            M::Selection,
+        ),
+        run(
+            "edit.virtual-space",
+            "Virtual space in column selections (on/off)",
+            "열 선택의 가상 공간 (켬/끔)",
+            Run::Multi(13),
+            M::Selection,
+        ),
+    ]);
     use crate::find::StyleCmd as S;
     v.extend([
         act("search.find", "Find…", "찾기…", A::Find, M::Search),

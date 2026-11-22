@@ -12,6 +12,7 @@
 //!   shows local images.
 
 pub mod clipboard;
+pub mod column;
 pub mod docops;
 pub mod find;
 pub mod handoff;
@@ -415,6 +416,12 @@ pub struct JarakApp {
     pub preview: Option<results::Preview>,
     pub journal_root: Option<PathBuf>,
     pub last_batch: Option<String>,
+    /// Step 96: the Column Editor (its fields kept), virtual space (a setting) and where a
+    /// Begin/End Select began (the tab and the position).
+    pub column_editor: Option<column::ColumnEditor>,
+    pub column_editor_open: bool,
+    pub virtual_space: bool,
+    pub begin_select: Option<(u64, usize)>,
 }
 
 /// The assets dialog's content.
@@ -465,6 +472,8 @@ impl JarakApp {
         if let Some(e) = read_editing(&path) {
             self.editing = e;
         }
+        // Step 96: virtual space (off unless the file says so).
+        self.virtual_space = read_setting(&path, "virtual_space").is_some_and(|v| v == "true");
         self.settings = Some(path);
         self
     }
@@ -629,6 +638,11 @@ impl JarakApp {
     /// IME switch and search marks.
     fn vim_frame(&mut self) {
         let i = self.active;
+        // Step 96: the virtual space setting applies to every document.
+        let vs = self.virtual_space;
+        for t in &mut self.tabs {
+            t.file.doc.virtual_space = vs;
+        }
         // Step 94: the find highlights, the styled markers and the bookmarks on screen (of
         // every view's active document).
         let search = self.search_marks();
@@ -678,7 +692,10 @@ impl JarakApp {
             v.block_caret = false;
             v.ime = true;
             v.marks = search;
-            v.keep_escape = false;
+            // Step 96: Esc goes back to one caret (egui would drop the focus with it).
+            let d = &self.tabs[i].file.doc;
+            let many = d.selection().len() > 1 || d.block().is_some();
+            self.tabs[i].view.keep_escape = many;
             return;
         }
         if self.vim_tab != i || self.vim_tab >= self.tabs.len() {
@@ -764,6 +781,7 @@ impl JarakApp {
                 _ => self.count_matches(),
             },
             palette::Run::Style(cmd) => self.style(cmd),
+            palette::Run::Multi(k) => self.multi(k),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1405,6 +1423,10 @@ impl JarakApp {
             preview: None,
             journal_root: None,
             last_batch: None,
+            column_editor: None,
+            column_editor_open: false,
+            virtual_space: false,
+            begin_select: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1416,7 +1438,8 @@ impl JarakApp {
     /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy), `vim`,
     /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92), `tabs`, `views`,
     /// `side`, `documents` (Step 93), `find`, `replace`, `mark`, `incremental` (Step 94), `files`,
-    /// `results`, `replace-preview` (Step 95). Only used while `KIM_UI_INSPECT` is set.
+    /// `results`, `replace-preview` (Step 95), `multi`, `column`, `column-editor` (Step 96). Only
+    /// used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -1463,6 +1486,37 @@ impl JarakApp {
                 });
             }
             "menu-bar" => self.menu_bar = true,
+            // Step 96: every "Step" selected (the status bar counts the carets), a column block
+            // over the Korean lines (display columns 4 to 12), the Column Editor with numbers.
+            "multi" | "column" | "column-editor" => {
+                let d = &mut self.tab_mut().file.doc;
+                match screen {
+                    "multi" => {
+                        let at = d
+                            .text()
+                            .to_string()
+                            .find("Step")
+                            .map_or(0, |b| d.text().byte_to_char(b));
+                        d.set_selection(&jarak_core::selection::Selection::point(at));
+                        d.select_all_occurrences(None);
+                    }
+                    "column" => {
+                        d.virtual_space = true;
+                        d.select_block(jarak_core::document::multi::Block {
+                            anchor: (2, 4),
+                            head: (4, 12),
+                        });
+                        self.virtual_space = true;
+                    }
+                    _ => {
+                        self.open_column_editor();
+                        if let Some(e) = self.column_editor.as_mut() {
+                            e.numbers = true;
+                            e.leading = jarak_core::document::multi::Leading::Zeros;
+                        }
+                    }
+                }
+            }
             // Step 95: the Files page, its results grouped by file (small files written next to
             // the audit's copy, searched at once), the Replace in Files preview.
             "files" | "results" | "replace-preview" => {
@@ -1829,6 +1883,18 @@ impl JarakApp {
                 let r = self.results.get_or_insert_with(results::Results::default);
                 r.open = !r.open;
             }
+            Action::AddNextOccurrence => self.multi(0),
+            Action::SelectAllOccurrences => self.multi(1),
+            Action::SingleCaret => {
+                if self.tab_mut().file.doc.single_caret() {
+                    self.tab_mut().view.after_edit();
+                }
+            }
+            Action::BlockUp => self.block(-1, 0),
+            Action::BlockDown => self.block(1, 0),
+            Action::BlockLeft => self.block(0, -1),
+            Action::BlockRight => self.block(0, 1),
+            Action::ColumnEditor => self.open_column_editor(),
             Action::Open => {
                 if let Some(p) = self.dialogs.open() {
                     self.open_target(&OpenTarget {
@@ -2007,8 +2073,19 @@ impl JarakApp {
             return;
         }
         let t = self.tab_mut();
-        let s = clipboard::with_line_endings(s, t.file.doc.eol.as_str());
-        t.file.doc.paste(&s);
+        let eol = t.file.doc.eol.as_str();
+        let s = clipboard::with_line_endings(s, eol);
+        // Step 96: as many lines as carets: each caret gets its own line.
+        let n = t.file.doc.selection().len();
+        let mut lines: Vec<String> = s.split(eol).map(str::to_string).collect();
+        if lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
+            lines.pop();
+        }
+        if n > 1 && lines.len() == n {
+            t.file.doc.paste_each(&lines);
+        } else {
+            t.file.doc.paste(&s);
+        }
         t.view.after_edit();
     }
 
@@ -2405,6 +2482,7 @@ impl JarakApp {
             })
             .inner;
         let (focused, link, ctrl_click) = (drawn.focused, drawn.link, drawn.ctrl_click);
+        let opened_link = link.open.is_some();
         if let Some(url) = link.open {
             self.open_link(&url);
         } else if let Some(url) = link.plain_click {
@@ -2425,12 +2503,19 @@ impl JarakApp {
             ));
         }
         if let Some(pos) = ctrl_click {
-            self.reveal_reference_at(pos);
+            // Ctrl+click adds a caret (Step 96), unless it showed an image or opened a link.
+            if self.reveal_reference_at(pos) || opened_link {
+                self.tab_mut()
+                    .file
+                    .doc
+                    .set_selection(&jarak_core::selection::Selection::point(pos));
+            }
         }
         let dialog_open = self.palette.is_some()
             || self.assets_view.is_some()
             || self.docs_dialog.is_some()
-            || self.preview.is_some();
+            || self.preview.is_some()
+            || self.column_editor_open;
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2464,6 +2549,7 @@ impl JarakApp {
         let central = self.central;
         self.find_ui(&ctx, &c, central);
         self.preview_ui(&ctx, &c);
+        self.column_editor_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
@@ -2484,6 +2570,96 @@ impl JarakApp {
     /// The window's shortcuts while a box of the find panel has the keyboard: the palette, files,
     /// tabs, the find pages and the results; the box keeps text editing, the clipboard, undo and
     /// F3 (which the panel handles itself).
+    /// Step 96: the multi-selection commands — 0 add the next occurrence, 1 select all (both
+    /// automatic), 2–5 select all and 6–9 add the next with Notepad++'s four variants (ignore
+    /// case and whole word, match case only, whole word only, match case and whole word), 10
+    /// skip this occurrence, 11 Begin/End Select, 12 in column mode, 13 virtual space on/off.
+    pub fn multi(&mut self, k: u8) {
+        use jarak_core::document::multi::Occurrences;
+        let variant = |v: u8| Occurrences {
+            match_case: v % 2 == 1,
+            whole_word: v >= 2,
+        };
+        let msg = match k {
+            0 | 6..=9 | 10 => {
+                let o = (6..=9).contains(&k).then(|| variant(k - 6));
+                let t = self.tab_mut();
+                let ok = t.file.doc.select_next_occurrence(o, k == 10);
+                t.view.after_edit();
+                (!ok).then(|| {
+                    self.t("No other occurrence.", "다른 곳이 없습니다.")
+                        .to_string()
+                })
+            }
+            1..=5 => {
+                let o = (2..=5).contains(&k).then(|| variant(k - 2));
+                let t = self.tab_mut();
+                let n = t.file.doc.select_all_occurrences(o);
+                t.view.after_edit();
+                Some(format!(
+                    "{} {n}",
+                    self.t("Selected occurrences:", "선택한 곳:")
+                ))
+            }
+            11 | 12 => Some(self.begin_end_select(k == 12)),
+            _ => {
+                self.virtual_space = !self.virtual_space;
+                if let Some(p) = &self.settings {
+                    let _ = write_setting(
+                        p,
+                        "virtual_space",
+                        if self.virtual_space { "true" } else { "false" },
+                    );
+                }
+                Some(if self.virtual_space {
+                    self.t("Virtual space: on", "가상 공간: 켬").to_string()
+                } else {
+                    self.t("Virtual space: off", "가상 공간: 끔").to_string()
+                })
+            }
+        };
+        if msg.is_some() {
+            self.message = msg;
+        }
+    }
+
+    /// Alt+Shift+arrows: the column selection grows or shrinks.
+    fn block(&mut self, lines: isize, cols: isize) {
+        let t = self.tab_mut();
+        t.file.doc.extend_block(lines, cols);
+        t.view.after_edit();
+    }
+
+    /// Begin/End Select: the first time marks the start, the second selects to the caret (in
+    /// column mode as a column selection).
+    fn begin_end_select(&mut self, column: bool) -> String {
+        let id = self.tab().id;
+        let head = self.tab().file.doc.selection().primary().head;
+        match self.begin_select.take() {
+            Some((tab, mark)) if tab == id => {
+                let d = &mut self.tab_mut().file.doc;
+                if column {
+                    let (a, h) = (d.line_col_display(mark), d.line_col_display(head));
+                    d.select_block(jarak_core::document::multi::Block { anchor: a, head: h });
+                } else {
+                    d.set_selection(&jarak_core::selection::Selection::single(
+                        jarak_core::selection::Range::new(mark, head),
+                    ));
+                }
+                self.tab_mut().view.after_edit();
+                self.t("Selected.", "선택했습니다.").to_string()
+            }
+            _ => {
+                self.begin_select = Some((id, head));
+                self.t(
+                    "The selection begins here: run Begin/End Select again where it ends.",
+                    "선택이 여기서 시작합니다. 끝낼 곳에서 다시 실행하세요.",
+                )
+                .to_string()
+            }
+        }
+    }
+
     fn panel_keys(&mut self, ctx: &egui::Context) {
         let events = ctx.input(|i| i.events.clone());
         for e in events {
@@ -2739,6 +2915,12 @@ impl JarakApp {
                 col + 1
             )
         };
+        let carets = d.selection().len();
+        let pos = if carets > 1 {
+            format!("{pos} · {carets} {}", self.t("carets", "캐럿"))
+        } else {
+            pos
+        };
         let eol_label = if mixed {
             self.t("Mixed EOL", "줄 끝 혼합").to_string()
         } else {
@@ -2870,8 +3052,28 @@ impl JarakApp {
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = space::L;
-                            for (item, col) in items.iter().rev() {
-                                ui.label(RichText::new(item).size(font::CAPTION).color(*col));
+                            for (k, (item, col)) in items.iter().enumerate().rev() {
+                                let r =
+                                    ui.label(RichText::new(item).size(font::CAPTION).color(*col));
+                                // Step 96: the status items are in the geometry report too.
+                                if kim_ui::inspect::active() {
+                                    kim_ui::inspect::record(
+                                        ui,
+                                        &format!("status:item#{k}"),
+                                        "label",
+                                        r.rect,
+                                        Some(kim_ui::inspect::Painted {
+                                            content: item,
+                                            rect: r.rect,
+                                            size: font::CAPTION,
+                                            truncated: false,
+                                        }),
+                                        false,
+                                        &[],
+                                        Some(*col),
+                                        None,
+                                    );
+                                }
                             }
                         });
                     });

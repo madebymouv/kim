@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -85,8 +85,8 @@ palette, the headless CLI) follow in §2.
 | EDIT-01 | Undo / Redo (Ctrl+Z, Ctrl+Y) | supported | `JARAK-FR-013` | 86 | T | Step 88: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z on the core transactions (window tests; real desktop: Ctrl+Z back to the saved state) |
 | EDIT-02 | Cut / Copy / Paste / Delete | supported | `JARAK-FR-031` | 88 | T, M | Step 88: Ctrl+C/X/V, Ctrl+Insert, Shift+Delete, Shift+Insert, Delete through the Windows clipboard (window test; real desktop: copy and paste) |
 | EDIT-03 | Select All | supported | `JARAK-FR-012` | 86 | T | Step 88: Ctrl+A (window tests; real desktop) |
-| EDIT-04 | Begin/End Select (stream) for keyboard-free range selection | planned | `JARAK-FR-012` | 96 | T | — |
-| EDIT-05 | Begin/End Select in column mode | planned | `JARAK-FR-081` | 96 | T | — |
+| EDIT-04 | Begin/End Select (stream) for keyboard-free range selection | supported | `JARAK-FR-012` | 96 | T | Step 96: palette *Begin/End Select*: the first run marks, the second selects to the caret (`begin_end_select_in_stream_and_column_mode`) |
+| EDIT-05 | Begin/End Select in column mode | supported | `JARAK-FR-081` | 96 | T | Step 96: *Begin/End Select in column mode* makes a column selection (`begin_end_select_in_stream_and_column_mode`) |
 | EDIT-06 | Copy the current line when nothing is selected (setting) | partial | `JARAK-FR-031` | 97 | T | Step 88: Copy and Cut without a selection take the current line (window test); always on until the setting in Step 105 |
 | EDIT-07 | Insert date and time: short, long, customised format | planned | `JARAK-FR-087` | 97 | T | — |
 | EDIT-08 | Copy to clipboard: full path, file name, directory of the document | planned | `JARAK-FR-087` | 97 | T | — |
@@ -161,16 +161,16 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| MULTI-01 | Ctrl+click adds a caret / selection (multi-editing) | planned | `JARAK-FR-080` | 96 | T, M | — |
-| MULTI-02 | Multi-select all occurrences (match case / whole word options) | planned | `JARAK-FR-080` | 96 | T | — |
-| MULTI-03 | Multi-select next occurrence / skip current | planned | `JARAK-FR-080` | 96 | T | — |
-| MULTI-04 | Column selection with Alt+drag | planned | `JARAK-FR-081` | 96 | M | — |
-| MULTI-05 | Column selection with Alt+Shift+arrows | planned | `JARAK-FR-081` | 96 | T | — |
-| MULTI-06 | Typing, deleting and pasting into every row of a column selection | planned | `JARAK-FR-081` | 96 | T | — |
-| MULTI-07 | Column Editor: insert text into each row | planned | `JARAK-FR-081` | 96 | T | — |
-| MULTI-08 | Column Editor: insert incrementing numbers (initial, increase, repeat, leading, base) | planned | `JARAK-FR-081` | 96 | T | — |
-| MULTI-09 | Convert a column selection to a multi-selection (setting) | planned | `JARAK-FR-081` | 96 | T | — |
-| MULTI-10 | Virtual space past line ends (setting) | planned | `JARAK-FR-081` | 96 | T | — |
+| MULTI-01 | Ctrl+click adds a caret / selection (multi-editing) | supported | `JARAK-FR-080` | 96 | T, M | Step 96: Ctrl+click adds (or removes) a caret, Ctrl+drag a selection; typing, Backspace, paste and undo on every caret (`multi::tests`, `ctrl_click_adds_carets_that_type_delete_paste_and_undo_together`, `ctrl_clicks_past_line_ends_add_carets_at_the_ends`; real desktop r96: a click and two real Ctrl+clicks typing at three line ends) |
+| MULTI-02 | Multi-select all occurrences (match case / whole word options) | supported | `JARAK-FR-080` | 96 | T | Step 96: Alt+F3 and the palette's four variants (ignore case and whole word, match case only, whole word only, match case and whole word) (`multi::tests::next_and_all_occurrences_with_their_options`, `ctrl_shift_d_adds_the_next_occurrence_and_alt_f3_selects_all`, UI audit `multi`) |
+| MULTI-03 | Multi-select next occurrence / skip current | supported | `JARAK-FR-080` | 96 | T | Step 96: Ctrl+Shift+D (Ctrl+D stays Duplicate line, Notepad++'s key) and *skip this occurrence* (`multi::tests`, window test) |
+| MULTI-04 | Column selection with Alt+drag | supported | `JARAK-FR-081` | 96 | M | Step 96: Alt+drag by display column, past short lines in cells (`alt_drag_draws_a_column_block_with_the_mouse_and_virtual_space_pads`; real desktop r96: a real Alt+drag down column 0 typed into four lines) |
+| MULTI-05 | Column selection with Alt+Shift+arrows | supported | `JARAK-FR-081` | 96 | T | Step 96: Alt+Shift+arrows from the caret (`alt_shift_arrows_make_a_column_block_aligned_by_display_column`; real desktop r96: columns 0-4 over a Hangul line) |
+| MULTI-06 | Typing, deleting and pasting into every row of a column selection | supported | `JARAK-FR-081` | 96 | T | Step 96: a column selection is a multi-selection: typing, deleting and pasting (one line per row when the counts match) into every row, aligned by display column with Hangul and emoji (`multi::tests::a_column_block_lines_up_by_display_column_with_hangul_and_emoji`, window tests, real desktop r96, UI audit `column`) |
+| MULTI-07 | Column Editor: insert text into each row | supported | `JARAK-FR-081` | 96 | T | Step 96: Alt+C, *Text to insert* into every row (or from the caret down), padding short lines (`the_column_editor_inserts_text_or_numbers_in_every_row`, `multi::tests`, real desktop r96) |
+| MULTI-08 | Column Editor: insert incrementing numbers (initial, increase, repeat, leading, base) | supported | `JARAK-FR-081` | 96 | T | Step 96: initial, increase by, repeat, no/zero/space leading, Dec/Hex/Oct/Bin (`multi::tests::column_editor_numbers_in_every_base_with_repeat_and_leading`, window test, UI audit `column-editor`; real desktop r96: real clicks on the Number page, the initial number 8 and leading zeros inserted 08…12 into five lines, undone in one step) |
+| MULTI-09 | Convert a column selection to a multi-selection (setting) | supported | `JARAK-FR-081` | 96 | T | Step 96: a column selection always is a multi-selection of one range per row (the setting's "on" state; there is no "off" state to switch to) (`multi::tests`, window tests) |
+| MULTI-10 | Virtual space past line ends (setting) | supported | `JARAK-FR-081` | 96 | T | Step 96: palette *Virtual space* (kept in settings.toml) pads short rows in the same undo step and draws their carets at the block's column (`multi::tests::virtual_space_pads_short_lines_and_column_editor_inserts_numbers`, `alt_drag_draws_a_column_block_with_the_mouse_and_virtual_space_pads`) |
 
 ### AUTO — Auto-completion and editing assistance (sources A, P)
 

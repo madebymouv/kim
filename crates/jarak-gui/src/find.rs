@@ -1075,39 +1075,47 @@ impl JarakApp {
         // backward, Alt+I in selection, Alt+N / Alt+X / Alt+G the Normal / Extended / Regular
         // expression mode, Alt+D `.` matches newline.
         use egui::Key as K;
-        let mnemonic = ctx.input(|i| {
-            i.events.iter().find_map(|e| match e {
-                egui::Event::Key {
-                    key,
-                    pressed: true,
-                    modifiers: m,
-                    ..
-                } if m.alt
-                    && !m.ctrl
-                    && !m.command
-                    && !m.shift
-                    && [
-                        K::A,
-                        K::R,
-                        K::T,
-                        K::M,
-                        K::C,
-                        K::W,
-                        K::P,
-                        K::B,
-                        K::I,
-                        K::N,
-                        K::X,
-                        K::G,
-                        K::D,
-                    ]
-                    .contains(key) =>
-                {
-                    Some(*key)
-                }
-                _ => None,
-            })
+        // Only while the panel has the keyboard (in the editor Alt+C is the Column Editor).
+        let in_view = ctx.memory(|m| m.focused()).is_some_and(|id| {
+            id == crate::view::view_id_for(0) || id == crate::view::view_id_for(1)
         });
+        let mnemonic = (!in_view)
+            .then(|| {
+                ctx.input(|i| {
+                    i.events.iter().find_map(|e| match e {
+                        egui::Event::Key {
+                            key,
+                            pressed: true,
+                            modifiers: m,
+                            ..
+                        } if m.alt
+                            && !m.ctrl
+                            && !m.command
+                            && !m.shift
+                            && [
+                                K::A,
+                                K::R,
+                                K::T,
+                                K::M,
+                                K::C,
+                                K::W,
+                                K::P,
+                                K::B,
+                                K::I,
+                                K::N,
+                                K::X,
+                                K::G,
+                                K::D,
+                            ]
+                            .contains(key) =>
+                        {
+                            Some(*key)
+                        }
+                        _ => None,
+                    })
+                })
+            })
+            .flatten();
         match (mnemonic, self.find.page) {
             (Some(K::A), Page::Replace) => act = Some("replace-all"),
             (Some(K::R), Page::Replace) => act = Some("replace"),

@@ -1186,6 +1186,13 @@ impl JarakApp {
         let lang = self.lang;
         let mut act = None;
         let (n, files) = p.chosen();
+        // Enter and Esc are read before the dialog draws (a focused check box would take Enter).
+        let (enter, esc) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::Enter),
+                i.key_pressed(egui::Key::Escape),
+            )
+        });
         kim_ui::dialog_sized(
             ctx,
             "jarak-replace-preview",
@@ -1287,9 +1294,9 @@ impl JarakApp {
                 });
             },
         );
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if esc {
             act = Some(false);
-        } else if n > 0 && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        } else if n > 0 && enter && act.is_none() {
             // Enter replaces the checked changes (the dialog's default button).
             act = Some(true);
         }

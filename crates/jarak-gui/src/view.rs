@@ -16,6 +16,7 @@ use eframe::egui::{
     self, Color32, CornerRadius, FontId, Galley, Pos2, Rect, Sense, Stroke, Vec2, text::CCursor,
 };
 use jarak_core::document::Document;
+use jarak_core::document::multi::Block;
 use jarak_core::selection::{Range, Selection};
 use jarak_core::text;
 use kim_design::{font, size, space};
@@ -54,6 +55,10 @@ pub struct ViewState {
     /// Step 94: styled ranges (marks, token styles) with their colours, and bookmarked lines.
     pub styled: Vec<(usize, usize, Color32)>,
     pub bookmarks: Vec<usize>,
+    /// Step 96: where each visible line was drawn last frame (its first char and origin) and
+    /// the cell size — for [`ViewState::pos_of_char`].
+    drawn: Vec<(usize, Pos2)>,
+    cell: Vec2,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -62,6 +67,10 @@ pub struct ViewState {
 enum Drag {
     /// Selecting text from this anchor; `unit` 1 = characters, 2 = words, 3 = lines.
     Text { anchor: usize, unit: u8 },
+    /// Step 96: Ctrl+drag, a further selection from this anchor (the others stay).
+    Add { anchor: usize },
+    /// Step 96: Alt+drag, a column selection from this (line, display column).
+    Column { anchor: (usize, usize) },
     /// The scrollbar thumb, grabbed at this offset.
     Scrollbar { grab: f32 },
 }
@@ -85,6 +94,8 @@ impl Default for ViewState {
             salt: 0,
             styled: Vec::new(),
             bookmarks: Vec::new(),
+            drawn: Vec::new(),
+            cell: Vec2::ZERO,
             drag: None,
             clicks: None,
         }
@@ -114,6 +125,50 @@ impl Metrics {
     fn font(&self) -> FontId {
         FontId::monospace(self.font_size)
     }
+}
+
+/// The layout of one drawn line: the monospace font, every wide character (Hangul, CJK, emoji)
+/// exactly two cells wide (Step 96: the fallback font's glyphs are not, so column selections and
+/// tab stops would drift), the rest in runs.
+fn line_job(
+    ui: &egui::Ui,
+    text: &str,
+    m: &Metrics,
+    color: Color32,
+    wrap_w: f32,
+) -> egui::text::LayoutJob {
+    let font = m.font();
+    let fmt = egui::text::TextFormat {
+        font_id: font.clone(),
+        color,
+        ..Default::default()
+    };
+    let mut job = egui::text::LayoutJob {
+        wrap: egui::text::TextWrapping {
+            max_width: wrap_w,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut run = String::new();
+    for ch in text.chars() {
+        if unicode_width_of(ch) == 2 {
+            if !run.is_empty() {
+                job.append(&run, 0.0, fmt.clone());
+                run.clear();
+            }
+            let w = ui.fonts_mut(|f| f.glyph_width(&font, ch));
+            let mut wide = fmt.clone();
+            wide.extra_letter_spacing = 2.0 * m.char_w - w;
+            job.append(ch.encode_utf8(&mut [0u8; 4]), 0.0, wide);
+        } else {
+            run.push(ch);
+        }
+    }
+    if !run.is_empty() || job.sections.is_empty() {
+        job.append(&run, 0.0, fmt);
+    }
+    job
 }
 
 /// One line as drawn: the text with tabs expanded (and the IME composition inserted), and the
@@ -285,13 +340,7 @@ pub fn show(
         let pre = (!state.preedit.is_empty() && line == caret_line)
             .then(|| (caret - start, state.preedit.as_str()));
         let vis = VisualLine::build(&s, tab, pre);
-        let job = egui::text::LayoutJob {
-            wrap: egui::text::TextWrapping {
-                max_width: wrap_w,
-                ..Default::default()
-            },
-            ..egui::text::LayoutJob::simple(vis.text.clone(), m.font(), c.text_primary, wrap_w)
-        };
+        let job = line_job(ui, &vis.text, &m, c.text_primary, wrap_w);
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         let height = (galley.rows.len().max(1) as f32) * m.row;
         laid.push(Laid {
@@ -406,7 +455,14 @@ pub fn show(
         }) {
             let off = r.head - l.start;
             let p = l.galley.pos_from_cursor(CCursor::new(l.vis.map[off]));
-            let x = l.origin.x + p.left();
+            let mut x = l.origin.x + p.left();
+            if let Some(b) = doc.block().filter(|_| doc.virtual_space && r.is_empty()) {
+                let (line, col) = doc.line_col_display(r.head);
+                let left = b.cols().0;
+                if col < left && doc.line_width(line) == col {
+                    x += (left - col) as f32 * m.char_w;
+                }
+            }
             let w = if state.block_caret {
                 // The width of the character under the caret (two cells for a wide one).
                 let next = l
@@ -472,6 +528,8 @@ pub fn show(
     // The scrollbar.
     paint_scrollbar(ui, rect, bar_w, lines, state, &c);
     // Mouse: clicks, drags, double and triple clicks, the wheel.
+    state.drawn = laid.iter().map(|l| (l.start, l.origin)).collect();
+    state.cell = Vec2::new(m.char_w, m.row);
     let ctrl_click = mouse(ui, &resp, &laid, doc, state, &m, text_rect);
     ViewOutput {
         focused,
@@ -634,6 +692,31 @@ fn hit(laid: &[Laid], doc: &Document, p: Pos2) -> usize {
     text::floor_grapheme(doc.text().slice(..), l.start + off)
 }
 
+/// The (line, display column) under the pointer; past a line's end the column goes on in
+/// character cells (a column selection may reach past short lines).
+fn column_at(laid: &[Laid], doc: &Document, m: &Metrics, p: Pos2) -> (usize, usize) {
+    let pos = hit(laid, doc, p);
+    let (line, col) = doc.line_col_display(pos);
+    let Some(l) = laid
+        .iter()
+        .find(|l| p.y < l.origin.y + l.height)
+        .or(laid.last())
+    else {
+        return (line, col);
+    };
+    let end = l.start + l.vis.map.len() - 1;
+    if pos == end && l.line == line {
+        let e = l
+            .galley
+            .pos_from_cursor(CCursor::new(l.vis.map[end - l.start]));
+        let extra = ((p.x - (l.origin.x + e.left())) / m.char_w).round();
+        if extra > 0.0 {
+            return (line, col + extra as usize);
+        }
+    }
+    (line, col)
+}
+
 fn mouse(
     ui: &mut egui::Ui,
     resp: &egui::Response,
@@ -643,10 +726,11 @@ fn mouse(
     m: &Metrics,
     text_rect: Rect,
 ) -> Option<usize> {
-    let (shift, ctrl, scroll, time) = ui.input(|i| {
+    let (shift, ctrl, alt, scroll, time) = ui.input(|i| {
         (
             i.modifiers.shift,
             i.modifiers.command,
+            i.modifiers.alt,
             i.smooth_scroll_delta,
             i.time,
         )
@@ -692,6 +776,21 @@ fn mouse(
         };
         state.clicks = Some((time, p, n));
         match n {
+            // Step 96: Alt+click / Alt+drag starts a column selection; Ctrl+click adds a caret
+            // (Ctrl+drag a selection) and keeps the others.
+            1 if alt && !ctrl => {
+                let a = column_at(laid, doc, m, p);
+                doc.select_block(Block { anchor: a, head: a });
+                state.drag = Some(Drag::Column { anchor: a });
+                state.preedit.clear();
+                return None;
+            }
+            1 if ctrl && !shift => {
+                doc.add_caret(pos);
+                state.drag = Some(Drag::Add { anchor: pos });
+                state.preedit.clear();
+                return Some(pos);
+            }
             2 => {
                 doc.select_word_at(pos);
                 state.drag = Some(Drag::Text {
@@ -718,6 +817,20 @@ fn mouse(
         }
         state.preedit.clear();
         return (ctrl && !shift && n == 1).then_some(pos);
+    }
+    match state.drag {
+        Some(Drag::Add { anchor }) if resp.dragged() => {
+            doc.set_primary_range(Range::new(anchor, pos));
+            ui.ctx().request_repaint();
+        }
+        Some(Drag::Column { anchor }) if resp.dragged() => {
+            doc.select_block(Block {
+                anchor,
+                head: column_at(laid, doc, m, p),
+            });
+            ui.ctx().request_repaint();
+        }
+        _ => {}
     }
     if let Some(Drag::Text { anchor, unit }) = state.drag
         && resp.dragged()
@@ -769,6 +882,19 @@ fn mouse(
 }
 
 impl ViewState {
+    /// Where the view drew char position `pos` last frame (the left edge of its cell, half a row
+    /// down), when its line was on screen — tests and tools point the mouse with it. Unwrapped
+    /// lines; a wide character spans two cells.
+    pub fn pos_of_char(&self, doc: &Document, pos: usize) -> Option<Pos2> {
+        let (line, col) = doc.line_col_display(pos);
+        let start = doc.text().line_to_char(line);
+        let (_, origin) = self.drawn.iter().find(|(s, _)| *s == start)?;
+        Some(egui::pos2(
+            origin.x + col as f32 * self.cell.x + 0.1,
+            origin.y + self.cell.y / 2.0,
+        ))
+    }
+
     /// After an edit or a caret move: show the caret, drop the composition.
     pub fn after_edit(&mut self) {
         self.follow = true;

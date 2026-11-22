@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
+Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -82,6 +82,23 @@ Marks, bookmarks of marked lines and the five token styles (*Style all occurrenc
 *Style one token*, *Clear style*, *Jump to the next / previous styled text*, *Copy the styled
 text*) are in the palette and the Search menu. A selected word highlights its other occurrences on
 screen (smart highlighting).
+
+## Carets and columns
+
+| Keys | Command |
+| --- | --- |
+| Ctrl+click | Add a caret (on an existing one of several: remove it); Ctrl+drag adds a selection |
+| Ctrl+Shift+D | Select the word at the caret, then add its next occurrence each time |
+| Alt+F3 | Select every occurrence |
+| Esc | Back to one caret |
+| Alt+drag | Column selection |
+| Alt+Shift+Up / Down / Left / Right | Column selection from the caret |
+| Alt+C | Column Editor (text or incrementing numbers into every row) |
+
+The palette adds Notepad++'s four multi-select variants (ignore case and whole word, match case
+only, whole word only, match case and whole word) for *next* and *all*, *skip this occurrence*,
+*Begin/End Select* (also in column mode) and *Virtual space*. Ctrl+D is *Duplicate line*
+(Step 97), as in Notepad++.
 
 ## View and Markdown
 

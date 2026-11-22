@@ -2411,3 +2411,277 @@ fn find_in_files_follows_the_document_folder_and_copies_one_line() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 96: multiple carets, multi-selection and column mode ----------------------------------
+
+/// A primary click with `modifiers` at the document position `pos` of the first view (the
+/// pointer goes where the view draws that character).
+fn click_at_pos(h: &mut Harness<'static, JarakApp>, pos: usize, modifiers: egui::Modifiers) {
+    let p = screen_of(h, pos);
+    click_at(h, p, modifiers);
+}
+
+fn screen_of(h: &Harness<'static, JarakApp>, pos: usize) -> egui::Pos2 {
+    let t = h.state().tab();
+    t.view.pos_of_char(&t.file.doc, pos).expect("on screen")
+}
+
+/// Ctrl as Windows reports it (both Ctrl and the command modifier).
+const CTRL_CMD: egui::Modifiers = egui::Modifiers {
+    alt: false,
+    ctrl: true,
+    shift: false,
+    mac_cmd: false,
+    command: true,
+};
+
+fn texts_of(h: &Harness<'static, JarakApp>) -> Vec<String> {
+    let d = &h.state().tab().file.doc;
+    d.selection()
+        .ranges()
+        .iter()
+        .map(|r| d.text().slice(r.from()..r.to()).to_string())
+        .collect()
+}
+
+#[test]
+fn ctrl_click_adds_carets_that_type_delete_paste_and_undo_together() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "ab\ncd\nef");
+    // Wait a click-count interval between the clicks (no double click).
+    // Different lines: never counted as a double click.
+    click_at_pos(&mut h, 1, egui::Modifiers::NONE);
+    click_at_pos(&mut h, 4, CTRL_CMD);
+    click_at_pos(&mut h, 7, CTRL_CMD);
+    assert_eq!(h.state().tab().file.doc.selection().len(), 3);
+    assert!(
+        h.query_all_by_label_contains("3 carets").next().is_some(),
+        "the status bar counts them"
+    );
+    text(&mut h, "한");
+    assert_eq!(doc_text(&h), "a한b\nc한d\ne한f");
+    key(&mut h, egui::Key::Backspace, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "ab\ncd\nef");
+    // Three lines on the clipboard: one per caret.
+    h.state_mut().paste("1\r\n2\r\n3");
+    assert_eq!(doc_text(&h), "a1b\nc2d\ne3f");
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "a한b\nc한d\ne한f");
+    assert_eq!(
+        h.state().tab().file.doc.selection().len(),
+        3,
+        "undo brings the carets back"
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert_eq!(
+        h.state().tab().file.doc.selection().len(),
+        1,
+        "Esc: one caret"
+    );
+}
+
+#[test]
+fn ctrl_shift_d_adds_the_next_occurrence_and_alt_f3_selects_all() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "cat Cat cat concat cat");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    let cs = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+    key(&mut h, egui::Key::D, cs);
+    assert_eq!(texts_of(&h), ["cat"], "the word at the caret");
+    key(&mut h, egui::Key::D, cs);
+    key(&mut h, egui::Key::D, cs);
+    assert_eq!(
+        texts_of(&h),
+        ["cat", "cat", "cat"],
+        "whole word, match case: not Cat, not concat"
+    );
+    text(&mut h, "dog");
+    assert_eq!(doc_text(&h), "dog Cat dog concat dog");
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::F3, egui::Modifiers::ALT);
+    assert_eq!(h.state().tab().file.doc.selection().len(), 3);
+    // Notepad++'s variants from the palette: ignore case and whole word.
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(0, 3),
+        ));
+    h.state_mut().multi(2);
+    assert_eq!(h.state().tab().file.doc.selection().len(), 5);
+}
+
+#[test]
+fn alt_shift_arrows_make_a_column_block_aligned_by_display_column() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "한글abc\nabcdef\nxy");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    let asf = egui::Modifiers::ALT | egui::Modifiers::SHIFT;
+    key(&mut h, egui::Key::ArrowDown, asf);
+    key(&mut h, egui::Key::ArrowRight, asf);
+    key(&mut h, egui::Key::ArrowRight, asf);
+    // From column 2 (after 한) to column 4 on both lines: 글 and "cd".
+    assert_eq!(texts_of(&h), ["글", "cd"]);
+    text(&mut h, "|");
+    assert_eq!(doc_text(&h), "한|abc\nab|ef\nxy");
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(texts_of(&h), ["글", "cd"]);
+}
+
+#[test]
+fn alt_drag_draws_a_column_block_with_the_mouse_and_virtual_space_pads() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "abcdef\nab\nabcdef");
+    h.state_mut().virtual_space = true;
+    h.run();
+    let from = screen_of(&h, 4);
+    let to = screen_of(&h, 14);
+    let alt = egui::Modifiers::ALT;
+    h.event(egui::Event::ModifiersChanged(alt));
+    h.event(egui::Event::PointerMoved(from));
+    h.event(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: alt,
+    });
+    let _ = h.try_run();
+    for k in 1..=4 {
+        let p = from + (to - from) * (k as f32 / 4.0);
+        h.event(egui::Event::PointerMoved(p));
+        let _ = h.try_run();
+    }
+    h.event(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: alt,
+    });
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    let _ = h.try_run();
+    let b = h
+        .state()
+        .tab()
+        .file
+        .doc
+        .block()
+        .expect("a column selection");
+    assert_eq!(
+        (b.lines(), b.cols()),
+        ((0, 2), (4, 4)),
+        "zero width at column 4, lines 1-3"
+    );
+    assert!(
+        !h.state().menu_bar,
+        "Alt with the mouse does not open the menu bar"
+    );
+    text(&mut h, "X");
+    assert_eq!(
+        doc_text(&h),
+        "abcdXef\nab  X\nabcdXef",
+        "the short line padded to column 4"
+    );
+}
+
+#[test]
+fn the_column_editor_inserts_text_or_numbers_in_every_row() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "a\nb\nc\nd");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::End, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::C, egui::Modifiers::ALT);
+    assert!(h.state().column_editor_open);
+    h.get_by_label("Number to insert").click();
+    h.run();
+    {
+        let e = h.state_mut().column_editor.as_mut().unwrap();
+        e.initial = "9".into();
+        e.leading = jarak_core::document::multi::Leading::Zeros;
+    }
+    h.run();
+    h.get_by_label("Insert").click();
+    h.run();
+    assert_eq!(doc_text(&h), "a09\nb10\nc11\nd12");
+    assert!(!h.state().column_editor_open);
+    // Text into a column selection's rows; a bad number is refused with the reason.
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::C, egui::Modifiers::ALT);
+    h.state_mut().column_editor.as_mut().unwrap().initial = "x".into();
+    h.run();
+    h.get_by_label("Insert").click();
+    h.run();
+    assert!(h.state().column_editor_open, "stays open");
+    assert!(h.query_by_label_contains("a whole number").is_some());
+    h.get_by_label("Text to insert").click();
+    h.run();
+    h.state_mut().column_editor.as_mut().unwrap().text = "=".into();
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "a=\nb=\nc=\nd=");
+}
+
+#[test]
+fn begin_end_select_in_stream_and_column_mode() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "abcd\nefgh\nijkl");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    h.state_mut().multi(11);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    h.state_mut().multi(11);
+    assert_eq!(texts_of(&h), ["bcd\nef"]);
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    h.state_mut().multi(12);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    h.state_mut().multi(12);
+    assert_eq!(texts_of(&h), ["bc", "fg", "jk"]);
+}
+
+/// Found on the real desktop (Step 96): Ctrl+clicks past the ends of lines add carets at those
+/// line ends.
+#[test]
+fn ctrl_clicks_past_line_ends_add_carets_at_the_ends() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "alpha one\nbeta two\ngamma three\n한글 넷\n");
+    h.run();
+    let far =
+        |h: &Harness<'static, JarakApp>, pos: usize| screen_of(h, pos) + egui::vec2(400.0, 0.0);
+    let p1 = far(&h, 0);
+    click_at(&mut h, p1, egui::Modifiers::NONE);
+    let p2 = far(&h, 10);
+    click_at(&mut h, p2, CTRL_CMD);
+    let p3 = far(&h, 19);
+    click_at(&mut h, p3, CTRL_CMD);
+    let heads: Vec<usize> = h
+        .state()
+        .tab()
+        .file
+        .doc
+        .selection()
+        .ranges()
+        .iter()
+        .map(|r| r.head)
+        .collect();
+    assert_eq!(heads, [9, 18, 30], "the ends of lines 1, 2 and 3");
+    text(&mut h, "!");
+    assert_eq!(
+        doc_text(&h),
+        "alpha one!\nbeta two!\ngamma three!\n한글 넷\n"
+    );
+}

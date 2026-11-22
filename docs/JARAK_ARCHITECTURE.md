@@ -707,3 +707,72 @@ preview and Enter (CP949 and CRLF kept, the binary file untouched, the open b.md
 *Undo the last Replace in Files* restoring every byte, all checked on disk. Found by the real runs:
 the window's shortcuts did not reach a box of the find panel, and the palette ranked "Undo the last
 Replace in Files" above "Replace in files…" for that query (both fixed, with tests).
+
+## 18. Multiple carets, multi-selection and column mode (Step 96)
+
+`JARAK-FR-080`, `JARAK-FR-081`, `JARAK-FR-012`; matrix rows `MULTI-01`…`MULTI-10`, `EDIT-04`,
+`EDIT-05` (supported).
+
+- **The model** (`jarak-core::document::multi`): the selection was already a sorted set of ranges
+  (Step 86) and every edit command works on each range and records the selection before it, so
+  typing, Backspace/Delete, Enter, paste, indent and undo/redo apply to every caret and undo brings
+  them all back. Step 96 adds the commands that make such selections and the column block.
+- **Carets and occurrences**: Ctrl+click adds a caret (Ctrl+click on an existing one of several
+  removes it; Ctrl+drag adds a selection); a Ctrl+click on a Markdown image reference or a link
+  keeps its Step 89/91 meaning and leaves one caret. *Add the next occurrence* (Ctrl+Shift+D): the
+  first press on a caret selects the word under it, each further press adds the next occurrence
+  after the last range (wrapping); started from a word it matches whole words with their case,
+  started from a selection the text as it is. *Select all occurrences* (Alt+F3) likewise; the
+  palette has Notepad++'s four variants of each (ignore case and whole word, match case only,
+  whole word only, match case and whole word) and *skip this occurrence*. Esc goes back to one
+  caret (the view keeps Esc while there are several, so egui does not take it as "drop the
+  focus"). Ctrl+D stays *Duplicate line* (Notepad++'s key, `LINE-01`, Step 97); the issue's
+  "Ctrl+D" for the next occurrence became Ctrl+Shift+D for that reason.
+- **Column selections** (`Block`: anchor and head as (line, display column)): one range per line
+  between the same display columns — a wide Hangul/CJK character or an emoji counts two, a tab
+  runs to its stop; an edge inside a wide character takes the nearer boundary — made by Alt+drag
+  (past a line's end the pointer goes on in cells), Alt+Shift+arrows (from the caret; without
+  virtual space the head stops at its line's end) or *Begin/End Select in column mode*. A column
+  selection is a multi-selection (Notepad++'s "column to multi-editing" is always on), so every
+  command works on each row; the block ends with the first edit, its carets stay. Several lines
+  pasted into as many carets go one per caret; copying joins the rows with the document's line
+  ending.
+- **Virtual space** (palette, kept in `settings.toml` as `virtual_space`): typing or pasting into a
+  column selection pads rows shorter than its left edge with spaces in the same undo step; the
+  carets past a short line's end are drawn at the block's column.
+- **Wide characters are two cells on screen**: the view lays out each wide character in its own
+  section with letter spacing so that its advance is exactly two monospace cells (the system's
+  Korean fallback font is narrower or wider than that), so column selections, tab stops and Vim's
+  visual block line up on screen as they do in the model.
+- **The Column Editor** (Alt+C; Notepad++'s dialog): text, or numbers with the initial value, the
+  increase, the repeat count, no/zero/space leading and decimal, hexadecimal (upper case), octal or
+  binary digits, all the same width; inserted into every row of the column selection at its left
+  edge, or else from the caret's line to the last line at the caret's display column, padding
+  shorter lines; one undo step. Enter inserts and Esc closes (both read before the dialog draws,
+  so a focused button cannot swallow them).
+- **Begin/End Select** (`EDIT-04`, `EDIT-05`, palette): the first run marks the start, the second
+  selects to the caret, as a stream or as a column selection.
+- The status bar counts the carets ("· 3 carets"); the find panel's Alt mnemonics act only while
+  the panel has the keyboard, so Alt+C in the editor is the Column Editor.
+
+Tests: `multi` 5 (carets typing, deleting, pasting one line each and undoing with every caret back;
+next/all occurrences with their options and skip; a block lined up by display column across
+Hangul, ASCII and an emoji, Alt+Shift+arrows, a short line; virtual space padding as one undo step;
+the Column Editor from the caret and in a block; numbers in every base with repeat, leading zeros
+and spaces, negative values); window flows 8 new (real pointer events: a click and Ctrl+clicks
+typing, pasting, undoing, Esc; Ctrl+clicks past line ends; Ctrl+Shift+D and Alt+F3 and a palette
+variant; Alt+Shift+arrows over Hangul; Alt+drag with virtual space and no menu bar; the Column
+Editor's numbers, a bad number refused, text with Enter; Begin/End Select in both modes). UI audit
+views `multi`, `column` (a block over the fixture's Hangul lines), `column-editor` (145 runs, 0
+failures). e2e `step96_jarak_multi_carets_column.rs`. Perf (release): a keystroke frame in a 10 MB document p95 0.23 ms
+with the two-cell layout of wide characters (0.13 ms before). Real desktop (r96, checked on disk):
+a real click and two real Ctrl+clicks past three line ends typed "!" at each; a real Alt+drag down
+column 0 typed "> " into four lines; Alt+Shift+Down ×3 and Right ×4 selected `> al`, `> be`,
+`> ga` and `> 한` (display columns 0–4 with a Hangul line) and "*" replaced each; undo brought the
+text and the four ranges back; the Column Editor through real clicks (the Number page, the initial
+number, leading zeros) and Enter inserted `08`…`12` into five lines, undone in one step. Found by
+the real runs and fixed: Enter was taken by the focused segment button in the Column Editor (Enter
+and Esc are now read before the dialog draws, also in the Replace in Files preview); the number
+fields had no visible labels. In the first run the two Ctrl+clicks did not land (one caret went to
+the last line); three later runs and a step-by-step probe added the carets correctly and it did
+not recur.

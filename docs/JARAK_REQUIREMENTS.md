@@ -29,7 +29,10 @@ Step 94 implemented `JARAK-FR-070`…`JARAK-FR-072` (find, replace, regular expr
 styles, incremental search, history; [JARAK_ARCHITECTURE §16](JARAK_ARCHITECTURE.md); smart
 highlighting's options wait for the settings window, Step 110); Step 95 implemented `JARAK-FR-073`
 and `JARAK-FR-074` (Find and Replace in Files with the journal, the results panel, Find All and
-Replace All in open documents; [JARAK_ARCHITECTURE §17](JARAK_ARCHITECTURE.md));
+Replace All in open documents; [JARAK_ARCHITECTURE §17](JARAK_ARCHITECTURE.md)); Step 96
+implemented `JARAK-FR-080` and `JARAK-FR-081` and the Begin/End Select of `JARAK-FR-012`
+(multiple carets, occurrences, column selections, virtual space, the Column Editor;
+[JARAK_ARCHITECTURE §18](JARAK_ARCHITECTURE.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

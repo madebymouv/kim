@@ -64,6 +64,16 @@ pub enum Action {
     NextResult,
     PreviousResult,
     ToggleResults,
+    /// Step 96: Ctrl+Shift+D add the next occurrence, Alt+F3 select all occurrences, Esc back
+    /// to one caret, Alt+Shift+arrows a column selection, Alt+C the Column Editor.
+    AddNextOccurrence,
+    SelectAllOccurrences,
+    SingleCaret,
+    BlockUp,
+    BlockDown,
+    BlockLeft,
+    BlockRight,
+    ColumnEditor,
 }
 
 /// The action for `key` with `m` held, if any.
@@ -75,6 +85,12 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
     if m.alt && !ctrl {
         return match key {
             Key::Z if !shift => Some(A::ToggleWrap),
+            Key::C if !shift => Some(A::ColumnEditor),
+            Key::F3 if !shift => Some(A::SelectAllOccurrences),
+            Key::ArrowUp if shift => Some(A::BlockUp),
+            Key::ArrowDown if shift => Some(A::BlockDown),
+            Key::ArrowLeft if shift => Some(A::BlockLeft),
+            Key::ArrowRight if shift => Some(A::BlockRight),
             _ => None,
         };
     }
@@ -134,6 +150,8 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         }),
         (true, Key::I) if m.alt && !shift => Some(A::Incremental),
         (true, Key::F) if shift && !m.alt => Some(A::FindInFiles),
+        (true, Key::D) if shift && !m.alt => Some(A::AddNextOccurrence),
+        (false, Key::Escape) if !shift => Some(A::SingleCaret),
         (true, Key::F) if !shift && !m.alt => Some(A::Find),
         (false, Key::F4) => Some(if shift {
             A::PreviousResult
@@ -257,6 +275,14 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::NextResult => "F4",
         A::PreviousResult => "Shift+F4",
         A::ToggleResults => "F7",
+        A::AddNextOccurrence => "Ctrl+Shift+D",
+        A::SelectAllOccurrences => "Alt+F3",
+        A::SingleCaret => "Esc",
+        A::BlockUp => "Alt+Shift+Up",
+        A::BlockDown => "Alt+Shift+Down",
+        A::BlockLeft => "Alt+Shift+Left",
+        A::BlockRight => "Alt+Shift+Right",
+        A::ColumnEditor => "Alt+C",
     })
 }
 
@@ -338,6 +364,14 @@ mod tests {
             Action::NextResult,
             Action::PreviousResult,
             Action::ToggleResults,
+            Action::AddNextOccurrence,
+            Action::SelectAllOccurrences,
+            Action::SingleCaret,
+            Action::BlockUp,
+            Action::BlockDown,
+            Action::BlockLeft,
+            Action::BlockRight,
+            Action::ColumnEditor,
         ]);
         for a in actions {
             let label = key_label(a).expect("every action has keys");

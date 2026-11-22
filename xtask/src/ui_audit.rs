@@ -144,6 +144,10 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "files",
                 "results",
                 "replace-preview",
+                // Step 96: several carets, a column block over Korean lines, the Column Editor.
+                "multi",
+                "column",
+                "column-editor",
             ],
         ),
     ];

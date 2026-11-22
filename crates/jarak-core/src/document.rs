@@ -64,6 +64,13 @@ pub struct Document {
     saved: u64,
     /// Step 94: marks, styled tokens and bookmarks, kept in place by every edit.
     markers: Vec<Marker>,
+    /// Step 96: the column selection, while the selection is one.
+    block: Option<multi::Block>,
+    /// Step 96: typing into a column selection pads shorter lines with spaces (a setting).
+    pub virtual_space: bool,
+    /// Step 96: the occurrence commands started from the word at the caret (whole word, match
+    /// case) and go on that way while they add ranges.
+    occ_word: bool,
     /// Columns per tab stop (display and vertical moves).
     pub tab_width: usize,
     /// What Enter inserts.
@@ -92,6 +99,9 @@ impl Document {
             history: History::default(),
             saved: 0,
             markers: Vec::new(),
+            block: None,
+            virtual_space: false,
+            occ_word: false,
             tab_width: 4,
             eol,
         }
@@ -111,6 +121,8 @@ impl Document {
 
     /// Replaces the selection (a click, a search hit); positions snap to grapheme starts.
     pub fn set_selection(&mut self, sel: &Selection) {
+        self.block = None;
+        self.occ_word = false;
         let len = self.len_chars();
         let s = self.text.slice(..);
         self.sel = sel.map(|r| Range {
@@ -268,6 +280,9 @@ impl Document {
         if parts.iter().all(|(f, t, s)| f == t && s.is_empty()) {
             return;
         }
+        // An edit ends a column selection (its carets stay).
+        self.block = None;
+        self.occ_word = false;
         let before = self.sel.clone();
         let merge = self.may_merge(&parts, kind);
         let mut edits = Vec::with_capacity(parts.len());
@@ -342,12 +357,8 @@ impl Document {
     }
 
     fn insert_kind(&mut self, s: &str, kind: Kind) {
-        let parts = self
-            .sel
-            .ranges()
-            .iter()
-            .map(|r| (r.from(), r.to(), s.to_string()))
-            .collect();
+        // Step 96: a column selection with virtual space pads its shorter lines first.
+        let parts = self.insert_parts(s);
         self.change(parts, kind);
     }
 
@@ -634,6 +645,8 @@ impl Document {
             self.apply_edit(&e.inverse());
         }
         self.sel = entry.before;
+        self.block = None;
+        self.occ_word = false;
         true
     }
 
@@ -647,12 +660,16 @@ impl Document {
             self.apply_edit(e);
         }
         self.sel = entry.after;
+        self.block = None;
+        self.occ_word = false;
         true
     }
 
     // ---- caret movement --------------------------------------------------------------------
 
     fn move_each(&mut self, extend: bool, f: impl Fn(&Rope, Range) -> usize) {
+        self.block = None;
+        self.occ_word = false;
         let text = &self.text;
         self.sel = self.sel.map(|r| r.moved(f(text, r), extend));
         self.history.seal();
@@ -727,6 +744,8 @@ impl Document {
     /// Up (`lines` < 0) or down (`lines` > 0) keeping the goal column; on the first or last line
     /// a single-line move stays put, a page move goes to that line.
     pub fn move_lines(&mut self, lines: isize, extend: bool) {
+        self.block = None;
+        self.occ_word = false;
         let tab = self.tab_width;
         let text = &self.text;
         let last = text.len_lines().saturating_sub(1);
@@ -855,6 +874,9 @@ fn merge_parts(mut parts: Vec<(usize, usize, String)>) -> Vec<(usize, usize, Str
     }
     out
 }
+
+/// Step 96: multiple carets and column selections.
+pub mod multi;
 
 #[cfg(test)]
 mod tests;
