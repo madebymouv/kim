@@ -22,6 +22,8 @@ fn profile(name: &str, program: &Path, args: &[&str]) -> Profile {
         agent_forward: false,
         login_script: None,
         group: Some("Detected".into()),
+        docker: None,
+        docker_shell: None,
         line: None,
     }
 }

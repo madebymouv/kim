@@ -373,7 +373,9 @@ Booleans take `true`/`false` (or `on`/`off`). A value that starts with `-` is gi
 not set (`cwd`, `env`, `unset_env`, `group`; for SSH also `identity`, `jump`, `forwards`,
 `agent_forward`, `login_script`): `env` joins, a variable a profile removes is not set back, and
 detected shells take the local folder and variables. `profile list` and `profile show` show the
-merged profiles; a wrong default is reported by `config show` and not used.
+merged profiles; a wrong default is reported by `config show` and not used. A profile with
+`docker = "<container>"` (and optional `docker_shell`, `sh` by default; #98 T4, `SHELL-26`) runs
+Docker's own client, `docker.exe exec -it <container> <shell>`, instead of `program`/`args`.
 
 **Safety.** An invalid or newer file is never rewritten by `set` or `reset <key>`
 (`config_invalid`, exit 4; `config_from_newer_version`, exit 5); `reset --all --yes` replaces an

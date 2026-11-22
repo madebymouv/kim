@@ -12,6 +12,8 @@
         ],
         "cwd": null,
         "default": true,
+        "docker": null,
+        "docker_shell": null,
         "env": {
           "RUST_BACKTRACE": "1"
         },
@@ -35,6 +37,8 @@
         ],
         "cwd": null,
         "default": false,
+        "docker": null,
+        "docker_shell": null,
         "env": {
           "GITHUB_TOKEN": "***",
           "MODE": "fast"

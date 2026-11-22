@@ -339,6 +339,11 @@ pub struct Profile {
     pub login_script: Option<String>,
     /// Step 36: the group the profile belongs to (`profile list` shows it; detected shells: `Detected`).
     pub group: Option<String>,
+    /// #98 T4 (`SHELL-26`): a Docker profile's container (name or id); the pane runs
+    /// `docker exec -it <container> <docker_shell>` with Docker's own client.
+    pub docker: Option<String>,
+    /// The program run in the container (`sh` when not set).
+    pub docker_shell: Option<String>,
     /// The 1-based line of its `[[profiles]]` header (messages).
     pub line: Option<usize>,
 }
@@ -954,6 +959,8 @@ impl Profile {
             "agent_forward": self.agent_forward,
             "login_script": self.login_script,
             "group": self.group,
+            "docker": self.docker,
+            "docker_shell": self.docker_shell,
             "source": if self.detected { "detected" } else { "config" },
             "secret_env": self.secret_env(),
             "default": default,
@@ -1943,17 +1950,63 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
         }
         g => g.map(|g| g.trim().to_string()),
     };
+    // #98 T4 (`SHELL-26`): a Docker profile names a container instead of a program.
+    let docker = text("docker", false)?.map(|d| d.trim().to_string());
+    let docker_shell = text("docker_shell", false)?.map(|d| d.trim().to_string());
+    if let Some(c) = &docker {
+        let ok = !c.is_empty()
+            && c.len() <= 128
+            && c.chars().next().is_some_and(|x| x.is_ascii_alphanumeric())
+            && c.chars()
+                .all(|x| x.is_ascii_alphanumeric() || "_.-".contains(x));
+        if !ok {
+            return Err((
+                Some("docker"),
+                format!(
+                    "`docker` must be a container name or id (letters, digits, `_`, `.`, `-`; `{c}` is not)"
+                ),
+            ));
+        }
+        if ssh.is_some() || t.contains_key("program") || t.contains_key("args") {
+            return Err((
+                Some("docker"),
+                "a Docker profile has `docker` instead of `program`, `args` and `ssh`".into(),
+            ));
+        }
+    }
+    if let Some(sh) = &docker_shell {
+        if docker.is_none() {
+            return Err((
+                Some("docker_shell"),
+                "`docker_shell` belongs to a Docker profile (`docker`)".into(),
+            ));
+        }
+        if sh.is_empty() || sh.chars().count() > 256 || sh.chars().any(char::is_control) {
+            return Err((
+                Some("docker_shell"),
+                "`docker_shell` must be a program in the container (1-256 characters)".into(),
+            ));
+        }
+    }
     let program = if ssh.is_some() {
         "ssh.exe".to_string()
+    } else if docker.is_some() {
+        "docker.exe".to_string()
     } else {
         text("program", true)?.unwrap_or_default()
     };
     if program.trim().is_empty() {
         return Err((Some("program"), "`program` must not be empty".into()));
     }
-    let args = match t.get("args") {
-        None => Vec::new(),
-        Some(toml::Value::Array(a)) => a
+    let args = match (t.get("args"), &docker) {
+        (_, Some(c)) => vec![
+            "exec".to_string(),
+            "-it".to_string(),
+            c.clone(),
+            docker_shell.clone().unwrap_or_else(|| "sh".to_string()),
+        ],
+        (None, None) => Vec::new(),
+        (Some(toml::Value::Array(a)), None) => a
             .iter()
             .map(|x| x.as_str().filter(|s| !s.contains('\0')).map(String::from))
             .collect::<Option<Vec<_>>>()
@@ -1962,7 +2015,7 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
                 Some("args"),
                 "`args` must be a list of at most 256 strings".to_string(),
             ))?,
-        Some(_) => {
+        (Some(_), None) => {
             return Err((Some("args"), "`args` must be a list of strings".into()));
         }
     };
@@ -2040,13 +2093,15 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
             "agent_forward",
             "login_script",
             "group",
+            "docker",
+            "docker_shell",
         ]
         .contains(&k.as_str())
     }) {
         return Err((
             None,
             format!(
-                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title, ssh, identity, jump, forwards, agent_forward, login_script, group)"
+                "`{bad}` is not a profile field (name, program, args, cwd, env, unset_env, title, ssh, identity, jump, forwards, agent_forward, login_script, group, docker, docker_shell)"
             ),
         ));
     }
@@ -2075,6 +2130,8 @@ fn parse_profile(v: &toml::Value) -> Result<Profile, (Option<&'static str>, Stri
         agent_forward,
         login_script,
         group,
+        docker,
+        docker_shell,
         line: None,
     })
 }
@@ -3272,6 +3329,8 @@ args = ["/k", "--password", "hunter2"]
             agent_forward: false,
             login_script: None,
             group: None,
+            docker: None,
+            docker_shell: None,
             line: None,
         });
         let d: Vec<String> = differences(&a, &b).iter().map(|c| c.key.clone()).collect();
@@ -3395,6 +3454,68 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
         );
     }
 
+    /// #98 T4 (`SHELL-26`): a Docker profile names a container; the Host is asked to run Docker's
+    /// own client with `exec -it <container> <shell>` (`sh` by default); a bad container name, a
+    /// Docker profile with a program or an SSH destination, and `docker_shell` without `docker`
+    /// are refused.
+    #[test]
+    fn a_docker_profile_runs_docker_exec_in_its_container() {
+        let p = parse(
+            "[[profiles]]
+name = \"Web\"
+docker = \"web-1\"
+docker_shell = \"/bin/bash\"
+group = \"Containers\"
+
+[[profiles]]
+name = \"Db\"
+docker = \"3f2a9c\"
+
+[[profiles]]
+name = \"Bad name\"
+docker = \"-rm\"
+
+[[profiles]]
+name = \"Both\"
+docker = \"web\"
+program = \"cmd.exe\"
+
+[[profiles]]
+name = \"Shell only\"
+program = \"cmd.exe\"
+docker_shell = \"bash\"
+",
+        );
+        let web = p.settings.profile("Web").unwrap();
+        assert_eq!(web.program, "docker.exe");
+        assert_eq!(web.args, ["exec", "-it", "web-1", "/bin/bash"]);
+        assert_eq!(
+            web.create_params()["command"],
+            json!({"program": "docker.exe", "args": ["exec", "-it", "web-1", "/bin/bash"]})
+        );
+        assert_eq!(web.to_json(false)["docker"], "web-1");
+        assert_eq!(web.to_json(false)["docker_shell"], "/bin/bash");
+        let db = p.settings.profile("Db").unwrap();
+        assert_eq!(db.args, ["exec", "-it", "3f2a9c", "sh"]);
+        assert_eq!(p.settings.profiles.len(), 2, "{:?}", p.problems);
+        let text: Vec<&str> = p.problems.iter().map(|x| x.message.as_str()).collect();
+        assert!(
+            text.iter()
+                .any(|m| m.contains("must be a container name or id")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter()
+                .any(|m| m.contains("instead of `program`, `args` and `ssh`")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter()
+                .any(|m| m.contains("`docker_shell` belongs to a Docker profile")),
+            "{text:?}"
+        );
+    }
+
     /// #98 T4 (`SHELL-14`): defaults per kind of profile fill what a profile does not say; the
     /// profile's own values win, variables join (a removed one is not set back), SSH defaults
     /// reach only SSH profiles, a wrong default is reported and not used, and detected shells get
@@ -3467,6 +3588,8 @@ ssh = \"ops@prod\"
             agent_forward: false,
             login_script: None,
             group: Some("Detected".into()),
+            docker: None,
+            docker_shell: None,
             line: None,
         };
         p.settings.profile_defaults.apply_to_detected(&mut d);

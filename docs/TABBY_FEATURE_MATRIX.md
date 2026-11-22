@@ -214,7 +214,7 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | `SHELL-23` Explorer context menu | S `shellIntegration.service.ts` (HKCU "Open Tabby here") | Opt-in "Open Subak here" verb, per user (HKCU) and without elevation. Removed on uninstall. *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
 | `SHELL-24` Portable mode | R: "Tabby will run as a portable app on Windows, if you create a `data` folder…"; N asset `portable-x64.zip` | A `data\` folder next to the binaries holds config, state and logs. No registry writes. The Host pipe stays per user (SUBAK-SEC-010). *Not in Step 20* *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
 | `SHELL-25` Legacy WinPTY backend | S `useConPTY` switch | Excluded: ConPTY only (SUBAK-FR-016). It is always present on Windows 10 1809+ (KIM-NFR-010). | excluded | — | — |
-| `SHELL-26` Docker containers | R plugin: "docker - connect to Docker containers" | A profile template that runs `docker exec -it`. A container picker could be an independent Kim tool. *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
+| `SHELL-26` Docker containers | R plugin: "docker - connect to Docker containers" | A profile template that runs `docker exec -it`. A container picker could be an independent Kim tool. *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. *#98 T4 (2026-11-23):* a profile with `docker = "<container>"` (name or id; one Docker would read as an option is refused) and optional `docker_shell` (`sh` by default) runs Docker's own client, `docker.exe exec -it <container> <shell>`, instead of `program`/`args`. Missing: not run against a real container (the maintainer's Docker was not touched); no container picker. | partial | #98 T4 | T: `crates/subak/src/config.rs::tests::a_docker_profile_runs_docker_exec_in_its_container`; E2E: `e2e/tests/issue98_subak_docker_profiles.rs` |
 | `SHELL-27` Open a tab on start | S `terminal.autoOpen` | The GUI attaches to existing Terminals and creates one only when the Host has none *Step 32 audit (2026-11-11):* *Partial:* the window opens the existing Terminal it showed last, or offers to create one; no "open a profile on start" setting. | partial | Step 16 | T: `crates/subak/tests/gui_window.rs::the_window_opens_an_existing_terminal_and_types_into_its_process_without_a_new_shell` (Step 32 audit) |
 
 ## 3. SSH
@@ -446,12 +446,12 @@ where each area belongs. The named Step confirms or changes the placement.
 
 ## Summary counts
 
-Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last: #98 T4 profile defaults, 2026-11-23).
+Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last: #98 T4 Docker profiles, 2026-11-23).
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 40 |
-| `partial` | 93 |
+| `planned` | 39 |
+| `partial` | 94 |
 | `implemented` | 45 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
@@ -460,7 +460,7 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1. Terminal core (`CORE`) | 4 | 50 | 24 | 3 | 2 | 83 |
-| 2. Shells and profiles (`SHELL`) | 6 | 8 | 10 | 2 | 1 | 27 |
+| 2. Shells and profiles (`SHELL`) | 5 | 9 | 10 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
 | 5. Serial (`SER`) | 14 | 0 | 0 | 0 | 0 | 14 |
@@ -495,6 +495,7 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | The command palette: `CORE-63` `implemented`. No Tabby re-fetch. |
 | 2026-11-23 | v1.0.238 (2026-10-07) | #98 T4 | Colour schemes: `PLUG-05` (scheme files in Windows Terminal's format) and `CORE-38` (Windows Terminal's nine default schemes, MIT) `implemented`. No Tabby re-fetch. |
 | 2026-11-23 | v1.0.238 (2026-10-07) | #98 T4 | Defaults per kind of profile: `SHELL-14` `partial` (local and SSH; serial and Telnet are not profiles yet). No Tabby re-fetch. |
+| 2026-11-23 | v1.0.238 (2026-10-07) | #98 T4 | Docker containers: `SHELL-26` `partial` (profiles run `docker exec -it`; not run against a real container). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Pane labels: `CORE-32` `implemented`. No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Tab colours: `CORE-24` `partial` (per Terminal; per-profile colours and icons remain). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Detected shells: `SHELL-04` (Clink), `SHELL-08` (Cygwin), `SHELL-09` (MSYS2), `SHELL-10` (Cmder), `SHELL-11` (Visual Studio developer prompts) `implemented` (only the Visual Studio prompt could be started on the development PC). No Tabby re-fetch. |

@@ -3995,6 +3995,8 @@
         "agent_forward": {"type": "boolean"},
         "login_script": {"type": ["string", "null"]},
         "group": {"type": ["string", "null"]},
+        "docker": {"type": ["string", "null"]},
+        "docker_shell": {"type": ["string", "null"]},
         "source": {"enum": ["config", "detected"]},
         "secret_env": {
           "type": "array",
