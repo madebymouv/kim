@@ -20,6 +20,7 @@ pub mod keys;
 pub mod media;
 pub mod palette;
 pub mod preview;
+pub mod results;
 pub mod sessions;
 pub mod tabs;
 pub mod view;
@@ -47,6 +48,10 @@ pub type Incoming = Arc<Mutex<Vec<Vec<String>>>>;
 pub trait Dialogs: Send + Sync {
     fn open(&self) -> Option<PathBuf>;
     fn save_as(&self, suggested: &str) -> Option<PathBuf>;
+    /// Step 95: a folder (Find in Files).
+    fn folder(&self) -> Option<PathBuf> {
+        None
+    }
 }
 
 /// No dialogs (tests that never open one).
@@ -403,6 +408,13 @@ pub struct JarakApp {
     colors: Colors,
     /// When an Alt+letter chord came (its text is dropped).
     alt_text: Option<f64>,
+    /// Step 95: Find / Replace in Files running on a thread, the results panel, the Replace in
+    /// Files preview, where batches are journaled and the last one (to undo).
+    pub job: Option<results::Job>,
+    pub results: Option<results::Results>,
+    pub preview: Option<results::Preview>,
+    pub journal_root: Option<PathBuf>,
+    pub last_batch: Option<String>,
 }
 
 /// The assets dialog's content.
@@ -437,6 +449,12 @@ impl JarakApp {
     }
 
     /// Uses `c` for Copy, Cut and Paste (the program passes the Windows clipboard).
+    /// Step 95: where Replace in Files keeps the originals (the program passes its journal folder).
+    pub fn with_journal(mut self, dir: PathBuf) -> JarakApp {
+        self.journal_root = Some(dir);
+        self
+    }
+
     pub fn with_clipboard(mut self, c: Arc<dyn clipboard::Clipboard>) -> JarakApp {
         self.clipboard = c;
         self
@@ -746,6 +764,22 @@ impl JarakApp {
                 _ => self.count_matches(),
             },
             palette::Run::Style(cmd) => self.style(cmd),
+            palette::Run::InFiles(k) => match k {
+                0 => self.find_all_docs(false),
+                1 => self.find_all_docs(true),
+                2 => self.replace_all_docs(),
+                3 => self.undo_replace_in_files(),
+                4 => self.copy_results(false),
+                5 => self.copy_results(true),
+                6 => {
+                    self.find.page = find::Page::Files;
+                    self.find_in_files();
+                }
+                _ => {
+                    self.find.page = find::Page::Files;
+                    self.replace_in_files();
+                }
+            },
             palette::Run::SessionSave => self.save_session_as(),
             palette::Run::SessionLoad => self.load_session_from(),
         }
@@ -1366,6 +1400,11 @@ impl JarakApp {
             central: Rect::NOTHING,
             colors: Colors::of(kim_design::Theme::Dark),
             alt_text: None,
+            job: None,
+            results: None,
+            preview: None,
+            journal_root: None,
+            last_batch: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1376,8 +1415,8 @@ impl JarakApp {
     /// `editor-wrap`, `question`, `preview`, `split`, `paste-image` (pastes a sample bitmap and
     /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy), `vim`,
     /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92), `tabs`, `views`,
-    /// `side`, `documents` (Step 93), `find`, `replace`, `mark`, `incremental` (Step 94). Only used
-    /// while `KIM_UI_INSPECT` is set.
+    /// `side`, `documents` (Step 93), `find`, `replace`, `mark`, `incremental` (Step 94), `files`,
+    /// `results`, `replace-preview` (Step 95). Only used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -1424,6 +1463,40 @@ impl JarakApp {
                 });
             }
             "menu-bar" => self.menu_bar = true,
+            // Step 95: the Files page, its results grouped by file (small files written next to
+            // the audit's copy, searched at once), the Replace in Files preview.
+            "files" | "results" | "replace-preview" => {
+                let dir = self
+                    .tab()
+                    .file
+                    .path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf);
+                if let Some(dir) = dir {
+                    let _ = std::fs::create_dir_all(dir.join("notes"));
+                    for (n, t) in [
+                        (
+                            "notes/todo.md",
+                            "# cat\n\nfeed the cat\nconcat is not a cat word\n",
+                        ),
+                        ("notes/log.txt", "the cat sat\r\nno match here\r\n"),
+                    ] {
+                        let _ = std::fs::write(dir.join(n), t);
+                    }
+                    self.open_find(find::Page::Files);
+                    self.find.find = "cat".into();
+                    self.find.replace = "dog".into();
+                    self.find.whole_word = true;
+                    self.find.dir = dir.display().to_string();
+                    self.find.filters = "*.md *.txt".into();
+                    match screen {
+                        "results" => self.find_in_files_now(),
+                        "replace-preview" => self.plan_in_files_now(),
+                        _ => {}
+                    }
+                }
+            }
             // Step 94: the find panel's pages (highlight all, regular expressions), Mark All
             // with bookmarks and two token styles, the incremental search bar.
             "find" | "replace" | "mark" | "incremental" => {
@@ -1749,6 +1822,13 @@ impl JarakApp {
             Action::VolatileNext => self.find_word(false, true),
             Action::VolatilePrevious => self.find_word(true, true),
             Action::Incremental => self.open_incremental(),
+            Action::FindInFiles => self.open_find(find::Page::Files),
+            Action::NextResult => self.result_step(false),
+            Action::PreviousResult => self.result_step(true),
+            Action::ToggleResults => {
+                let r = self.results.get_or_insert_with(results::Results::default);
+                r.open = !r.open;
+            }
             Action::Open => {
                 if let Some(p) = self.dialogs.open() {
                     self.open_target(&OpenTarget {
@@ -2301,6 +2381,8 @@ impl JarakApp {
         self.vim_frame();
         self.menu_bar_ui(ui, &c);
         self.status_bar(ui, &c);
+        self.poll_job(&ctx);
+        self.results_ui(ui, &c);
         self.incremental_ui(ui, &c);
         self.side_ui(ui, &c);
         // The keyboard focus belongs to the focused view's text (after a move, a clone, F8).
@@ -2345,8 +2427,10 @@ impl JarakApp {
         if let Some(pos) = ctrl_click {
             self.reveal_reference_at(pos);
         }
-        let dialog_open =
-            self.palette.is_some() || self.assets_view.is_some() || self.docs_dialog.is_some();
+        let dialog_open = self.palette.is_some()
+            || self.assets_view.is_some()
+            || self.docs_dialog.is_some()
+            || self.preview.is_some();
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2355,6 +2439,10 @@ impl JarakApp {
             }
             if focused || preview_only {
                 self.keyboard(&ctx);
+            } else if self.find.open && ctx.memory(|m| m.focused().is_some()) {
+                // Step 95 (found on the real desktop): a box of the find panel has the keyboard;
+                // the window's own shortcuts still work there.
+                self.panel_keys(&ctx);
             }
         }
         self.question(&ctx, &c);
@@ -2375,6 +2463,7 @@ impl JarakApp {
         self.docs_dialog_ui(&ctx, &c);
         let central = self.central;
         self.find_ui(&ctx, &c, central);
+        self.preview_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
@@ -2388,6 +2477,50 @@ impl JarakApp {
                 kim_ui::inspect::finish_frame(&ctx, "jarak", &self.audit_screen);
             } else {
                 ctx.request_repaint();
+            }
+        }
+    }
+
+    /// The window's shortcuts while a box of the find panel has the keyboard: the palette, files,
+    /// tabs, the find pages and the results; the box keeps text editing, the clipboard, undo and
+    /// F3 (which the panel handles itself).
+    fn panel_keys(&mut self, ctx: &egui::Context) {
+        let events = ctx.input(|i| i.events.clone());
+        for e in events {
+            if let egui::Event::Key {
+                key,
+                pressed: true,
+                modifiers,
+                ..
+            } = e
+                && let Some(a) = keys::action_for(key, modifiers)
+                && matches!(
+                    a,
+                    Action::New
+                        | Action::Open
+                        | Action::Save
+                        | Action::SaveAs
+                        | Action::Close
+                        | Action::NextDocument
+                        | Action::PreviousDocument
+                        | Action::GoToTab(_)
+                        | Action::ReopenClosed
+                        | Action::Palette
+                        | Action::Find
+                        | Action::Replace
+                        | Action::FindInFiles
+                        | Action::Incremental
+                        | Action::NextResult
+                        | Action::PreviousResult
+                        | Action::ToggleResults
+                        | Action::TogglePreview
+                        | Action::ToggleSplit
+                        | Action::ZoomIn
+                        | Action::ZoomOut
+                        | Action::ZoomReset
+                )
+            {
+                self.act(a);
             }
         }
     }
@@ -2976,6 +3109,39 @@ impl Dialogs for WinDialogs {
     fn save_as(&self, suggested: &str) -> Option<PathBuf> {
         win_dialog(false, suggested).map(PathBuf::from)
     }
+    fn folder(&self) -> Option<PathBuf> {
+        win_folder_dialog().map(PathBuf::from)
+    }
+}
+
+/// The Windows folder picker (`SHBrowseForFolderW`, new dialog style).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn win_folder_dialog() -> Option<String> {
+    use windows_sys::Win32::UI::Shell::{
+        BIF_NEWDIALOGSTYLE, BIF_RETURNONLYFSDIRS, BROWSEINFOW, SHBrowseForFolderW,
+        SHGetPathFromIDListW,
+    };
+    let title: Vec<u16> = "Find in Files: choose a folder\0".encode_utf16().collect();
+    // SAFETY: BROWSEINFOW is plain data; all-zero is its empty state.
+    let mut bi: BROWSEINFOW = unsafe { std::mem::zeroed() };
+    bi.lpszTitle = title.as_ptr();
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    // SAFETY: `bi` and `title` live across the modal call.
+    let pidl = unsafe { SHBrowseForFolderW(&raw const bi) };
+    if pidl.is_null() {
+        return None;
+    }
+    let mut buf = vec![0u16; 1024];
+    // SAFETY: `buf` holds MAX_PATH characters and more; the PIDL is freed with CoTaskMemFree.
+    let ok = unsafe { SHGetPathFromIDListW(pidl, buf.as_mut_ptr()) };
+    // SAFETY: the PIDL came from SHBrowseForFolderW and is freed once.
+    unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(pidl as *const core::ffi::c_void) };
+    if ok == 0 {
+        return None;
+    }
+    let end = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
+    Some(String::from_utf16_lossy(&buf[..end]))
 }
 
 #[cfg(windows)]

@@ -1,0 +1,53 @@
+{
+  "command": "journal.list",
+  "data": {
+    "batches": [
+      {
+        "created": 1795307801,
+        "files": [
+          {
+            "path": "C:\\Users\\me\\notes\\a.txt",
+            "replaced": 1
+          },
+          {
+            "path": "C:\\Users\\me\\notes\\b.md",
+            "replaced": 2
+          },
+          {
+            "path": "C:\\Users\\me\\notes\\sub\\f.txt",
+            "replaced": 1
+          }
+        ],
+        "find": "cat",
+        "id": "1795307801",
+        "replace": "dog",
+        "undone": false
+      },
+      {
+        "created": 1795307743,
+        "files": [
+          {
+            "path": "C:\\Users\\me\\notes\\a.txt",
+            "replaced": 1
+          },
+          {
+            "path": "C:\\Users\\me\\notes\\b.md",
+            "replaced": 2
+          },
+          {
+            "path": "C:\\Users\\me\\notes\\sub\\f.txt",
+            "replaced": 1
+          }
+        ],
+        "find": "cat",
+        "id": "1795307743",
+        "replace": "dog",
+        "undone": true
+      }
+    ],
+    "journal": "C:\\Users\\me\\AppData\\Local\\mouv\\jarak\\replace-journal"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

@@ -51,6 +51,11 @@ impl Paths {
         self.local.join("recovery")
     }
 
+    /// Step 95: the Replace in Files journal (the originals of each batch, for undo).
+    pub fn journal_dir(&self) -> PathBuf {
+        self.local.join("replace-journal")
+    }
+
     /// Where a second `jarak-gui` start leaves the files for the running window.
     pub fn handoff_dir(&self) -> PathBuf {
         self.local.join("handoff")

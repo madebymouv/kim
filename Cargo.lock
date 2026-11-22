@@ -1597,7 +1597,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jarak"
-version = "0.0.13"
+version = "0.0.14"
 dependencies = [
  "jarak-core",
  "kim-winres",
@@ -1606,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "jarak-core"
-version = "0.0.13"
+version = "0.0.14"
 dependencies = [
  "encoding_rs",
  "pulldown-cmark",
@@ -1614,6 +1614,7 @@ dependencies = [
  "ropey",
  "serde",
  "serde_json",
+ "sha2",
  "unicode-segmentation",
  "unicode-width",
  "windows-sys 0.61.2",
@@ -1621,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "jarak-gui"
-version = "0.0.13"
+version = "0.0.14"
 dependencies = [
  "eframe",
  "egui_kittest",

@@ -27,7 +27,9 @@ the pictures) ([JARAK_ARCHITECTURE §13](JARAK_ARCHITECTURE.md)); Step 92 implem
 ([JARAK_ARCHITECTURE §15](JARAK_ARCHITECTURE.md); folds in the session wait for folding, Step 98);
 Step 94 implemented `JARAK-FR-070`…`JARAK-FR-072` (find, replace, regular expressions, marks,
 styles, incremental search, history; [JARAK_ARCHITECTURE §16](JARAK_ARCHITECTURE.md); smart
-highlighting's options wait for the settings window, Step 110);
+highlighting's options wait for the settings window, Step 110); Step 95 implemented `JARAK-FR-073`
+and `JARAK-FR-074` (Find and Replace in Files with the journal, the results panel, Find All and
+Replace All in open documents; [JARAK_ARCHITECTURE §17](JARAK_ARCHITECTURE.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

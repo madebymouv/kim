@@ -269,6 +269,49 @@ impl Matcher {
         None
     }
 
+    /// Step 95: every match in a plain text, as byte ranges (Find in Files), stopping when
+    /// `cancel` says so (checked every 4096 matches). Returns the matches and whether it finished.
+    pub fn find_bytes(&self, text: &str, cancel: &dyn Fn() -> bool) -> (Vec<(usize, usize)>, bool) {
+        let mut out = Vec::new();
+        let mut at = 0;
+        while let Some((a, b)) = self.next_bytes(text, at, text.len()) {
+            out.push((a, b));
+            at = if b > a {
+                b
+            } else {
+                b + text[b..].chars().next().map_or(1, char::len_utf8)
+            };
+            if out.len() % 4096 == 0 && cancel() {
+                return (out, false);
+            }
+            if at > text.len() {
+                break;
+            }
+        }
+        (out, true)
+    }
+
+    /// The replacement of the match at bytes `m` of a plain text (see [`Matcher::replacement`]).
+    pub fn replacement_bytes(&self, text: &str, m: (usize, usize), with: &str) -> String {
+        match self.mode {
+            Mode::Normal => with.to_string(),
+            Mode::Extended => unescape(with).unwrap_or_else(|_| with.to_string()),
+            Mode::Regex => {
+                let (a, b) = m;
+                let Some(caps) = self
+                    .re
+                    .captures_at(&text[..b], a)
+                    .filter(|c| c.get(0).is_some_and(|g| g.start() == a))
+                else {
+                    return with.to_string();
+                };
+                let mut out = String::new();
+                caps.expand(&regex_replacement(with), &mut out);
+                out
+            }
+        }
+    }
+
     /// The replacement text of the match `m` (chars) for `with` (expanded in regex mode,
     /// unescaped in extended mode, as it is in normal mode).
     pub fn replacement(&self, h: &Haystack, m: (usize, usize), with: &str) -> String {

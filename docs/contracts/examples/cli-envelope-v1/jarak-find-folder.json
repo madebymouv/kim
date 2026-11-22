@@ -1,0 +1,69 @@
+{
+  "command": "find",
+  "data": {
+    "count": 4,
+    "files": [
+      {
+        "count": 1,
+        "encoding": "UTF-8",
+        "matches": [
+          {
+            "column": 5,
+            "line": 1,
+            "line_text": "one cat"
+          }
+        ],
+        "path": "C:\\Users\\me\\notes\\a.txt"
+      },
+      {
+        "count": 2,
+        "encoding": "UTF-8",
+        "matches": [
+          {
+            "column": 3,
+            "line": 1,
+            "line_text": "# cat"
+          },
+          {
+            "column": 8,
+            "line": 3,
+            "line_text": "concat cat"
+          }
+        ],
+        "path": "C:\\Users\\me\\notes\\b.md"
+      },
+      {
+        "count": 1,
+        "encoding": "UTF-8",
+        "matches": [
+          {
+            "column": 6,
+            "line": 1,
+            "line_text": "deep cat"
+          }
+        ],
+        "path": "C:\\Users\\me\\notes\\sub\\f.txt"
+      }
+    ],
+    "files_searched": 3,
+    "filters": "*.txt *.md *.bin !\\build",
+    "folder": "C:\\Users\\me\\notes",
+    "hidden": false,
+    "match_case": false,
+    "mode": "normal",
+    "query": "cat",
+    "skipped": [
+      {
+        "message": "a binary file",
+        "path": "C:\\Users\\me\\notes\\e.bin",
+        "reason": "binary"
+      }
+    ],
+    "subfolders": true,
+    "truncated": false,
+    "whole_word": true
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

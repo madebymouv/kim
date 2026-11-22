@@ -260,6 +260,10 @@ fn run(
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
             if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());
+                // Step 95: Replace in Files journals the originals here (not in a UI audit).
+                if !kim_ui::inspect::active() {
+                    app = app.with_journal(p.journal_dir());
+                }
                 if with_session {
                     let restore = jarak_gui::read_setting(&p.settings_file(), "restore_session")
                         .is_none_or(|v| v != "false");

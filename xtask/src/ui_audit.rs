@@ -140,6 +140,10 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "replace",
                 "mark",
                 "incremental",
+                // Step 95: the Files page, the results panel, the Replace in Files preview.
+                "files",
+                "results",
+                "replace-preview",
             ],
         ),
     ];

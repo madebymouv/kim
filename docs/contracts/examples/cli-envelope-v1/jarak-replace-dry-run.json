@@ -1,0 +1,70 @@
+{
+  "command": "replace",
+  "data": {
+    "batch": null,
+    "dry_run": true,
+    "files": [
+      {
+        "changes": [
+          {
+            "column": 5,
+            "line": 1,
+            "new_line": "one dog",
+            "old_line": "one cat"
+          }
+        ],
+        "encoding": "UTF-8",
+        "path": "C:\\Users\\me\\notes\\a.txt",
+        "replaced": false,
+        "replacements": 1,
+        "skipped": null
+      },
+      {
+        "changes": [
+          {
+            "column": 3,
+            "line": 1,
+            "new_line": "# dog",
+            "old_line": "# cat"
+          },
+          {
+            "column": 8,
+            "line": 3,
+            "new_line": "concat dog",
+            "old_line": "concat cat"
+          }
+        ],
+        "encoding": "UTF-8",
+        "path": "C:\\Users\\me\\notes\\b.md",
+        "replaced": false,
+        "replacements": 2,
+        "skipped": null
+      },
+      {
+        "changes": [
+          {
+            "column": 6,
+            "line": 1,
+            "new_line": "deep dog",
+            "old_line": "deep cat"
+          }
+        ],
+        "encoding": "UTF-8",
+        "path": "C:\\Users\\me\\notes\\sub\\f.txt",
+        "replaced": false,
+        "replacements": 1,
+        "skipped": null
+      }
+    ],
+    "mode": "normal",
+    "path": "C:\\Users\\me\\notes",
+    "planned": 4,
+    "query": "cat",
+    "replace": "dog",
+    "replaced": 0,
+    "skipped": []
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

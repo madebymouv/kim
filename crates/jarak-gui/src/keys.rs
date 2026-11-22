@@ -58,6 +58,12 @@ pub enum Action {
     VolatilePrevious,
     /// Ctrl+Alt+I: the incremental search bar.
     Incremental,
+    /// Step 95: Ctrl+Shift+F Find in Files; F4 / Shift+F4 the next / previous search result; F7
+    /// the search results panel.
+    FindInFiles,
+    NextResult,
+    PreviousResult,
+    ToggleResults,
 }
 
 /// The action for `key` with `m` held, if any.
@@ -127,7 +133,14 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
             A::SelectFindNext
         }),
         (true, Key::I) if m.alt && !shift => Some(A::Incremental),
+        (true, Key::F) if shift && !m.alt => Some(A::FindInFiles),
         (true, Key::F) if !shift && !m.alt => Some(A::Find),
+        (false, Key::F4) => Some(if shift {
+            A::PreviousResult
+        } else {
+            A::NextResult
+        }),
+        (false, Key::F7) if !shift => Some(A::ToggleResults),
         (true, Key::H) if !shift && !m.alt => Some(A::Replace),
         (true, Key::PageUp) if shift => Some(A::MoveTabLeft),
         (true, Key::PageDown) if shift => Some(A::MoveTabRight),
@@ -240,6 +253,10 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::VolatileNext => "Ctrl+Alt+F3",
         A::VolatilePrevious => "Ctrl+Alt+Shift+F3",
         A::Incremental => "Ctrl+Alt+I",
+        A::FindInFiles => "Ctrl+Shift+F",
+        A::NextResult => "F4",
+        A::PreviousResult => "Shift+F4",
+        A::ToggleResults => "F7",
     })
 }
 
@@ -317,6 +334,10 @@ mod tests {
             Action::VolatileNext,
             Action::VolatilePrevious,
             Action::Incremental,
+            Action::FindInFiles,
+            Action::NextResult,
+            Action::PreviousResult,
+            Action::ToggleResults,
         ]);
         for a in actions {
             let label = key_label(a).expect("every action has keys");

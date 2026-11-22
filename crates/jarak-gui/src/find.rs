@@ -28,6 +28,8 @@ pub enum Page {
     Find,
     Replace,
     Mark,
+    /// Step 95: Find and Replace in Files.
+    Files,
 }
 
 /// The find panel's fields and options (kept while it is closed).
@@ -52,6 +54,13 @@ pub struct FindPanel {
     pub focus: bool,
     /// Walking through the history with Up/Down.
     history_at: Option<usize>,
+    /// Step 95: Find in Files — the folder, the filters (`*.md !*.min.md !+\build`), into
+    /// sub-folders and hidden folders, and following the current document's folder.
+    pub dir: String,
+    pub filters: String,
+    pub subfolders: bool,
+    pub hidden: bool,
+    pub follow_doc: bool,
 }
 
 impl Default for FindPanel {
@@ -74,6 +83,11 @@ impl Default for FindPanel {
             status: None,
             focus: false,
             history_at: None,
+            dir: String::new(),
+            filters: String::new(),
+            subfolders: true,
+            hidden: false,
+            follow_doc: false,
         }
     }
 }
@@ -162,6 +176,20 @@ impl JarakApp {
         self.find.page = page;
         self.find.focus = true;
         self.find.status = None;
+        // Find in Files starts in the document's folder (or the workspace) when none is set.
+        if page == Page::Files && (self.find.dir.is_empty() || self.find.follow_doc) {
+            let dir = self
+                .tab()
+                .file
+                .path
+                .as_deref()
+                .and_then(std::path::Path::parent)
+                .map(std::path::Path::to_path_buf)
+                .or_else(|| self.workspace.as_ref().map(|w| w.root.clone()));
+            if let Some(d) = dir {
+                self.find.dir = d.display().to_string();
+            }
+        }
     }
 
     fn compiled(&mut self, q: &Query) -> Option<Matcher> {
@@ -645,11 +673,13 @@ impl JarakApp {
 
     /// The find panel (non-modal, at the top right of the editor).
     pub(crate) fn find_ui(&mut self, ctx: &egui::Context, c: &Colors, area: egui::Rect) {
-        if !self.find.open {
+        // Hidden while the Replace in Files preview (a modal) is open.
+        if !self.find.open || self.preview.is_some() {
             return;
         }
         let lang = self.lang;
         let mut act: Option<&'static str> = None;
+        let job = self.job.is_some();
         let width = 440.0_f32.min(area.width() - 2.0 * space::M);
         let pos = egui::pos2(area.right() - width - space::M, area.top() + space::M);
         egui::Area::new(egui::Id::unique("jarak-find"))
@@ -667,6 +697,7 @@ impl JarakApp {
                                 (Page::Find, lang.pick("Find", "찾기")),
                                 (Page::Replace, lang.pick("Replace", "바꾸기")),
                                 (Page::Mark, lang.pick("Mark", "표시")),
+                                (Page::Files, lang.pick("Files", "파일에서")),
                             ],
                         );
                     });
@@ -718,12 +749,16 @@ impl JarakApp {
                     if let Some(shift) = enter
                         && (r.has_focus() || r.lost_focus())
                     {
-                        act = Some(if shift { "previous" } else { "next" });
+                        act = Some(match (f.page, shift) {
+                            (Page::Files, _) => "find-in-files",
+                            (_, true) => "previous",
+                            (_, false) => "next",
+                        });
                         // The box keeps the focus: Enter again finds the next one.
                         r.request_focus();
                     }
                     let mut boxes_focused = r.has_focus();
-                    if f.page == Page::Replace {
+                    if matches!(f.page, Page::Replace | Page::Files) {
                         ui.add_space(space::XS);
                         boxes_focused |= kim_ui::text_field(
                             ui,
@@ -733,6 +768,40 @@ impl JarakApp {
                             w,
                         )
                         .has_focus();
+                    }
+                    if f.page == Page::Files {
+                        // The folder (with the folder dialog) and the filters.
+                        ui.add_space(space::XS);
+                        ui.horizontal(|ui| {
+                            let bw = size::CONTROL;
+                            kim_ui::text_field(
+                                ui,
+                                &mut f.dir,
+                                lang.pick("Folder", "폴더"),
+                                "",
+                                (w - bw - space::XS).max(80.0),
+                            );
+                            if kim_ui::icon_button(
+                                ui,
+                                kim_ui::Icon::More,
+                                lang.pick("Choose a folder", "폴더 고르기"),
+                            )
+                            .clicked()
+                            {
+                                act = Some("browse");
+                            }
+                        });
+                        ui.add_space(space::XS);
+                        kim_ui::text_field(
+                            ui,
+                            &mut f.filters,
+                            lang.pick(
+                                "Filters (*.md !*.min.md !+\\build)",
+                                "필터 (*.md !*.min.md !+\\build)",
+                            ),
+                            "",
+                            w,
+                        );
                     }
                     // F3 / Shift+F3 work in the panel's boxes too.
                     if boxes_focused {
@@ -776,17 +845,35 @@ impl JarakApp {
                             &mut f.whole_word,
                             lang.pick("Whole word", "단어 단위"),
                         );
-                        kim_ui::checkbox(
-                            ui,
-                            &mut f.wrap,
-                            lang.pick("Wrap around", "처음부터 계속"),
-                        );
-                        kim_ui::checkbox(ui, &mut f.backward, lang.pick("Backward", "위로"));
-                        kim_ui::checkbox(
-                            ui,
-                            &mut f.in_selection,
-                            lang.pick("In selection", "선택 영역에서"),
-                        );
+                        if f.page == Page::Files {
+                            kim_ui::checkbox(
+                                ui,
+                                &mut f.subfolders,
+                                lang.pick("In sub-folders", "하위 폴더까지"),
+                            );
+                            kim_ui::checkbox(
+                                ui,
+                                &mut f.hidden,
+                                lang.pick("In hidden folders", "숨김 폴더까지"),
+                            );
+                            kim_ui::checkbox(
+                                ui,
+                                &mut f.follow_doc,
+                                lang.pick("Follow the current document", "현재 문서 폴더 따라가기"),
+                            );
+                        } else {
+                            kim_ui::checkbox(
+                                ui,
+                                &mut f.wrap,
+                                lang.pick("Wrap around", "처음부터 계속"),
+                            );
+                            kim_ui::checkbox(ui, &mut f.backward, lang.pick("Backward", "위로"));
+                            kim_ui::checkbox(
+                                ui,
+                                &mut f.in_selection,
+                                lang.pick("In selection", "선택 영역에서"),
+                            );
+                        }
                         if f.mode == Mode::Regex {
                             kim_ui::checkbox(
                                 ui,
@@ -814,9 +901,42 @@ impl JarakApp {
                                     lang.pick("Clear marks first", "먼저 표시 지우기"),
                                 );
                             }
-                            Page::Replace => {}
+                            Page::Replace | Page::Files => {}
                         }
                     });
+                    // Find All / Replace All over documents (Notepad++'s extra buttons).
+                    if matches!(f.page, Page::Find | Page::Replace) {
+                        ui.add_space(space::XS);
+                        ui.horizontal_wrapped(|ui| {
+                            if f.page == Page::Find {
+                                if ui
+                                    .add(kim_ui::Button::ghost(lang.pick(
+                                        "Find all in this document",
+                                        "이 문서에서 모두 찾기",
+                                    )))
+                                    .clicked()
+                                {
+                                    act = Some("find-all-doc");
+                                }
+                                if ui
+                                    .add(kim_ui::Button::ghost(
+                                        lang.pick("In all open documents", "열린 문서 모두에서"),
+                                    ))
+                                    .clicked()
+                                {
+                                    act = Some("find-all-open");
+                                }
+                            } else if ui
+                                .add(kim_ui::Button::ghost(lang.pick(
+                                    "Replace all in all open documents",
+                                    "열린 문서 모두에서 바꾸기",
+                                )))
+                                .clicked()
+                            {
+                                act = Some("replace-all-open");
+                            }
+                        });
+                    }
                     if let Some(s) = &f.status {
                         ui.add_space(space::XS);
                         let r =
@@ -848,6 +968,33 @@ impl JarakApp {
                             act = Some("close");
                         }
                         match f.page {
+                            Page::Files => {
+                                if job {
+                                    if ui
+                                        .add(kim_ui::Button::secondary(lang.pick("Cancel", "취소")))
+                                        .clicked()
+                                    {
+                                        act = Some("cancel-job");
+                                    }
+                                } else {
+                                    if ui
+                                        .add(kim_ui::Button::secondary(
+                                            lang.pick("Replace in Files…", "파일에서 바꾸기…"),
+                                        ))
+                                        .clicked()
+                                    {
+                                        act = Some("replace-in-files");
+                                    }
+                                    if ui
+                                        .add(kim_ui::Button::primary(
+                                            lang.pick("Find All", "모두 찾기"),
+                                        ))
+                                        .clicked()
+                                    {
+                                        act = Some("find-in-files");
+                                    }
+                                }
+                            }
                             Page::Find => {
                                 if ui
                                     .add(kim_ui::Button::secondary(lang.pick("Count", "개수")))
@@ -920,7 +1067,8 @@ impl JarakApp {
                 });
             });
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            act = Some("close");
+            // Esc stops a running Find in Files first.
+            act = Some(if job { "cancel-job" } else { "close" });
         }
         // The dialog's Alt mnemonics, as in Notepad++: Alt+A Replace All, Alt+R Replace, Alt+T
         // Count, Alt+M Mark All, Alt+C match case, Alt+W whole word, Alt+P wrap around, Alt+B
@@ -985,6 +1133,22 @@ impl JarakApp {
             Some("mark") => self.mark_all(),
             Some("clear-marks") => self.clear_marks(),
             Some("copy-marked") => self.copy_marked(),
+            Some("find-all-doc") => self.find_all_docs(false),
+            Some("find-all-open") => self.find_all_docs(true),
+            Some("replace-all-open") => self.replace_all_docs(),
+            Some("find-in-files") => self.find_in_files(),
+            Some("replace-in-files") => self.replace_in_files(),
+            Some("cancel-job") => {
+                if let Some(j) = &self.job {
+                    j.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            Some("browse") => {
+                if let Some(d) = self.dialogs.folder() {
+                    self.find.dir = d.display().to_string();
+                    self.find.follow_doc = false;
+                }
+            }
             Some("close") => {
                 self.find.open = false;
                 let salt = u8::from(self.second_focused());

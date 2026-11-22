@@ -1,0 +1,12 @@
+{
+  "command": "replace",
+  "error": {
+    "code": "confirmation_required",
+    "details": [],
+    "exit_code": 7,
+    "hint": "preview with --dry-run, then run again with --yes",
+    "message": "`jarak replace` would change 7 matches in 4 files; it needs --yes"
+  },
+  "ok": false,
+  "schema_version": 1
+}

@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
+Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -69,6 +69,14 @@ Ctrl+click on an image reference shows the image in Explorer.
 | Alt+P, Alt+B, Alt+I | In the panel: wrap around, backward, in selection |
 | Alt+N, Alt+X, Alt+G | In the panel: Normal, Extended, Regular expression mode |
 | Alt+D | In the panel: `.` matches newline |
+| Ctrl+Shift+F | Find in Files (the panel's Files page: folder, filters, sub-folders, hidden folders) |
+| F4 / Shift+F4 | Next / previous search result (opens it with the match selected) |
+| F7 | Show / hide the search results panel |
+
+In the results panel a double-click opens a match; a row's menu (right click) opens it or copies
+the line, every line or the paths. The Replace in Files preview applies the checked changes with
+Enter and closes with Esc. While a box of the find panel has the keyboard, Ctrl+Shift+P, Ctrl+S,
+Ctrl+Tab and the other window shortcuts still work.
 
 Marks, bookmarks of marked lines and the five token styles (*Style all occurrences of the token*,
 *Style one token*, *Clear style*, *Jump to the next / previous styled text*, *Copy the styled

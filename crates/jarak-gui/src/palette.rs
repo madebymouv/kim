@@ -36,6 +36,10 @@ pub enum Run {
     /// Step 94: 0 the Mark page, 1 Mark All, 2 clear marks, 3 copy marked text, 4 count.
     FindCmd(u8),
     Style(crate::find::StyleCmd),
+    /// Step 95: 0 Find All in the current document, 1 in every open document, 2 Replace All in
+    /// every open document, 3 undo the last Replace in Files, 4 copy the result lines, 5 their
+    /// paths, 6 Find in Files, 7 Replace in Files (the Files page's folder and filters).
+    InFiles(u8),
 }
 
 /// The menu an entry belongs to.
@@ -498,6 +502,90 @@ pub fn entries() -> Vec<Entry> {
             A::Incremental,
             M::Search,
         ),
+        act(
+            "search.in-files",
+            "Find in files…",
+            "파일에서 찾기…",
+            A::FindInFiles,
+            M::Search,
+        ),
+        act(
+            "search.next-result",
+            "Next search result",
+            "다음 찾기 결과",
+            A::NextResult,
+            M::Search,
+        ),
+        act(
+            "search.previous-result",
+            "Previous search result",
+            "이전 찾기 결과",
+            A::PreviousResult,
+            M::Search,
+        ),
+        act(
+            "search.results",
+            "Search results panel",
+            "찾기 결과 패널",
+            A::ToggleResults,
+            M::Search,
+        ),
+        run(
+            "search.all-in-document",
+            "Find all in the current document",
+            "현재 문서에서 모두 찾기",
+            Run::InFiles(0),
+            M::Search,
+        ),
+        run(
+            "search.all-in-open",
+            "Find all in all open documents",
+            "열린 문서 모두에서 찾기",
+            Run::InFiles(1),
+            M::Search,
+        ),
+        run(
+            "search.replace-in-open",
+            "Replace all in all open documents",
+            "열린 문서 모두에서 바꾸기",
+            Run::InFiles(2),
+            M::Search,
+        ),
+        run(
+            "search.undo-in-files",
+            "Undo the last Replace in Files",
+            "마지막 파일 바꾸기 되돌리기",
+            Run::InFiles(3),
+            M::Search,
+        ),
+        run(
+            "search.copy-results",
+            "Copy the search result lines",
+            "찾기 결과 줄 복사",
+            Run::InFiles(4),
+            M::Search,
+        ),
+        run(
+            "search.copy-result-paths",
+            "Copy the search result paths",
+            "찾기 결과 경로 복사",
+            Run::InFiles(5),
+            M::Search,
+        ),
+        run(
+            "search.find-all-in-files",
+            "Find all in files (the Files page's folder)",
+            "파일에서 모두 찾기 (파일 페이지의 폴더)",
+            Run::InFiles(6),
+            M::Search,
+        ),
+        run(
+            "search.replace-in-files",
+            "Replace in files…",
+            "파일에서 바꾸기…",
+            Run::InFiles(7),
+            M::Search,
+        ),
         run(
             "search.count",
             "Count the matches",
@@ -677,21 +765,29 @@ pub fn entries() -> Vec<Entry> {
 /// The entries whose name, id or keys hold every word of `query` (any case), in list order.
 pub fn filter(entries: &[Entry], query: &str) -> Vec<usize> {
     let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
-    entries
+    let phrase = words.join(" ");
+    let mut found: Vec<(u8, usize)> = entries
         .iter()
         .enumerate()
-        .filter(|(_, e)| {
-            let hay = format!(
-                "{} {} {} {}",
-                e.en.to_lowercase(),
-                e.ko.as_ref(),
-                e.id,
-                e.keys.unwrap_or("").to_lowercase()
-            );
-            words.iter().all(|w| hay.contains(w.as_str()))
+        .filter_map(|(i, e)| {
+            let (en, ko) = (e.en.to_lowercase(), e.ko.to_lowercase());
+            let hay = format!("{en} {ko} {} {}", e.id, e.keys.unwrap_or("").to_lowercase());
+            if !words.iter().all(|w| hay.contains(w.as_str())) {
+                return None;
+            }
+            // A label that starts with the query first, then one holding it as a phrase.
+            let rank = if en.starts_with(&phrase) || ko.starts_with(&phrase) {
+                0
+            } else if en.contains(&phrase) || ko.contains(&phrase) {
+                1
+            } else {
+                2
+            };
+            Some((rank, i))
         })
-        .map(|(i, _)| i)
-        .collect()
+        .collect();
+    found.sort_by_key(|(rank, _)| *rank);
+    found.into_iter().map(|(_, i)| i).collect()
 }
 
 /// The palette while it is open.
@@ -706,6 +802,15 @@ pub struct PaletteState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_label_starting_with_the_query_comes_first() {
+        let e = entries();
+        let first = |q: &str| e[filter(&e, q)[0]].id;
+        assert_eq!(first("Replace in files"), "search.replace-in-files");
+        assert_eq!(first("next search result"), "search.next-result");
+        assert_eq!(first("파일에서 바꾸기"), "search.replace-in-files");
+    }
 
     #[test]
     fn every_registry_command_and_window_action_is_listed_with_its_keys() {

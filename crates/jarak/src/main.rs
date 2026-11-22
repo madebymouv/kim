@@ -16,7 +16,8 @@ const HELP: &str = "\
 Jarak (자락): a native text editor for plain text, code and Markdown — the command line.
 
 This CLI never opens a window except `jarak open`, never runs in the background, never uses the
-network and changes a file only when a command says so (`jarak assets rename`).
+network and changes a file only when a command says so (`jarak assets rename`, `jarak replace`,
+`jarak journal undo`).
 
 Usage: jarak [OPTIONS] <COMMAND>
 
@@ -34,10 +35,19 @@ Commands:
   assets rename <doc.md> <asset> <new-name>
                 Renames an asset and rewrites the document's references to it; never replaces a
                 file, refuses an asset other documents use; --dry-run shows the change
-  find <file> <text>
-                The matches of <text> in a file with their line and column (read-only);
-                --extended (\\n \\t \\xNN escapes) or --regex, --match-case, --whole-word,
-                --dot-all, --count (only the number)
+  find <file|folder> <text>
+                The matches of <text> in a file, or in a folder's files, with their line and
+                column (read-only); --extended (\\n \\t \\xNN escapes) or --regex, --match-case,
+                --whole-word, --dot-all, --count (only the number); for a folder --filters
+                '*.md !*.min.md !+\\build', --no-subfolders, --hidden
+  replace <file|folder> <text> <with>
+                Replace in Files: --dry-run lists every change and writes nothing; --yes
+                replaces (each file kept in its encoding and line endings, the originals in a
+                journal); the same search options as find
+  journal list  The Replace in Files batches kept for undo (read-only)
+  journal undo <batch>
+                Gives the files of a batch their original bytes back, unless changed since;
+                --dry-run checks, --yes restores
   paths         Where Jarak keeps its settings, session and recovery files (read-only)
   version       Jarak's version and the contract and schema versions it speaks (read-only)
   capabilities  Jarak's capabilities document: its commands and what each may change (read-only)
@@ -45,7 +55,9 @@ Commands:
 
 Options:
       --json      Print exactly one JSON document on stdout instead of human-readable text
-      --dry-run   Show what would happen and change nothing (open, assets rename)
+      --dry-run   Show what would happen and change nothing (open, assets rename, replace,
+                  journal undo)
+  -y, --yes       Confirm a command that changes files (replace, journal undo)
   -q, --quiet     Print only results and errors
   -v, --verbose   Print extra diagnostics on stderr
       --no-input  Never ask questions (Jarak's CLI never asks)
@@ -53,7 +65,7 @@ Options:
   -V, --version   Print version
 
 Exit codes: 0 ok · 1 failure (I/O, permission) · 2 usage · 3 not found · 5 too large ·
-7 conflict (a file exists, an asset is shared, the document is read-only)
+7 conflict (a file exists, an asset is shared, the document is read-only, --yes needed)
 ";
 
 /// A failure with its stable error code (CLI_CONTRACT §6) and exit code (§5).
@@ -98,6 +110,12 @@ struct Global {
     search: jarak_core::search::Query,
     count: bool,
     search_flags: bool,
+    /// Step 95: Find / Replace in Files.
+    filters: Option<String>,
+    no_subfolders: bool,
+    hidden: bool,
+    folder_flags: bool,
+    yes: bool,
 }
 
 fn main() -> ExitCode {
@@ -124,6 +142,22 @@ fn run(args: &[String]) -> ExitCode {
                 Some(v) => g.fallback = Some(v.clone()),
                 None => missing_value = Some("--fallback"),
             },
+            "--filters" => match it.next() {
+                Some(v) => {
+                    g.filters = Some(v.clone());
+                    g.folder_flags = true;
+                }
+                None => missing_value = Some("--filters"),
+            },
+            "--no-subfolders" => {
+                g.no_subfolders = true;
+                g.folder_flags = true;
+            }
+            "--hidden" => {
+                g.hidden = true;
+                g.folder_flags = true;
+            }
+            "-y" | "--yes" => g.yes = true,
             "--" => rest_are_files = true,
             "--json" => g.json = true,
             "--dry-run" => g.dry_run = true,
@@ -172,34 +206,58 @@ fn run(args: &[String]) -> ExitCode {
     let command = match (words.first().copied(), words.get(1).copied()) {
         (Some("assets"), Some("list")) => "assets.list",
         (Some("assets"), Some("rename")) => "assets.rename",
-        (Some(c @ ("open" | "info" | "find" | "paths" | "version" | "capabilities")), _) => c,
+        (Some("journal"), Some("list")) => "journal.list",
+        (Some("journal"), Some("undo")) => "journal.undo",
+        (
+            Some(c @ ("open" | "info" | "find" | "replace" | "paths" | "version" | "capabilities")),
+            _,
+        ) => c,
         _ => "jarak",
     };
-    let skip = if command.starts_with("assets.") { 2 } else { 1 };
+    let skip = if command.contains('.') { 2 } else { 1 };
     let result = if let Some(flag) = unknown {
         Err(Fail::usage(format!("unknown option `{flag}`")))
     } else if let Some(flag) = missing_value {
         Err(Fail::usage(format!("{flag} needs a value")))
-    } else if g.fallback.is_some() && !matches!(command, "info" | "find") {
+    } else if g.fallback.is_some() && !matches!(command, "info" | "find" | "replace") {
         Err(Fail::usage(
-            "--fallback belongs to `jarak info` and `jarak find`",
+            "--fallback belongs to `jarak info`, `jarak find` and `jarak replace`",
         ))
-    } else if g.search_flags && command != "find" {
-        Err(Fail::usage("search options belong to `jarak find`"))
+    } else if g.search_flags && !matches!(command, "find" | "replace") {
+        Err(Fail::usage(
+            "search options belong to `jarak find` and `jarak replace`",
+        ))
+    } else if g.count && command == "replace" {
+        Err(Fail::usage("--count belongs to `jarak find`"))
+    } else if g.folder_flags && !matches!(command, "find" | "replace") {
+        Err(Fail::usage(
+            "--filters, --no-subfolders and --hidden belong to `jarak find` and `jarak replace`",
+        ))
+    } else if g.yes && !matches!(command, "replace" | "journal.undo") {
+        Err(Fail::usage(
+            "--yes belongs to `jarak replace` and `jarak journal undo`",
+        ))
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
         Err(Fail::usage(match (words.first(), words.get(1)) {
             (Some(&"assets"), Some(w)) => format!("unknown command `assets {w}` (list, rename)"),
             (Some(&"assets"), None) => "`jarak assets` needs list or rename".into(),
+            (Some(&"journal"), Some(w)) => format!("unknown command `journal {w}` (list, undo)"),
+            (Some(&"journal"), None) => "`jarak journal` needs list or undo".into(),
             (Some(w), _) => format!("unknown command `{w}`"),
             (None, _) => "no command given".into(),
         }))
     } else if g.new_window && command != "open" {
         Err(Fail::usage("--new-window belongs to `jarak open`"))
-    } else if g.dry_run && !matches!(command, "open" | "assets.rename") {
+    } else if g.dry_run
+        && !matches!(
+            command,
+            "open" | "assets.rename" | "replace" | "journal.undo"
+        )
+    {
         Err(Fail::usage(format!(
-            "`jarak {}` changes nothing; --dry-run belongs to `jarak open` and `jarak assets rename`",
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace` and `jarak journal undo`",
             command.replace('.', " ")
         )))
     } else {
@@ -238,6 +296,8 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "open" => open(rest, g),
         "info" => info(rest, g.fallback.as_deref()),
         "find" => find(rest, g),
+        "replace" => replace(rest, g),
+        "journal.list" | "journal.undo" => journal(command, rest, g),
         "assets.list" => assets_list(rest),
         "assets.rename" => assets_rename(rest, g),
         _ => unreachable!("checked in run"),
@@ -254,13 +314,15 @@ fn paths() -> Result<Done, Fail> {
         "hotkeys": p.hotkeys_file(),
         "session": p.session_file(),
         "recovery": p.recovery_dir(),
+        "journal": p.journal_dir(),
     });
     let text = format!(
-        "settings  {}\nhotkeys   {}\nsession   {}\nrecovery  {}",
+        "settings  {}\nhotkeys   {}\nsession   {}\nrecovery  {}\njournal   {}",
         p.settings_file().display(),
         p.hotkeys_file().display(),
         p.session_file().display(),
-        p.recovery_dir().display()
+        p.recovery_dir().display(),
+        p.journal_dir().display()
     );
     Ok((data, text))
 }
@@ -584,19 +646,22 @@ fn assets_rename(rest: &[&str], g: &Global) -> Result<Done, Fail> {
 
 /// `jarak find <file> <text>`: the matches with their line and column (read-only).
 fn find(rest: &[&str], g: &Global) -> Result<Done, Fail> {
-    use jarak_core::file;
     use jarak_core::search::{Haystack, Query};
     let [arg, text] = rest else {
         return Err(Fail::usage(
-            "`jarak find` takes a file and the text to find",
+            "`jarak find` takes a file or folder and the text to find",
         ));
     };
     let path = absolute(Path::new(arg));
-    let fallback = match g.fallback.as_deref() {
-        Some(l) => file::encoding_for_label(l)
-            .ok_or_else(|| Fail::usage(format!("unknown encoding `{l}`")))?,
-        None => file::system_encoding(),
-    };
+    let fallback = fallback_of(g)?;
+    if path.is_dir() {
+        return find_folder(&path, text, g, fallback);
+    }
+    if g.folder_flags {
+        return Err(Fail::usage(
+            "--filters, --no-subfolders and --hidden are for a folder",
+        ));
+    }
     let d = read_file(&path, fallback)?;
     let q = Query {
         text: (*text).to_string(),
@@ -633,11 +698,7 @@ fn find(rest: &[&str], g: &Global) -> Result<Done, Fail> {
     let data = json!({
         "path": path,
         "query": text,
-        "mode": match q.mode {
-            jarak_core::search::Mode::Normal => "normal",
-            jarak_core::search::Mode::Extended => "extended",
-            jarak_core::search::Mode::Regex => "regex",
-        },
+        "mode": mode_name(q.mode),
         "match_case": q.match_case,
         "whole_word": q.whole_word,
         "count": found.len(),
@@ -655,6 +716,353 @@ fn find(rest: &[&str], g: &Global) -> Result<Done, Fail> {
         text_out.push_str(&l);
     }
     Ok((data, text_out))
+}
+
+fn fallback_of(g: &Global) -> Result<jarak_core::file::TextEncoding, Fail> {
+    use jarak_core::file;
+    match g.fallback.as_deref() {
+        Some(l) => file::encoding_for_label(l)
+            .ok_or_else(|| Fail::usage(format!("unknown encoding `{l}`"))),
+        None => Ok(file::system_encoding()),
+    }
+}
+
+fn compile(text: &str, g: &Global) -> Result<jarak_core::search::Matcher, Fail> {
+    jarak_core::search::Query {
+        text: text.to_string(),
+        ..g.search.clone()
+    }
+    .compile()
+    .map_err(|e| Fail::usage(format!("the search `{text}` is not valid: {e}")))
+}
+
+fn mode_name(m: jarak_core::search::Mode) -> &'static str {
+    match m {
+        jarak_core::search::Mode::Normal => "normal",
+        jarak_core::search::Mode::Extended => "extended",
+        jarak_core::search::Mode::Regex => "regex",
+    }
+}
+
+/// Step 95: `jarak find <folder> <text>` — Find in Files with the filters.
+fn find_folder(
+    dir: &Path,
+    text: &str,
+    g: &Global,
+    fallback: jarak_core::file::TextEncoding,
+) -> Result<Done, Fail> {
+    use jarak_core::infiles;
+    let m = compile(text, g)?;
+    let scope = folder_scope(dir, g, fallback);
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let found = infiles::find_in_files(&scope, &m, &cancel, &|_, _| {});
+    let mut listed = 0usize;
+    let mut human = format!(
+        "{}: {} match{} in {} file{} ({} searched{})",
+        dir.display(),
+        found.hits,
+        if found.hits == 1 { "" } else { "es" },
+        found.files.len(),
+        if found.files.len() == 1 { "" } else { "s" },
+        found.searched,
+        if found.skipped.is_empty() {
+            String::new()
+        } else {
+            format!(", {} skipped", found.skipped.len())
+        }
+    );
+    let files: Vec<Value> = found
+        .files
+        .iter()
+        .map(|f| {
+            let take = if g.count {
+                0
+            } else {
+                10_000usize.saturating_sub(listed)
+            };
+            let matches: Vec<Value> = f
+                .hits
+                .iter()
+                .take(take)
+                .map(|h| {
+                    if !g.count {
+                        human.push_str(&format!(
+                            "\n{}:{}:{}: {}",
+                            f.path.display(),
+                            h.line,
+                            h.column,
+                            h.line_text
+                        ));
+                    }
+                    hit_json(h)
+                })
+                .collect();
+            listed += matches.len();
+            json!({
+                "path": f.path,
+                "encoding": f.format.encoding.label(f.format.bom),
+                "count": f.hits.len(),
+                "matches": matches,
+            })
+        })
+        .collect();
+    let data = json!({
+        "folder": dir,
+        "query": text,
+        "mode": mode_name(g.search.mode),
+        "match_case": g.search.match_case,
+        "whole_word": g.search.whole_word,
+        "filters": g.filters.clone().unwrap_or_default(),
+        "subfolders": !g.no_subfolders,
+        "hidden": g.hidden,
+        "count": found.hits,
+        "files_searched": found.searched,
+        "files": files,
+        "skipped": skipped_json(&found.skipped),
+        "truncated": found.truncated || (!g.count && found.hits > listed),
+    });
+    Ok((data, human))
+}
+
+fn hit_json(h: &jarak_core::infiles::Hit) -> Value {
+    json!({
+        "line": h.line,
+        "column": h.column,
+        "line_text": h.line_text.chars().take(300).collect::<String>(),
+    })
+}
+
+fn skipped_json(s: &[(PathBuf, jarak_core::infiles::Skip)]) -> Vec<Value> {
+    s.iter()
+        .map(|(p, k)| json!({ "path": p, "reason": k.code(), "message": k.message() }))
+        .collect()
+}
+
+fn folder_scope(
+    dir: &Path,
+    g: &Global,
+    fallback: jarak_core::file::TextEncoding,
+) -> jarak_core::infiles::Scope {
+    jarak_core::infiles::Scope {
+        dir: dir.to_path_buf(),
+        filters: jarak_core::infiles::Filters::parse(g.filters.as_deref().unwrap_or("")),
+        recursive: !g.no_subfolders,
+        hidden: g.hidden,
+        fallback,
+    }
+}
+
+/// `jarak replace <file|folder> <text> <with>`: Replace in Files. `--dry-run` lists every change
+/// and writes nothing; without it `--yes` is needed (the command changes files; it never asks).
+fn replace(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::infiles;
+    let [arg, text, with] = rest else {
+        return Err(Fail::usage(
+            "`jarak replace` takes a file or folder, the text to find and its replacement",
+        ));
+    };
+    let path = absolute(Path::new(arg));
+    let fallback = fallback_of(g)?;
+    let m = compile(text, g)?;
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let (plans, skipped) = if path.is_dir() {
+        let (p, found) = infiles::plan(&folder_scope(&path, g, fallback), &m, with, &cancel);
+        (p, found.skipped)
+    } else if path.is_file() {
+        match infiles::plan_file(&path, &m, with, fallback) {
+            Ok(p) => (p.into_iter().collect(), Vec::new()),
+            Err(s) => (Vec::new(), vec![(path.clone(), s)]),
+        }
+    } else {
+        return Err(Fail::new(
+            "file_not_found",
+            3,
+            format!("{} does not exist", path.display()),
+        ));
+    };
+    let planned: usize = plans.iter().map(|p| p.changes.len()).sum();
+    if !g.dry_run && !g.yes && planned > 0 {
+        return Err(Fail {
+            hint: Some("preview with --dry-run, then run again with --yes".into()),
+            ..Fail::new(
+                "confirmation_required",
+                7,
+                format!(
+                    "`jarak replace` would change {planned} match{} in {} file{}; it needs --yes",
+                    if planned == 1 { "" } else { "es" },
+                    plans.len(),
+                    if plans.len() == 1 { "" } else { "s" }
+                ),
+            )
+        });
+    }
+    let mut out = infiles::Outcome::default();
+    if !g.dry_run && planned > 0 {
+        let root = journal_root()?;
+        out = infiles::apply(&plans, &|_, _| true, fallback, &root, text, with)
+            .map_err(|e| Fail::new("io", 1, e.to_string()))?;
+    }
+    let mut human = String::new();
+    let files: Vec<Value> = plans
+        .iter()
+        .map(|p| {
+            let applied = out.applied.iter().find(|a| a.path == p.path);
+            let skip = out.skipped.iter().find(|(x, _)| *x == p.path);
+            human.push_str(&format!(
+                "{}: {} change{}{}\n",
+                p.path.display(),
+                p.changes.len(),
+                if p.changes.len() == 1 { "" } else { "s" },
+                match (g.dry_run, applied, skip) {
+                    (true, _, _) => String::new(),
+                    (false, Some(_), _) => " (replaced)".into(),
+                    (false, None, Some((_, s))) => format!(" (skipped: {})", s.message()),
+                    (false, None, None) => String::new(),
+                }
+            ));
+            for c in p.changes.iter().take(200) {
+                human.push_str(&format!(
+                    "  {}:{}: {}\n  {}  → {}\n",
+                    c.hit.line,
+                    c.hit.column,
+                    c.hit.line_text,
+                    " ".repeat(c.hit.line.to_string().len() + c.hit.column.to_string().len()),
+                    c.new_line
+                ));
+            }
+            json!({
+                "path": p.path,
+                "encoding": p.format.encoding.label(p.format.bom),
+                "replacements": p.changes.len(),
+                "replaced": applied.is_some(),
+                "skipped": skip.map(|(_, s)| json!({ "reason": s.code(), "message": s.message() })),
+                "changes": p.changes.iter().take(1000).map(|c| json!({
+                    "line": c.hit.line,
+                    "column": c.hit.column,
+                    "old_line": c.hit.line_text.chars().take(300).collect::<String>(),
+                    "new_line": c.new_line.chars().take(300).collect::<String>(),
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let mut all_skipped = skipped_json(&skipped);
+    all_skipped.extend(skipped_json(&out.skipped));
+    let replaced: usize = out.applied.iter().map(|a| a.replaced).sum();
+    let data = json!({
+        "path": path,
+        "query": text,
+        "replace": with,
+        "mode": mode_name(g.search.mode),
+        "dry_run": g.dry_run,
+        "planned": planned,
+        "replaced": replaced,
+        "files": files,
+        "skipped": all_skipped,
+        "batch": out.batch.as_ref().map(|b| json!({ "id": b.id, "journal": out.journal })),
+    });
+    human.push_str(&if g.dry_run {
+        format!(
+            "dry run: {planned} change(s) in {} file(s); nothing was written",
+            plans.len()
+        )
+    } else if let Some(b) = &out.batch {
+        format!(
+            "replaced {replaced} in {} file(s); undo with `jarak journal undo {}`",
+            out.applied.len(),
+            b.id
+        )
+    } else {
+        "nothing replaced".into()
+    });
+    Ok((data, human))
+}
+
+fn journal_root() -> Result<PathBuf, Fail> {
+    Paths::from_env().map(|p| p.journal_dir()).ok_or_else(|| {
+        Fail::new(
+            "io",
+            1,
+            "%LOCALAPPDATA% is not set: no place for the journal",
+        )
+    })
+}
+
+/// `jarak journal list` / `jarak journal undo <batch>`.
+fn journal(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::infiles;
+    let root = journal_root()?;
+    if command == "journal.list" {
+        if !rest.is_empty() {
+            return Err(Fail::usage("`jarak journal list` takes no arguments"));
+        }
+        let list = infiles::batches(&root);
+        let mut human = format!("{} batch(es) in {}", list.len(), root.display());
+        let v: Vec<Value> = list
+            .iter()
+            .map(|b| {
+                human.push_str(&format!(
+                    "\n{}  {} file(s)  \"{}\" → \"{}\"{}",
+                    b.id,
+                    b.files.len(),
+                    b.find,
+                    b.replace,
+                    if b.undone { "  (undone)" } else { "" }
+                ));
+                json!({
+                    "id": b.id,
+                    "created": b.created,
+                    "find": b.find,
+                    "replace": b.replace,
+                    "files": b.files.iter().map(|f| json!({ "path": f.path, "replaced": f.replaced })).collect::<Vec<_>>(),
+                    "undone": b.undone,
+                })
+            })
+            .collect();
+        return Ok((json!({ "journal": root, "batches": v }), human));
+    }
+    let [id] = rest else {
+        return Err(Fail::usage(
+            "`jarak journal undo` takes a batch id (see `jarak journal list`)",
+        ));
+    };
+    if !root.join(id).join("batch.json").is_file() || id.contains(['/', '\\', '.']) {
+        return Err(Fail::new(
+            "batch_not_found",
+            3,
+            format!("no batch `{id}` in {}", root.display()),
+        ));
+    }
+    if !g.dry_run && !g.yes {
+        return Err(Fail {
+            hint: Some("check with --dry-run, then run again with --yes".into()),
+            ..Fail::new(
+                "confirmation_required",
+                7,
+                "`jarak journal undo` rewrites files; it needs --yes",
+            )
+        });
+    }
+    let out = infiles::undo(&root, id, g.dry_run).map_err(|e| Fail::new("io", 1, e.to_string()))?;
+    let human = format!(
+        "{}{} file(s) {}, {} left (changed since the batch)",
+        if g.dry_run { "dry run: " } else { "" },
+        out.applied.len(),
+        if g.dry_run {
+            "would be restored"
+        } else {
+            "restored"
+        },
+        out.skipped.len()
+    );
+    Ok((
+        json!({
+            "id": id,
+            "dry_run": g.dry_run,
+            "restored": out.applied.iter().map(|a| json!({ "path": a.path })).collect::<Vec<_>>(),
+            "skipped": skipped_json(&out.skipped),
+        }),
+        human,
+    ))
 }
 
 /// `jarak-gui.exe` next to this program.
@@ -821,6 +1229,9 @@ mod tests {
                 "open",
                 "info",
                 "find",
+                "replace",
+                "journal.list",
+                "journal.undo",
                 "assets.list",
                 "assets.rename"
             ]
@@ -830,7 +1241,9 @@ mod tests {
         for c in doc["commands"].as_array().unwrap() {
             let open = c["name"] == "open";
             assert_eq!(c["opens_window"], open, "{c}");
-            assert_eq!(c["dry_run"], c["effect"] == "write", "{c}");
+            assert_eq!(c["dry_run"], c["effect"] != "read", "{c}");
+            // Step 95: what changes the user's files needs --yes (it never asks).
+            assert_eq!(c["requires_yes"], c["effect"] == "destructive", "{c}");
         }
     }
 

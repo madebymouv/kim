@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -203,8 +203,8 @@ palette, the headless CLI) follow in §2.
 | SRCH-10 | Find (volatile) next / previous of the word under the caret | supported | `JARAK-FR-072` | 94 | T | Step 94: Ctrl+Alt+F3 / Ctrl+Alt+Shift+F3, match case and whole word, the find box untouched (`ctrl_f3_takes_the_word_and_ctrl_alt_f3_leaves_the_find_box`) |
 | SRCH-11 | Count matches | supported | `JARAK-FR-070` | 94 | T | Step 94: Count (Alt+T) in the panel and `jarak find --count` (window tests, e2e step94; 832 204 matches in 50 MB counted in 125 ms) |
 | SRCH-12 | Replace / Replace All (one undo step) | supported | `JARAK-FR-070` | 94 | T | Step 94: Replace selects then replaces; Replace All (Alt+A) is one undo step: 832 204 replacements in a 50 MB document in 347 ms, undone in 87 ms (`search::tests::replace_all_on_50_mb`, release); real desktop Ctrl+Z / Ctrl+Y |
-| SRCH-13 | Find All in current document (results panel) | planned | `JARAK-FR-073` | 95 | T | — |
-| SRCH-14 | Find All / Replace All in all opened documents | planned | `JARAK-FR-074` | 95 | T | — |
+| SRCH-13 | Find All in current document (results panel) | supported | `JARAK-FR-073` | 95 | T | Step 95: *Find all in this document* (panel, palette) lists the matches in the results panel; F4 opens each (`find_all_in_documents_and_replace_all_in_open_documents`) |
+| SRCH-14 | Find All / Replace All in all opened documents | supported | `JARAK-FR-074` | 95 | T | Step 95: *In all open documents* (untitled ones too) and *Replace all in all open documents*, one undo step per document, read-only ones left (`find_all_in_documents_and_replace_all_in_open_documents`) |
 | SRCH-15 | Incremental search bar (Ctrl+Alt+I) | supported | `JARAK-FR-072` | 94 | T | Step 94: Ctrl+Alt+I, the first match from where it started as you type, Enter / Shift+Enter, the count, Esc (`incremental_search_highlight_all_and_smart_highlighting`, UI audit `incremental`, real desktop) |
 | SRCH-16 | Search history (find/replace combo history) | supported | `JARAK-FR-072` | 94 | T | Step 94: 20 entries each for find and replace, Up / Down in the find box, kept in the session (`the_find_history_walks_with_the_arrows_and_lives_in_the_session`, e2e step94, schema `jarak-session-v1`) |
 | SRCH-17 | Find dialog transparency on losing focus | planned | `JARAK-FR-070` | 110 | M | — |
@@ -236,13 +236,13 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| FIF-01 | Find in Files: directory, filters, recursion, hidden folders | planned | `JARAK-FR-073` | 95 | T | — |
-| FIF-02 | Filters with exclusions (!pattern, !+\folder) | planned | `JARAK-FR-073` | 95 | T | — |
-| FIF-03 | Follow the current document's folder | planned | `JARAK-FR-073` | 95 | T | — |
-| FIF-04 | Replace in Files (with confirmation) | planned | `JARAK-FR-073` | 95 | T, M | — |
-| FIF-05 | Search results window grouped by file, double-click to open | planned | `JARAK-FR-073` | 95 | T, M | — |
-| FIF-06 | Next / previous search result (F4, Shift+F4) | planned | `JARAK-FR-073` | 95 | T | — |
-| FIF-07 | Copy selected / all result lines and paths | planned | `JARAK-FR-073` | 95 | T | — |
+| FIF-01 | Find in Files: directory, filters, recursion, hidden folders | supported | `JARAK-FR-073` | 95 | T | Step 95: the Files page (Ctrl+Shift+F): folder with a folder dialog, filters, sub-folders, hidden folders; binary and oversized files skipped and listed (`infiles::tests::find_in_files_walks_filters_and_skips_binary_and_hidden`, `jarak find <folder>` in e2e step95, real desktop r95) |
+| FIF-02 | Filters with exclusions (!pattern, !+\folder) | supported | `JARAK-FR-073` | 95 | T | Step 95: `!name`, `!\folder` (top level), `!+\folder` (any depth), `*`/`?`, `*.*` (`infiles::tests::filters_parse_like_notepad_plus_plus`, e2e step95) |
+| FIF-03 | Follow the current document's folder | supported | `JARAK-FR-073` | 95 | T | Step 95: *Follow the current document* (and the document's folder by default) (`find_in_files_follows_the_document_folder_and_copies_one_line`) |
+| FIF-04 | Replace in Files (with confirmation) | supported | `JARAK-FR-073` | 95 | T, M | Step 95: a preview with a check box per change and per file, then only the checked changes, each file verified against the preview, journaled and saved in its own encoding/BOM/line endings; *Undo the last Replace in Files*; `jarak replace --dry-run/--yes` (`infiles::tests` byte-level, `replace_in_files_previews_applies_only_checked_changes_and_undoes`, e2e step95, real desktop r95 with CP949 and CRLF) |
+| FIF-05 | Search results window grouped by file, double-click to open | supported | `JARAK-FR-073` | 95 | T, M | Step 95: the results panel (F7) groups each search by file with the line and the match highlighted; a double-click opens it (`find_in_files_lists_results_by_file_and_f4_opens_each_match`, UI audit `results`, real desktop r95 double-click) |
+| FIF-06 | Next / previous search result (F4, Shift+F4) | supported | `JARAK-FR-073` | 95 | T | Step 95: F4 / Shift+F4 across files, wrapping (window test; real desktop r95 via the palette's next/previous result, F-keys being other programs' global hotkeys there) |
+| FIF-07 | Copy selected / all result lines and paths | supported | `JARAK-FR-073` | 95 | T | Step 95: a row's menu copies the line, every line or the paths; *Copy lines* / *Copy paths* buttons (`find_in_files_lists_results_by_file_and_f4_opens_each_match`, `find_in_files_follows_the_document_folder_and_copies_one_line`) |
 | FIF-08 | Find in Projects (project panels) | not intended | — | 110 | D | — |
 
 ### VIEW — View menu: window, symbols, zoom and wrap (sources V, U)

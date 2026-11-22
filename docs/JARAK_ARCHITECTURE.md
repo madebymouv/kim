@@ -30,7 +30,10 @@ Follows [CLI_CONTRACT](CLI_CONTRACT.md): human output or one `--json` envelope, 
 | `jarak version [--json]` | read | Version, CLI contract 1, JSON schema 1 |
 | `jarak paths [--json]` | read | The per-user files below; creates nothing |
 | `jarak info <file> [--fallback <encoding>] [--json]` | read | Encoding, BOM, line endings (with counts), size, lines, characters, binary, lossless and read-only — what the window would open (§9); `file_not_found` (exit 3), `file_too_large` (exit 5), a folder is `usage` |
-| `jarak find <file> <text> [--extended\|--regex] [--match-case] [--whole-word] [--dot-all] [--count] [--fallback <encoding>] [--json]` | read | Step 94: the matches with line, column (characters, from 1), length and the line's text, at most 10 000 listed (`truncated`); `--count` gives only the count; the same search as the window's find panel (§16); a pattern that does not compile is `usage` |
+| `jarak find <file\|folder> <text> [--extended\|--regex] [--match-case] [--whole-word] [--dot-all] [--count] [--filters <filters>] [--no-subfolders] [--hidden] [--fallback <encoding>] [--json]` | read | Step 94: the matches with line, column (characters, from 1), length and the line's text, at most 10 000 listed (`truncated`); `--count` gives only the count; the same search as the window's find panel (§16); a pattern that does not compile is `usage`. Step 95: a folder is Find in Files (§17): each file's matches, `files_searched`, `skipped` (binary, too large, unreadable) |
+| `jarak replace <file\|folder> <text> <with> [search options] [--filters …] [--no-subfolders] [--hidden] [--dry-run] [--yes] [--json]` | destructive | Step 95: Replace in Files (§17). `--dry-run` lists every change (old and new line) and writes nothing; without it `--yes` is needed (`confirmation_required`, exit 7; the CLI never asks); the batch id and journal folder are returned |
+| `jarak journal list [--json]` | read | Step 95: the Replace in Files batches kept for undo, newest first |
+| `jarak journal undo <batch> [--dry-run] [--yes] [--json]` | destructive | Step 95: the batch's files get their original bytes back unless changed since (those are listed and left); `batch_not_found` (exit 3) |
 | `jarak open [<file>[:<line>[:<column>]]...] [--new-window] [--dry-run] [--json]` | write, opens a window | Starts `jarak-gui.exe` next to `jarak.exe` (detached, no console) with absolute targets, or a running window takes them; `not_installed` (exit 3) when the window program is missing; a folder is a `usage` error |
 
 `file:line:column` (`jarak-core::target`): an argument that names an existing file is that
@@ -638,3 +641,69 @@ backward with wrapping, wrap off ("Not found"), Replace All in the selection and
 newline — each checked on disk; F3 itself was tested only
 headless because F1/F3 are the global hotkeys of the maintainer's Noeul on that PC (one stray F3
 made a pin, closed again by its ID).
+
+## 17. Find and Replace in Files, the search results (Step 95)
+
+`JARAK-FR-073`, `JARAK-FR-074`; matrix rows `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` (supported).
+
+- **The walk** (`jarak-core::infiles`): a folder's own files first, then its sub-folders depth first,
+  each in name order without case; links and junctions are not followed; hidden folders and files
+  (the Windows attribute) only with *In hidden folders*. **Filters** as in Notepad++: names with
+  `*` and `?` separated by spaces or `;`, `!name` excludes files, `!\folder` a folder directly in
+  the searched one, `!+\folder` one at any depth; no include pattern (or `*.*`) is every file.
+- **The search** reads each file (at most 64 MiB; larger ones are skipped and listed), decodes it
+  like the window does (§9: UTF-8, UTF-16 with a BOM, the legacy fallback), skips binary files and
+  runs the Step 94 matcher (`Matcher::find_bytes`) on a pool of up to eight threads; results come
+  back in the walk's order, at most 100 000 listed (the count goes on), with cancellation (Esc).
+  Measured (release, this repository): `crates/` 483 files, 13 MB, 11 049 matches in 85 ms;
+  `docs/` 830 files in 118 ms.
+- **Replace in Files** is two steps. `plan` lists every change (the line before and after) and
+  writes nothing; files that do not decode losslessly are skipped with the reason. `apply` takes
+  only the changes the user kept and, one file at a time: reads the file again and checks its
+  SHA-256 against the plan (*changed after the preview* is skipped), decodes it the same way,
+  splices the kept replacements into the text, encodes it in the file's own encoding and
+  byte-order mark (an unencodable replacement is skipped), writes the original bytes and the
+  batch manifest to the journal **before** replacing the file atomically (`save_atomic`). Line
+  endings are untouched because only the matched bytes change. Nothing is deleted; a failure
+  leaves the file as it was.
+- **The journal** (`%LOCALAPPDATA%\mouv\jarak\replace-journal\<batch>\`, `batch.json` with the
+  schema name `jarak.replace-journal` and `1.bak`, `2.bak`, …) keeps the newest 20 batches.
+  *Undo the last Replace in Files* (palette) and `jarak journal undo` give each file its original
+  bytes back only when it still has the bytes the batch wrote (checked by SHA-256); a file edited
+  since is listed and left, and the batch is marked undone only when every file was restored.
+- **The window**: the find panel's *Files* page (Ctrl+Shift+F) has the folder (with a folder
+  dialog and *Follow the current document*), the filters, *In sub-folders*, *In hidden folders*,
+  Find All and *Replace in Files…*; the search runs on a thread with its progress in the panel
+  and Esc to stop it. The **results panel** (F7) at the bottom keeps the last 20 searches as
+  blocks (the newest open, older ones folded), grouped by file with each line and the match
+  highlighted; rows are 24 points (a dense listing, recorded as `tree-row`), a double-click or
+  F4 / Shift+F4 opens a match with it selected (also in an untitled open document), the row's
+  menu copies the line, every line or the paths. The **preview** (a modal: the find panel hides
+  under it) lists every change with a check box per change and per file; Enter or *Replace N in M
+  files* applies the checked ones. Files open here with unsaved changes are skipped (*open with
+  unsaved changes*); open, saved ones are reloaded after the batch (and after its undo), keeping
+  the caret.
+- **Find All in documents** (`SRCH-13`, `SRCH-14`): the current or every open document's matches
+  in the results panel (untitled documents too); *Replace all in all open documents* replaces in
+  each editable document as one undo step per document, leaving read-only ones.
+- While a box of the find panel has the keyboard, the window's shortcuts (the palette, files,
+  tabs, the find pages, the results) still work; the box keeps text editing, the clipboard, undo
+  and F3. The palette ranks a label that starts with the query first.
+
+Tests: `infiles` 6 on a fixture tree (filters, recursion, hidden folders, binary skipped,
+cancellation; Replace in Files byte for byte across UTF-8 LF/CRLF/mixed, UTF-16 LE with a BOM and
+CP949, only confirmed changes, a left-out file untouched; a file changed after the preview and an
+unencodable replacement skipped; undo leaving a later edit; regex groups; 20 journal batches); window
+flows 7 new (Find in Files results, F4 / Shift+F4, copy lines and paths; the preview with unchecked
+changes and undo; unsaved documents skipped and saved ones reloaded; Find All and Replace All in
+documents; shortcuts from the find panel; following the document's folder and copying one line);
+palette ranking; CLI capability invariants. UI audit views `files`, `results`, `replace-preview`
+(130 runs, 0 failures). e2e `step95_jarak_find_replace_in_files.rs` (the CLI on a fixture tree:
+find with filters, `--dry-run` writing nothing, `confirmation_required`, `--yes` keeping every
+encoding, journal list and undo restoring every byte; the release window's Files page and results).
+Real desktop (r95): Ctrl+Shift+F, Alt+W, Enter; a real double-click on a result row opened a.txt;
+next/next/previous results reached b.md's `# cat`; then Replace in Files from the palette, the
+preview and Enter (CP949 and CRLF kept, the binary file untouched, the open b.md reloaded) and
+*Undo the last Replace in Files* restoring every byte, all checked on disk. Found by the real runs:
+the window's shortcuts did not reach a box of the find panel, and the palette ranked "Undo the last
+Replace in Files" above "Replace in files…" for that query (both fixed, with tests).

@@ -1,0 +1,22 @@
+{
+  "command": "journal.undo",
+  "data": {
+    "dry_run": false,
+    "id": "1795307801",
+    "restored": [
+      {
+        "path": "C:\\Users\\me\\notes\\a.txt"
+      },
+      {
+        "path": "C:\\Users\\me\\notes\\b.md"
+      },
+      {
+        "path": "C:\\Users\\me\\notes\\sub\\f.txt"
+      }
+    ],
+    "skipped": []
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

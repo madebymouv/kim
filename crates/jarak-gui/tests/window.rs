@@ -2042,3 +2042,372 @@ fn alt_letters_never_type_their_letter_but_altgr_does() {
     alt_chord(&mut h, egui::Key::E, "€", altgr);
     assert!(doc_text(&h).contains('€'), "AltGr types: {}", doc_text(&h));
 }
+
+/// Waits (frame by frame) until the Find / Replace in Files job is done.
+fn finish_job(h: &mut Harness<'static, JarakApp>) {
+    for _ in 0..400 {
+        if h.state().job.is_none() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = h.try_run();
+    }
+    panic!("the job did not finish");
+}
+
+fn fixture95(name: &str) -> PathBuf {
+    let d = temp(name);
+    std::fs::write(d.join("a.txt"), b"one cat\r\ntwo cats\r\n").unwrap();
+    std::fs::write(d.join("b.md"), b"# cat\n\nconcat cat\n").unwrap();
+    std::fs::create_dir_all(d.join("sub")).unwrap();
+    std::fs::write(d.join("sub").join("c.txt"), b"deep cat\n").unwrap();
+    std::fs::write(d.join("x.bin"), b"cat\0\0bin").unwrap();
+    d
+}
+
+#[test]
+fn find_in_files_lists_results_by_file_and_f4_opens_each_match() {
+    let d = fixture95("fif");
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    key(
+        &mut h,
+        egui::Key::F,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(h.state().find.page, jarak_gui::find::Page::Files);
+    {
+        let f = &mut h.state_mut().find;
+        f.find = "cat".into();
+        f.whole_word = true;
+        f.dir = d.display().to_string();
+        f.filters = "*.txt *.md".into();
+    }
+    h.get_by_label("Find All").click();
+    h.run();
+    finish_job(&mut h);
+    let res = h.state().results.clone().expect("results");
+    assert!(res.open);
+    let b = &res.blocks[0];
+    assert_eq!(b.hits(), 4, "{}", b.title);
+    assert!(
+        b.title.contains("4 hits in 3 files of 3 searched"),
+        "{}",
+        b.title
+    );
+    let labels: Vec<&str> = b.files.iter().map(|f| f.label.as_str()).collect();
+    assert!(
+        labels[0].ends_with("a.txt (1 hit)") && labels[2].contains("c.txt"),
+        "{labels:?}"
+    );
+    assert!(
+        h.query_all_by_label_contains("Search \"cat\"")
+            .next()
+            .is_some(),
+        "drawn"
+    );
+    // F4 opens the first match with it selected; again the next one; Shift+F4 goes back.
+    key(&mut h, egui::Key::F4, egui::Modifiers::NONE);
+    assert!(
+        h.state()
+            .tab()
+            .file
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("a.txt")
+    );
+    assert_eq!(h.state().tab().file.doc.selected_text(), "cat");
+    key(&mut h, egui::Key::F4, egui::Modifiers::NONE);
+    assert!(
+        h.state()
+            .tab()
+            .file
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("b.md")
+    );
+    let r = h.state().tab().file.doc.selection().primary();
+    assert_eq!((r.from(), r.to()), (2, 5), "# cat");
+    key(&mut h, egui::Key::F4, egui::Modifiers::SHIFT);
+    assert!(
+        h.state()
+            .tab()
+            .file
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("a.txt")
+    );
+    // The last match (sub/c.txt, below the panel's fold) opens like a double-click.
+    assert!(
+        h.query_by_label_contains("one cat").is_some(),
+        "rows are labelled"
+    );
+    let rows: Vec<_> = h.state().results.as_ref().unwrap().rows();
+    let last = *rows.last().unwrap();
+    h.state_mut().open_result(last);
+    h.run();
+    assert!(
+        h.state()
+            .tab()
+            .file
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("c.txt")
+    );
+    // Copy lines and paths.
+    let clip = Arc::new(jarak_gui::clipboard::MemoryClipboard::default());
+    let (a2, _) = app_with(&[], Arc::default());
+    let mut h2 = harness(a2.with_clipboard(clip.clone()));
+    h2.state_mut().results = h.state().results.clone();
+    h2.state_mut().copy_results(true);
+    let got = jarak_gui::clipboard::Clipboard::get_text(clip.as_ref()).unwrap();
+    assert_eq!(got.lines().count(), 3);
+    h2.state_mut().copy_results(false);
+    let got = jarak_gui::clipboard::Clipboard::get_text(clip.as_ref()).unwrap();
+    assert!(
+        got.lines().next().unwrap().ends_with("a.txt:1:5: one cat"),
+        "{got}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn replace_in_files_previews_applies_only_checked_changes_and_undoes() {
+    let d = fixture95("rif");
+    let journal = d.join("journal");
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_journal(journal));
+    key(
+        &mut h,
+        egui::Key::F,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    {
+        let f = &mut h.state_mut().find;
+        f.find = "cat".into();
+        f.replace = "dog".into();
+        f.whole_word = true;
+        f.dir = d.display().to_string();
+        f.filters = "*.txt *.md".into();
+    }
+    h.get_by_label("Replace in Files…").click();
+    h.run();
+    finish_job(&mut h);
+    let p = h.state().preview.clone().expect("the preview");
+    assert_eq!(p.chosen(), (4, 3));
+    assert_eq!(
+        std::fs::read(d.join("a.txt")).unwrap(),
+        b"one cat\r\ntwo cats\r\n",
+        "nothing written yet"
+    );
+    // Leave out b.md's first change and the whole sub/c.txt.
+    {
+        let pv = h.state_mut().preview.as_mut().unwrap();
+        let bi = pv
+            .plans
+            .iter()
+            .position(|x| x.path.ends_with("b.md"))
+            .unwrap();
+        pv.keep[bi][0] = false;
+        let ci = pv
+            .plans
+            .iter()
+            .position(|x| x.path.ends_with("c.txt"))
+            .unwrap();
+        pv.keep[ci].iter_mut().for_each(|k| *k = false);
+    }
+    h.run();
+    h.get_by_label_contains("Replace 2 in 2 files").click();
+    h.run();
+    finish_job(&mut h);
+    assert_eq!(
+        std::fs::read(d.join("a.txt")).unwrap(),
+        b"one dog\r\ntwo cats\r\n"
+    );
+    assert_eq!(
+        std::fs::read(d.join("b.md")).unwrap(),
+        b"# cat\n\nconcat dog\n"
+    );
+    assert_eq!(std::fs::read(d.join("sub/c.txt")).unwrap(), b"deep cat\n");
+    let title = &h.state().results.as_ref().unwrap().blocks[0].title;
+    assert!(
+        title.starts_with("Replace in Files: 2 replaced in 2 files, 0 skipped"),
+        "{title}"
+    );
+    // Undo the batch.
+    h.state_mut().undo_replace_in_files();
+    assert_eq!(
+        std::fs::read(d.join("a.txt")).unwrap(),
+        b"one cat\r\ntwo cats\r\n"
+    );
+    assert_eq!(
+        std::fs::read(d.join("b.md")).unwrap(),
+        b"# cat\n\nconcat cat\n"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn replace_in_files_skips_documents_with_unsaved_changes_and_reloads_saved_ones() {
+    let d = fixture95("rif-open");
+    let a_path = d.join("a.txt");
+    let b_path = d.join("b.md");
+    let (ap, bp) = (a_path.display().to_string(), b_path.display().to_string());
+    let (a, _) = app_with(&[ap.as_str(), bp.as_str()], Arc::default());
+    let mut h = harness(a.with_journal(d.join("j")));
+    // b.md (active) gets an unsaved edit; a.txt stays saved.
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    text(&mut h, "unsaved");
+    h.state_mut().open_find(jarak_gui::find::Page::Files);
+    {
+        let f = &mut h.state_mut().find;
+        f.find = "cat".into();
+        f.replace = "dog".into();
+        f.whole_word = true;
+        f.dir = d.display().to_string();
+        f.filters = "a.txt b.md".into();
+    }
+    h.state_mut().replace_in_files();
+    finish_job(&mut h);
+    h.state_mut().apply_preview();
+    finish_job(&mut h);
+    assert_eq!(std::fs::read(&a_path).unwrap(), b"one dog\r\ntwo cats\r\n");
+    assert_eq!(
+        std::fs::read(&b_path).unwrap(),
+        b"# cat\n\nconcat cat\n",
+        "unsaved: skipped"
+    );
+    let a_tab = h
+        .state()
+        .tabs
+        .iter()
+        .find(|t| t.file.path.as_deref() == Some(a_path.as_path()))
+        .unwrap();
+    assert_eq!(
+        a_tab.file.doc.text().to_string(),
+        "one dog\r\ntwo cats\r\n",
+        "reloaded"
+    );
+    let title = &h.state().results.as_ref().unwrap().blocks[0].title;
+    assert!(title.contains("1 skipped"), "{title}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn find_all_in_documents_and_replace_all_in_open_documents() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "red one red");
+    key(&mut h, egui::Key::N, egui::Modifiers::CTRL);
+    text(&mut h, "blue red");
+    h.state_mut().find.find = "red".into();
+    h.state_mut().find_all_docs(false);
+    assert_eq!(
+        h.state().results.as_ref().unwrap().blocks[0].hits(),
+        1,
+        "this document"
+    );
+    h.state_mut().find_all_docs(true);
+    let b = &h.state().results.as_ref().unwrap().blocks[0];
+    assert_eq!((b.hits(), b.files.len()), (3, 2));
+    // The result of an untitled document opens it.
+    key(&mut h, egui::Key::F4, egui::Modifiers::NONE);
+    assert_eq!(h.state().tab().file.doc.text().to_string(), "red one red");
+    assert_eq!(h.state().tab().file.doc.selected_text(), "red");
+    h.state_mut().find.replace = "green".into();
+    h.state_mut().replace_all_docs();
+    let texts: Vec<String> = h
+        .state()
+        .tabs
+        .iter()
+        .map(|t| t.file.doc.text().to_string())
+        .collect();
+    assert_eq!(texts, ["green one green", "blue green"]);
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(
+        h.state().tab().file.doc.text().to_string(),
+        "red one red",
+        "one undo step per document"
+    );
+}
+
+/// Found on the real desktop (Step 95): with the keyboard in a box of the find panel, the
+/// window's shortcuts (the palette, save) still work and the typing stays in the box.
+#[test]
+fn window_shortcuts_work_while_the_find_panel_has_the_keyboard() {
+    let d = temp("panel-keys");
+    let f = d.join("k.txt");
+    std::fs::write(&f, b"cat\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    key(&mut h, egui::Key::H, egui::Modifiers::CTRL);
+    text(&mut h, "x");
+    assert_eq!(h.state().find.find, "x", "typing goes to the find box");
+    key(
+        &mut h,
+        egui::Key::P,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert!(
+        h.state().palette.is_some(),
+        "Ctrl+Shift+P from the find box"
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    h.state_mut().tab_mut().file.doc.select_all();
+    h.state_mut().tab_mut().file.doc.paste("dog\n");
+    key(&mut h, egui::Key::F, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert_eq!(
+        std::fs::read(&f).unwrap(),
+        b"dog\n",
+        "Ctrl+S from the find box"
+    );
+    assert_eq!(
+        h.state().tab().file.doc.text().to_string(),
+        "dog\n",
+        "nothing typed into the document"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// FIF-03 and FIF-07: Find in Files follows the current document's folder when asked, and a
+/// selected result line is copied on its own.
+#[test]
+fn find_in_files_follows_the_document_folder_and_copies_one_line() {
+    let d = fixture95("follow");
+    let sub = d.join("sub").join("c.txt");
+    let ss = sub.display().to_string();
+    let clip = Arc::new(jarak_gui::clipboard::MemoryClipboard::default());
+    let (a, _) = app_with(&[ss.as_str()], Arc::default());
+    let mut h = harness(a.with_clipboard(clip.clone()));
+    h.state_mut().find.dir = d.display().to_string();
+    h.state_mut().find.follow_doc = true;
+    h.state_mut().open_find(jarak_gui::find::Page::Files);
+    assert_eq!(
+        h.state().files_dir().unwrap(),
+        d.join("sub"),
+        "the document's folder"
+    );
+    h.state_mut().find.find = "cat".into();
+    h.state_mut().find_in_files_now();
+    let b = &h.state().results.as_ref().unwrap().blocks[0];
+    assert_eq!((b.files.len(), b.hits()), (1, 1), "{}", b.title);
+    h.state_mut().result_step(false);
+    h.state_mut().copy_selected_result();
+    assert_eq!(
+        jarak_gui::clipboard::Clipboard::get_text(clip.as_ref()).as_deref(),
+        Some("1:6: deep cat")
+    );
+    h.state_mut().find.follow_doc = false;
+    assert_eq!(
+        h.state().files_dir().unwrap(),
+        d.join("sub"),
+        "the field keeps the last folder"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

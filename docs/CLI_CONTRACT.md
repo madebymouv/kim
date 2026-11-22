@@ -358,13 +358,23 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `asset_shared` | 7 | Step 91: other Markdown files of the folder refer to the asset too; `details` list them (`{"document": …}`). Nothing was changed. |
 | `document_read_only` | 7 | Step 91: the document opens read-only in Jarak (binary, or an encoding that cannot reproduce every byte), so its references are not rewritten. Nothing was changed. |
 | `reference_unlocated` | 7 | Step 91: a reference to the asset cannot be located exactly in the text (rename it by hand). Nothing was changed. |
+| `batch_not_found` | 3 | Step 95: `jarak journal undo` of a batch the journal does not hold (`jarak journal list`). Nothing was changed. |
 
 Step 94: `jarak find <file> <text>` lists the matches of a text (`--extended` escapes such as `\n`
 and `\xNN`, or `--regex`) with their line and column; a pattern that does not compile is `usage`
 (exit 2) with the reason, and search options on another command are `usage` too. It reads only.
 
+Step 95: `jarak find <folder>` is Find in Files (filters, sub-folders, hidden folders; binary and
+oversized files are listed as `skipped`). `jarak replace` is `destructive`: `--dry-run` lists every
+change and writes nothing, otherwise it needs `--yes` and fails with the shared
+`confirmation_required` (exit 7) without it — the CLI never asks. Each file is checked against the
+plan, its original bytes are journaled, and it is saved in its own encoding and line endings;
+`jarak journal list` / `jarak journal undo <batch>` (also `destructive`) give the originals back.
+
 Examples: `examples/cli-envelope-v1/jarak-assets-list.json`, `jarak-assets-rename-dry-run.json`,
-`jarak-asset-exists.json`, `jarak-find.json`.
+`jarak-asset-exists.json`, `jarak-find.json`, `jarak-find-folder.json`, `jarak-replace-dry-run.json`,
+`jarak-replace.json`, `jarak-replace-confirmation-required.json`, `jarak-journal-list.json`,
+`jarak-journal-undo.json`.
 
 ## 7. Output streams and the `--json` envelope
 
