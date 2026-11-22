@@ -1,0 +1,12 @@
+{
+  "command": "print",
+  "error": {
+    "code": "printer_not_found",
+    "details": [],
+    "exit_code": 3,
+    "hint": "`jarak printers` names them",
+    "message": "there is no printer called `Paper on the third floor`"
+  },
+  "ok": false,
+  "schema_version": 1
+}

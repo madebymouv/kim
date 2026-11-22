@@ -50,7 +50,15 @@ Commands:
                 (--linked: referred to instead; --source: its highlighted text); --to folder
                 publishes the page and copies of its images; the format follows the output's
                 extension or --to html|rtf|folder; an existing output is replaced only with
-                --overwrite, the document never; --dry-run checks only
+                --overwrite, the document never; --to pdf (or a .pdf output) prints to
+                Microsoft Print to PDF; --dry-run checks only
+  print <file>  Prints on the default printer or --printer <name> with the print settings
+                (jarak settings list files): a Markdown document rendered, other text
+                highlighted; --pages 2-3; a printer that writes a file (Microsoft Print to PDF)
+                needs --output <file> (an existing one only with --overwrite); no dialog ever
+                opens; --dry-run lays the pages out and prints nothing
+  printers      The printers Windows knows, the default one and those that write a file
+                (read-only)
   journal list  The Replace in Files batches kept for undo (read-only)
   journal undo <batch>
                 Gives the files of a batch their original bytes back, unless changed since;
@@ -155,6 +163,9 @@ struct Global {
     source: bool,
     overwrite: bool,
     export_flags: bool,
+    /// Step 106: `jarak print` options.
+    printer: Option<String>,
+    pages: Option<String>,
 }
 
 fn main() -> ExitCode {
@@ -209,6 +220,14 @@ fn run(args: &[String]) -> ExitCode {
                     g.export_flags = true;
                 }
                 None => missing_value = Some("--output"),
+            },
+            "--printer" => match it.next() {
+                Some(v) => g.printer = Some(v.clone()),
+                None => missing_value = Some("--printer"),
+            },
+            "--pages" => match it.next() {
+                Some(v) => g.pages = Some(v.clone()),
+                None => missing_value = Some("--pages"),
             },
             "--linked" => {
                 g.linked = true;
@@ -290,8 +309,8 @@ fn run(args: &[String]) -> ExitCode {
         (Some("settings"), Some("reset")) => "settings.reset",
         (
             Some(
-                c @ ("open" | "info" | "find" | "replace" | "export" | "paths" | "version"
-                | "capabilities"),
+                c @ ("open" | "info" | "find" | "replace" | "export" | "print" | "printers"
+                | "paths" | "version" | "capabilities"),
             ),
             _,
         ) => c,
@@ -322,10 +341,12 @@ fn run(args: &[String]) -> ExitCode {
         ))
     } else if g.replace && command != "hotkeys.set" {
         Err(Fail::usage("--replace belongs to `jarak hotkeys set`"))
-    } else if g.export_flags && command != "export" {
+    } else if g.export_flags && !matches!(command, "export" | "print") {
         Err(Fail::usage(
-            "--to, --output, --linked, --line-numbers, --source and --overwrite belong to `jarak export`",
+            "--to, --output, --linked, --line-numbers, --source and --overwrite belong to `jarak export` (--output and --overwrite also to `jarak print`)",
         ))
+    } else if (g.printer.is_some() || g.pages.is_some()) && command != "print" {
+        Err(Fail::usage("--printer and --pages belong to `jarak print`"))
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
@@ -356,6 +377,7 @@ fn run(args: &[String]) -> ExitCode {
                 | "assets.rename"
                 | "replace"
                 | "export"
+                | "print"
                 | "journal.undo"
                 | "settings.set"
                 | "settings.reset"
@@ -365,7 +387,7 @@ fn run(args: &[String]) -> ExitCode {
         )
     {
         Err(Fail::usage(format!(
-            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak export`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak export`, `jarak print`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
             command.replace('.', " ")
         )))
     } else {
@@ -379,10 +401,12 @@ type Done = (Value, String);
 
 fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
     match command {
-        "version" | "capabilities" | "paths" if !rest.is_empty() => Err(Fail::usage(format!(
-            "`jarak {command}` takes no arguments (got `{}`)",
-            rest.join(" ")
-        ))),
+        "version" | "capabilities" | "paths" | "printers" if !rest.is_empty() => {
+            Err(Fail::usage(format!(
+                "`jarak {command}` takes no arguments (got `{}`)",
+                rest.join(" ")
+            )))
+        }
         "version" => Ok((
             json!({
                 "tool": "jarak",
@@ -406,6 +430,8 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "find" => find(rest, g),
         "replace" => replace(rest, g),
         "export" => export(rest, g),
+        "print" => print(rest, g),
+        "printers" => printers(),
         "journal.list" | "journal.undo" => journal(command, rest, g),
         "assets.list" => assets_list(rest),
         "assets.rename" => assets_rename(rest, g),
@@ -590,23 +616,29 @@ fn export(rest: &[&str], g: &Global) -> Result<Done, Fail> {
     let path = absolute(Path::new(file));
     let out = absolute(Path::new(output));
     let format = match g.to.as_deref() {
-        Some(t) => Format::from_name(t)
-            .ok_or_else(|| Fail::usage(format!("--to takes html, rtf or folder (got `{t}`)")))?,
+        Some(t) => Format::from_name(t).ok_or_else(|| {
+            Fail::usage(format!("--to takes html, rtf, folder or pdf (got `{t}`)"))
+        })?,
         None => Format::from_extension(&out).ok_or_else(|| Fail {
-            hint: Some("name the format with --to html, rtf or folder".into()),
+            hint: Some("name the format with --to html, rtf, folder or pdf".into()),
             ..Fail::usage(format!(
-                "{} has no export extension (.html, .htm, .rtf)",
+                "{} has no export extension (.html, .htm, .rtf, .pdf)",
                 out.display()
             ))
         })?,
     };
-    if format == Format::Pdf {
-        return Err(Fail::usage(
-            "PDF is printed (Microsoft Print to PDF); it comes with printing in the next part of Step 106",
-        ));
-    }
     let markdown = jarak_core::markdown::is_markdown_path(&path);
     let rendered = markdown && !g.source && format != Format::Rtf;
+    if g.linked && format == Format::Pdf {
+        return Err(Fail::usage(
+            "--linked belongs to the HTML export of a rendered Markdown document",
+        ));
+    }
+    if g.line_numbers && format == Format::Pdf {
+        return Err(Fail::usage(
+            "a PDF follows the print settings: `jarak settings set print_line_numbers true`",
+        ));
+    }
     if g.source && !markdown {
         return Err(Fail::usage(
             "--source belongs to Markdown documents (other documents export their text anyway)",
@@ -681,7 +713,37 @@ fn export(rest: &[&str], g: &Global) -> Result<Done, Fail> {
                 .map_err(fail)?;
             (vec![w], images)
         }
-        Format::Rtf | Format::Pdf => {
+        Format::Pdf => {
+            if ex::same_file(&out, &path) {
+                return Err(fail(ExportError::IntoSource(out)));
+            }
+            if out.exists() && !g.overwrite {
+                return Err(fail(ExportError::Exists(vec![out])));
+            }
+            print_document(
+                &path,
+                &d.text,
+                rendered,
+                lang,
+                jarak_core::print::PDF_PRINTER,
+                Some(out.clone()),
+                None,
+                g.dry_run,
+            )?;
+            let bytes = if g.dry_run {
+                0
+            } else {
+                std::fs::metadata(&out).map_or(0, |m| m.len())
+            };
+            (
+                vec![ex::Written {
+                    path: out.clone(),
+                    bytes,
+                }],
+                Vec::new(),
+            )
+        }
+        Format::Rtf => {
             let rtf = ex::code_rtf(&d.text, lang, g.line_numbers);
             let w = ex::write_output(&out, rtf.as_bytes(), Some(&path), g.overwrite, g.dry_run)
                 .map_err(fail)?;
@@ -715,7 +777,8 @@ fn export(rest: &[&str], g: &Global) -> Result<Done, Fail> {
         match format {
             Format::Html if rendered => "rendered HTML",
             Format::Html => "highlighted HTML",
-            Format::Rtf | Format::Pdf => "RTF",
+            Format::Rtf => "RTF",
+            Format::Pdf => "PDF (Microsoft Print to PDF)",
             Format::Folder => "a published folder",
         },
         out.display(),
@@ -755,6 +818,243 @@ fn export(rest: &[&str], g: &Global) -> Result<Done, Fail> {
         }),
         human.join("\n"),
     ))
+}
+
+/// Step 106: lays `text` out with the print settings and prints it on `printer` (into `output`
+/// for a printer that writes a file); `pages` limits it to a range. Headless: no dialog.
+#[allow(clippy::too_many_arguments)]
+fn print_document(
+    path: &Path,
+    text: &str,
+    rendered: bool,
+    lang: Option<&jarak_core::syntax::Lang>,
+    printer: &str,
+    output: Option<PathBuf>,
+    pages: Option<(usize, usize)>,
+    dry_run: bool,
+) -> Result<(jarak_core::print::Printed, String), Fail> {
+    use jarak_core::print::{self as pr, Printers};
+    let settings =
+        Paths::from_env().map(|p| jarak_core::settings::Settings::new(&p.settings_file()));
+    let get = |k: &str| settings.as_ref().and_then(|s| s.get(k));
+    let tab = get("tab_width")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(4);
+    let setup = jarak_core::settings::print_setup(&get, tab);
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let (date, time) = pr::local_now();
+    let vars = pr::Vars {
+        file: name.clone(),
+        path: path.display().to_string(),
+        date,
+        time,
+    };
+    let backend = pr::gdi::WinPrinters;
+    let Some(p) = backend
+        .list()
+        .into_iter()
+        .find(|p| p.name.eq_ignore_ascii_case(printer))
+    else {
+        return Err(Fail {
+            hint: Some("`jarak printers` names them".into()),
+            ..Fail::new(
+                "printer_not_found",
+                3,
+                format!("there is no printer called `{printer}`"),
+            )
+        });
+    };
+    if p.writes_a_file() && output.is_none() {
+        return Err(Fail::usage(format!(
+            "`{}` writes a file: name it with --output <file> (it would ask otherwise, and the command line never asks)",
+            p.name
+        )));
+    }
+    if !p.writes_a_file() && output.is_some() {
+        return Err(Fail::usage(format!(
+            "--output belongs to a printer that writes a file; `{}` prints on paper",
+            p.name
+        )));
+    }
+    let job = pr::Job {
+        printer: p.name.clone(),
+        output,
+        devmode: None,
+        name: format!("Jarak — {name}"),
+        dry_run,
+    };
+    let lang = lang.cloned();
+    let text = text.to_string();
+    let doc = path.to_path_buf();
+    let mut layout = move |m: &dyn pr::Measure, g: &pr::Geometry| {
+        let all = if rendered {
+            pr::markdown_pages(&text, Some(&doc), &setup, g, m, &vars)
+        } else {
+            pr::code_pages(&text, lang.as_ref(), &setup, g, m, &vars)
+        };
+        match pages {
+            Some((a, b)) => pr::page_range(all, a, b),
+            None => all,
+        }
+    };
+    let printed = backend.print(&job, &mut layout).map_err(|e| {
+        let (code, exit) = e.code();
+        Fail::new(code, exit, format!("{e}; nothing was printed"))
+    })?;
+    Ok((printed, p.name))
+}
+
+/// Step 106: `jarak print <file> [--printer <name>] [--output <file>] [--pages a-b]`.
+fn print(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    let [file] = rest else {
+        return Err(Fail::usage("`jarak print` needs one file"));
+    };
+    if g.to.is_some() || g.linked || g.source || g.line_numbers {
+        return Err(Fail::usage(
+            "--to, --linked, --source and --line-numbers belong to `jarak export`; printing follows the print settings (`jarak settings list files`)",
+        ));
+    }
+    let pages = match g.pages.as_deref() {
+        None => None,
+        Some(r) => {
+            let parse = |s: &str| s.trim().parse::<usize>().ok().filter(|n| *n > 0);
+            let range = match r.split_once('-') {
+                Some((a, b)) => parse(a).zip(parse(b)),
+                None => parse(r).map(|n| (n, n)),
+            };
+            match range {
+                Some((a, b)) if a <= b => Some((a, b)),
+                _ => {
+                    return Err(Fail::usage(format!(
+                        "--pages takes a page or a range like 2-5 (got `{r}`)"
+                    )));
+                }
+            }
+        }
+    };
+    let path = absolute(Path::new(file));
+    let printer = match g.printer.clone() {
+        Some(p) => p,
+        None => jarak_core::print::gdi::default_printer().ok_or_else(|| Fail {
+            hint: Some("name one with --printer (`jarak printers` lists them)".into()),
+            ..Fail::new("printer_not_found", 3, "Windows has no default printer")
+        })?,
+    };
+    let out = g.output.as_deref().map(|o| absolute(Path::new(o)));
+    if let Some(o) = &out {
+        if jarak_core::export::same_file(o, &path) {
+            return Err(Fail::new(
+                "export_into_source",
+                2,
+                format!(
+                    "{} is the document; printing never replaces it",
+                    o.display()
+                ),
+            ));
+        }
+        if o.exists() && !g.overwrite {
+            return Err(Fail {
+                hint: Some("pass --overwrite to replace it".into()),
+                details: vec![json!(o.display().to_string())],
+                ..Fail::new(
+                    "export_exists",
+                    7,
+                    format!("{} already exists; nothing was printed", o.display()),
+                )
+            });
+        }
+    }
+    let d = read_file(&path, jarak_core::file::system_encoding())?;
+    if d.binary {
+        return Err(Fail::usage(format!(
+            "{} is a binary file; Jarak prints text",
+            path.display()
+        )));
+    }
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let user_langs = Paths::from_env()
+        .map(|p| jarak_core::syntax::load_udls(&p.languages_dir()).0)
+        .unwrap_or_default();
+    let lang = jarak_core::syntax::detect(&name, d.text.lines().next().unwrap_or(""), &user_langs);
+    let rendered = jarak_core::markdown::is_markdown_path(&path);
+    let (printed, printer) = print_document(
+        &path,
+        &d.text,
+        rendered,
+        lang,
+        &printer,
+        out.clone(),
+        pages,
+        g.dry_run,
+    )?;
+    let human = match (&out, g.dry_run) {
+        (_, true) => format!(
+            "Would print {} page{} of {name} on {printer}. Dry run: nothing was printed.",
+            printed.pages,
+            if printed.pages == 1 { "" } else { "s" }
+        ),
+        (Some(o), false) => format!(
+            "Printed {} page{} of {name} on {printer} into {}.",
+            printed.pages,
+            if printed.pages == 1 { "" } else { "s" },
+            o.display()
+        ),
+        (None, false) => format!(
+            "Printed {} page{} of {name} on {printer}.",
+            printed.pages,
+            if printed.pages == 1 { "" } else { "s" }
+        ),
+    };
+    Ok((
+        json!({
+            "source": path.display().to_string(),
+            "printer": printer,
+            "output": out.map(|o| o.display().to_string()),
+            "rendered": rendered,
+            "pages": printed.pages,
+            "dry_run": g.dry_run,
+            "printed": !g.dry_run,
+        }),
+        human,
+    ))
+}
+
+/// Step 106: `jarak printers`.
+fn printers() -> Result<Done, Fail> {
+    let list = jarak_core::print::gdi::printers();
+    let data: Vec<Value> = list
+        .iter()
+        .map(|p| {
+            json!({
+                "name": p.name, "port": p.port, "default": p.default,
+                "writes_file": p.writes_a_file(),
+            })
+        })
+        .collect();
+    let human = if list.is_empty() {
+        "No printers.".to_string()
+    } else {
+        list.iter()
+            .map(|p| {
+                format!(
+                    "{}{}{}",
+                    p.name,
+                    if p.default { "  (default)" } else { "" },
+                    if p.writes_a_file() {
+                        "  (writes a file: --output)"
+                    } else {
+                        ""
+                    }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    Ok((json!({ "printers": data }), human))
 }
 
 /// What values a setting takes, for the CLI's JSON.
@@ -1830,6 +2130,8 @@ mod tests {
                 "find",
                 "replace",
                 "export",
+                "print",
+                "printers",
                 "journal.list",
                 "journal.undo",
                 "assets.list",
@@ -2030,6 +2332,70 @@ mod tests {
             "fn main() {}
 "
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Step 106 (`JARAK-FR-140`): `jarak print` checks its options, never asks (a printer that
+    /// writes a file needs --output), never replaces a file without --overwrite; the dry run
+    /// lays the pages out on the real printer and prints nothing.
+    #[test]
+    fn print_checks_its_options_and_dry_runs_on_the_real_printer() {
+        let d = std::env::temp_dir().join(format!("jarak-cli-print-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let rs = d.join("a.rs");
+        std::fs::write(
+            &rs,
+            "fn main() {}
+",
+        )
+        .unwrap();
+        let f = rs.to_string_lossy().into_owned();
+        let g = Global::default();
+        assert_eq!(print(&[], &g).unwrap_err().code, "usage");
+        let bad = Global {
+            pages: Some("3-1".into()),
+            ..Global::default()
+        };
+        assert_eq!(print(&[&f], &bad).unwrap_err().code, "usage");
+        let to = Global {
+            to: Some("pdf".into()),
+            ..Global::default()
+        };
+        assert_eq!(print(&[&f], &to).unwrap_err().code, "usage");
+        let nope = Global {
+            printer: Some("No such printer here".into()),
+            ..Global::default()
+        };
+        assert_eq!(print(&[&f], &nope).unwrap_err().code, "printer_not_found");
+        let (data, _) = printers().unwrap();
+        let has_pdf = data["printers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["name"] == jarak_core::print::PDF_PRINTER);
+        if has_pdf {
+            let pdf = |out: Option<&Path>, dry_run: bool| Global {
+                printer: Some(jarak_core::print::PDF_PRINTER.into()),
+                output: out.map(|o| o.to_string_lossy().into_owned()),
+                dry_run,
+                ..Global::default()
+            };
+            let e = print(&[&f], &pdf(None, true)).unwrap_err();
+            assert_eq!(e.code, "usage", "a file-writing printer needs --output");
+            let out = d.join("a.pdf");
+            let (data, _) = print(&[&f], &pdf(Some(&out), true)).unwrap();
+            assert_eq!(
+                (data["pages"].as_u64(), data["printed"].as_bool()),
+                (Some(1), Some(false))
+            );
+            assert!(!out.exists(), "a dry run prints nothing");
+            std::fs::write(&out, "kept").unwrap();
+            let e = print(&[&f], &pdf(Some(&out), true)).unwrap_err();
+            assert_eq!((e.code, e.exit), ("export_exists", 7));
+            let e = print(&[&f], &pdf(Some(&rs), true)).unwrap_err();
+            assert_eq!(e.code, "export_into_source");
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 

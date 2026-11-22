@@ -1,0 +1,34 @@
+{
+  "command": "printers",
+  "data": {
+    "printers": [
+      {
+        "default": false,
+        "name": "Send To OneNote 2016",
+        "port": "nul:",
+        "writes_file": false
+      },
+      {
+        "default": false,
+        "name": "Microsoft XPS Document Writer",
+        "port": "PORTPROMPT:",
+        "writes_file": true
+      },
+      {
+        "default": true,
+        "name": "Microsoft Print to PDF",
+        "port": "PORTPROMPT:",
+        "writes_file": true
+      },
+      {
+        "default": false,
+        "name": "Fax",
+        "port": "SHRFAX:",
+        "writes_file": false
+      }
+    ]
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

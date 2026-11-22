@@ -181,6 +181,66 @@
       "description": "Parameter hints (Editor).",
       "type": "boolean"
     },
+    "print_colors": {
+      "default": "color",
+      "description": "Colours (Files).",
+      "enum": [
+        "color",
+        "black"
+      ]
+    },
+    "print_font_size": {
+      "default": 10,
+      "description": "Text size (points) (Files).",
+      "maximum": 24,
+      "minimum": 6,
+      "type": "integer"
+    },
+    "print_footer": {
+      "default": "||{page} / {pages}",
+      "description": "Footer (Files).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
+    },
+    "print_header": {
+      "default": "{file}||{date} {time}",
+      "description": "Header (Files).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
+    },
+    "print_line_numbers": {
+      "default": true,
+      "description": "Line numbers (Files).",
+      "type": "boolean"
+    },
+    "print_margin_bottom": {
+      "default": 15,
+      "description": "Bottom margin (mm) (Files).",
+      "maximum": 50,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "print_margin_left": {
+      "default": 15,
+      "description": "Left margin (mm) (Files).",
+      "maximum": 50,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "print_margin_right": {
+      "default": 15,
+      "description": "Right margin (mm) (Files).",
+      "maximum": 50,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "print_margin_top": {
+      "default": 15,
+      "description": "Top margin (mm) (Files).",
+      "maximum": 50,
+      "minimum": 0,
+      "type": "integer"
+    },
     "recent_max": {
       "default": 20,
       "description": "Recent files kept (Files).",

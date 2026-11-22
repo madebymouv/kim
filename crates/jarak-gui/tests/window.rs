@@ -19,6 +19,8 @@ struct Scripted {
     /// Step 106: the export Save dialog and the publishing folder.
     export: Mutex<Vec<PathBuf>>,
     folder: Mutex<Vec<PathBuf>>,
+    /// Step 106: the print dialog's answers.
+    print: Mutex<Vec<jarak_gui::print_ui::PrintChoice>>,
 }
 
 impl Dialogs for Scripted {
@@ -37,6 +39,10 @@ impl Dialogs for Scripted {
     fn export_folder(&self) -> Option<PathBuf> {
         *self.asked.lock().unwrap() += 1;
         self.folder.lock().unwrap().pop()
+    }
+    fn print(&self, _has_selection: bool) -> Option<jarak_gui::print_ui::PrintChoice> {
+        *self.asked.lock().unwrap() += 1;
+        self.print.lock().unwrap().pop()
     }
 }
 
@@ -5753,5 +5759,230 @@ fn publishing_needs_a_saved_markdown_document() {
             .is_some_and(|m| m.contains("Markdown"))
     );
     assert_eq!(*dialogs.asked.lock().unwrap(), 0, "no dialog");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 106: a paper printer (the default) and Microsoft Print to PDF, recording their jobs.
+fn recording_printers(default_pdf: bool) -> Arc<jarak_core::print::RecordingPrinters> {
+    use jarak_core::print::{PDF_PRINTER, Printer, RecordingPrinters};
+    Arc::new(RecordingPrinters {
+        printers: vec![
+            Printer {
+                name: "Paper".into(),
+                port: "USB001:".into(),
+                default: !default_pdf,
+            },
+            Printer {
+                name: PDF_PRINTER.into(),
+                port: "PORTPROMPT:".into(),
+                default: default_pdf,
+            },
+        ],
+        ..RecordingPrinters::default()
+    })
+}
+
+/// Runs frames until the print job has finished (it runs on a thread).
+fn wait_print(h: &mut Harness<'static, JarakApp>) {
+    for _ in 0..500 {
+        let _ = h.try_run();
+        if h.state().printing.is_none() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("the print job did not finish");
+}
+
+/// The text of a recorded job's pages.
+fn printed_text(pages: &[jarak_core::print::Page]) -> String {
+    jarak_core::print::describe(pages)
+}
+
+/// Step 106 (`JARAK-FR-140`): File → Print… prints on the printer the dialog chose, with the
+/// dialog's settings, the text as it is in the window; Selection prints only the selection.
+#[test]
+fn printing_uses_the_dialogs_printer_settings_and_range() {
+    use jarak_gui::print_ui::{PrintChoice, Range};
+    let d = temp("print-dialog");
+    let doc = d.join("a.rs");
+    std::fs::write(&doc, "fn main() {}\nlet chosen = 1;\n").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.print.lock().unwrap().push(PrintChoice {
+        printer: "Paper".into(),
+        devmode: Some(vec![1, 2, 3]),
+        range: Range::All,
+    });
+    let printers = recording_printers(false);
+    let (a, _) = app_with(&[doc.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(a.with_printers(printers.clone()));
+    h.state_mut().tab_mut().file.doc.type_text("// unsaved\n");
+    h.state_mut().act(Action::Print);
+    wait_print(&mut h);
+    {
+        let jobs = printers.jobs.lock().unwrap();
+        let (job, pages) = &jobs[0];
+        assert_eq!(job.printer, "Paper");
+        assert_eq!(
+            job.devmode.as_deref(),
+            Some(&[1u8, 2, 3][..]),
+            "the dialog's settings"
+        );
+        assert_eq!(job.output, None, "a paper printer writes no file");
+        let t = printed_text(pages);
+        assert!(t.contains("\"// unsaved\"") && t.contains("chosen"), "{t}");
+        assert!(t.contains("\"a.rs\""), "the header names the document");
+    }
+    let msg = h.state().message.clone().unwrap_or_default();
+    assert!(msg.contains("Printed 1 page on Paper"), "{msg}");
+    // Only the selection.
+    let sel = jarak_core::selection::Selection::single(jarak_core::selection::Range::new(0, 2));
+    h.state_mut().tab_mut().file.doc.set_selection(&sel);
+    dialogs.print.lock().unwrap().push(PrintChoice {
+        printer: "Paper".into(),
+        devmode: None,
+        range: Range::Selection,
+    });
+    h.state_mut().act(Action::Print);
+    wait_print(&mut h);
+    let jobs = printers.jobs.lock().unwrap();
+    let t = printed_text(&jobs[1].1);
+    assert!(t.contains("\"//\"") && !t.contains("chosen"), "{t}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// A printer that writes a file gets it from Jarak's Save dialog (the driver never asks); a
+/// cancelled Save dialog prints nothing; Export as PDF prints to Microsoft Print to PDF.
+#[test]
+fn a_pdf_printer_gets_its_file_from_the_save_dialog() {
+    use jarak_gui::print_ui::{PrintChoice, Range};
+    let d = temp("print-pdf");
+    let doc = d.join("n.md");
+    std::fs::write(&doc, "# Heading\n\nBody text.\n").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    let printers = recording_printers(true);
+    let (a, _) = app_with(&[doc.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(a.with_printers(printers.clone()));
+    // Cancelled Save dialog: nothing.
+    dialogs.print.lock().unwrap().push(PrintChoice {
+        printer: jarak_core::print::PDF_PRINTER.into(),
+        devmode: None,
+        range: Range::All,
+    });
+    h.state_mut().act(Action::Print);
+    assert!(h.state().printing.is_none());
+    assert!(printers.jobs.lock().unwrap().is_empty());
+    // Print now on the default printer (the PDF one): its file from the Save dialog.
+    dialogs.export.lock().unwrap().push(d.join("now.pdf"));
+    h.state_mut().act(Action::PrintNow);
+    wait_print(&mut h);
+    // Export as PDF.
+    dialogs.export.lock().unwrap().push(d.join("n.pdf"));
+    h.state_mut().export_tool(5);
+    wait_print(&mut h);
+    let jobs = printers.jobs.lock().unwrap();
+    assert_eq!(jobs.len(), 2);
+    assert_eq!(
+        jobs[0].0.output.as_deref(),
+        Some(d.join("now.pdf").as_path())
+    );
+    assert_eq!(jobs[1].0.printer, jarak_core::print::PDF_PRINTER);
+    let t = printed_text(&jobs[1].1);
+    assert!(
+        t.contains("Sans bold") && t.contains("\"Heading\""),
+        "rendered: {t}"
+    );
+    assert!(d.join("n.pdf").is_file());
+    let msg = h.state().message.clone().unwrap_or_default();
+    assert!(msg.starts_with("Saved") && msg.contains("n.pdf"), "{msg}");
+    assert_eq!(
+        std::fs::read_to_string(&doc).unwrap(),
+        "# Heading\n\nBody text.\n"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Without printers: Print now and Export as PDF say why, and nothing is asked.
+#[test]
+fn without_printers_printing_says_why() {
+    let d = temp("print-none");
+    let doc = d.join("a.txt");
+    std::fs::write(&doc, "x").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    let (a, _) = app_with(&[doc.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(a);
+    h.state_mut().act(Action::PrintNow);
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("no default printer"))
+    );
+    h.state_mut().export_tool(5);
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("Microsoft Print to PDF is not installed"))
+    );
+    assert_eq!(*dialogs.asked.lock().unwrap(), 0);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The print settings apply live: black on white, no line numbers, another header.
+#[test]
+fn the_print_settings_apply_to_the_next_job() {
+    use jarak_gui::print_ui::{PrintChoice, Range};
+    let (mut h, d) = settings_app("print-settings", &["a.rs"]);
+    let printers = recording_printers(false);
+    h.state_mut().printers = printers.clone();
+    for (k, v) in [
+        ("print_colors", "black"),
+        ("print_line_numbers", "false"),
+        ("print_header", "Jarak||"),
+    ] {
+        assert!(h.state_mut().change_setting(k, v), "{k}");
+    }
+    let dialogs_choice = PrintChoice {
+        printer: "Paper".into(),
+        devmode: None,
+        range: Range::All,
+    };
+    h.state_mut().print_with(dialogs_choice);
+    wait_print(&mut h);
+    let jobs = printers.jobs.lock().unwrap();
+    let t = printed_text(&jobs[0].1);
+    assert!(t.contains("\"Jarak\""), "the header: {t}");
+    assert!(!t.contains("\"a.rs\""), "the default header is gone");
+    for line in t.lines().filter(|l| l.contains(" text ")) {
+        assert!(line.contains("#000000"), "black: {line}");
+    }
+    assert!(!t.contains("\"1\""), "no line numbers: {t}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 106: the *Replace files?* dialog of publishing under the UI audit's rules (English and
+/// Korean).
+#[test]
+fn the_publish_question_passes_the_ui_audit_rules() {
+    let (mut h, d) = open_doc("audit106", "a.md", "# A\n");
+    for lang in [Lang::En, Lang::Ko] {
+        h.state_mut().lang = lang;
+        h.state_mut().prepare_audit("publish-question");
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", "publish-question");
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{lang:?}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        assert!(r.components.iter().any(|c| c.id == "publish:question"));
+        h.state_mut().publish_question = None;
+    }
     let _ = std::fs::remove_dir_all(&d);
 }

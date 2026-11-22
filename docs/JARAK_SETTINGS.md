@@ -19,7 +19,8 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
   nothing is written), atomically (a temporary file, then a rename), keeping the file's other
   lines and comments. What the window shows is what the file says.
 - **Keyboard** (the shortcut mapper, [HOTKEY_CONTRACT](HOTKEY_CONTRACT.md)): your changes first,
-  then every command with its keys, searchable by name or keys. **Change** records the next keys
+  then every command with its keys (since Step 106 also those without default keys, such as
+  *Print…* and the sorts, shown *Off* until given some), searchable by name or keys. **Change** records the next keys
   (Esc cancels; recording stops when the window loses the focus), **Off** removes a command's keys,
   **Reset** gives its defaults back. Keys another command has by default go to this one (the window
   says which default they replace); keys another of *your* bindings has are refused and named,
@@ -129,6 +130,15 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 | `detect_changes` | Detect files changed by other programs | `true` / `false` | `true` |
 | `reload_unmodified_silently` | Reload unmodified documents silently | `true` / `false` | `false` |
 | `recovery_interval` | Keep unsaved documents every (seconds) | 0–3600 | `10` |
+| `print_header` | Header | text (one line) | `{file}\|\|{date} {time}` |
+| `print_footer` | Footer | text (one line) | `\|\|{page} / {pages}` |
+| `print_line_numbers` | Line numbers | `true` / `false` | `true` |
+| `print_colors` | Colours | `color` / `black` | `color` |
+| `print_font_size` | Text size (points) | 6–24 | `10` |
+| `print_margin_left` | Left margin (mm) | 0–50 | `15` |
+| `print_margin_top` | Top margin (mm) | 0–50 | `15` |
+| `print_margin_right` | Right margin (mm) | 0–50 | `15` |
+| `print_margin_bottom` | Bottom margin (mm) | 0–50 | `15` |
 
 ### Advanced
 
@@ -161,7 +171,11 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
   document (a plain folder name; the orphan scan of *Assets* still looks at `assets`).
 - **Files**: new documents' encoding and line ending; how many recent files are kept; detecting
   files changed by other programs, reloading unmodified documents silently and recovery
-  snapshots (Step 104, [JARAK_RECOVERY](JARAK_RECOVERY.md)).
+  snapshots (Step 104, [JARAK_RECOVERY](JARAK_RECOVERY.md)). **Printing** (Step 106,
+  [JARAK_EXPORT](JARAK_EXPORT.md)): the header and footer are `left|center|right` with `{file}`,
+  `{path}`, `{page}`, `{pages}`, `{date}` and `{time}` (empty prints none); line numbers; the
+  window's colours or black on white; the text size (rendered Markdown's body is one point
+  larger); the four margins. `jarak print` and `jarak export --to pdf` use the same settings.
 
 ## Not in this Step
 

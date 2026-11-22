@@ -105,3 +105,32 @@ fn rendered_markdown_embedded_linked_and_published() {
         "the document is unchanged"
     );
 }
+
+/// Step 106 (`JARAK-FR-140`): the printed pages of both samples, laid out with fixed metrics
+/// (`FakeMeasure`, A4 at 300 dpi) and a fixed date; one drawing operation per line.
+#[test]
+fn printed_pages_of_code_and_markdown() {
+    use jarak_core::print::{self as pr, FakeMeasure, Geometry, Setup, Vars};
+    let m = FakeMeasure { dpi: 300.0 };
+    let g = Geometry::a4(300.0);
+    let vars = |file: &str| Vars {
+        file: file.into(),
+        path: format!(r"C:\docs\{file}"),
+        date: "2026-11-22".into(),
+        time: "18:00".into(),
+    };
+    let (_, code) = read("sample.rs");
+    let rust = syntax::builtin("Rust");
+    let pages = pr::code_pages(&code, rust, &Setup::default(), &g, &m, &vars("sample.rs"));
+    golden("sample.rs.pages.txt", &pr::describe(&pages));
+    let (doc, md) = read("note.markdown");
+    let pages = pr::markdown_pages(
+        &md,
+        Some(&doc),
+        &Setup::default(),
+        &g,
+        &m,
+        &vars("note.markdown"),
+    );
+    golden("note.pages.txt", &pr::describe(&pages));
+}

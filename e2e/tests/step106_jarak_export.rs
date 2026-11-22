@@ -9,9 +9,14 @@
 //! 3. `--linked` refers to the image relative to the output; `--to folder` publishes the page and a
 //!    copy of the image (`--dry-run` first writes nothing).
 //! 4. A Rust file as RTF and as highlighted HTML with line numbers.
+//! 5. Printing: `jarak printers` lists Microsoft Print to PDF; `jarak export --to pdf` writes a
+//!    real PDF of the rendered note through it (no dialog); `jarak print` on it without
+//!    `--output` is refused (exit 2: it would ask); `--dry-run` counts the pages and prints
+//!    nothing. Skipped, with a note, on a machine without that printer.
 //!
-//! Machine safety: `jarak` runs without a window and without the network; everything happens in a
-//! temporary folder.
+//! Machine safety: `jarak` runs without a window and without the network; printing goes only to
+//! Microsoft Print to PDF into the temporary folder (never to a paper printer); everything happens
+//! in a temporary folder.
 
 #![cfg(windows)]
 
@@ -162,4 +167,57 @@ fn step106_exports_through_the_cli() {
     let body = std::fs::read_to_string(&code_html).unwrap();
     assert!(body.contains("<span class=\"t-keyword\">fn</span>"));
     assert!(body.contains("<span class=\"ln\">1 </span>"));
+
+    // 5. PDF through Microsoft Print to PDF.
+    let (code, v) = jarak(dir, &["printers"]);
+    assert_eq!(code, 0, "{v}");
+    let has_pdf = v["data"]["printers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["name"] == "Microsoft Print to PDF" && p["writes_file"] == true);
+    if !has_pdf {
+        eprintln!("step106: no Microsoft Print to PDF on this machine; the PDF part is skipped");
+        return;
+    }
+    let pdf = dir.join("note.pdf");
+    let (code, v) = jarak(
+        dir,
+        &[
+            "export",
+            n,
+            "--to",
+            "pdf",
+            "--output",
+            pdf.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 0, "{v}");
+    let bytes = std::fs::read(&pdf).unwrap();
+    assert!(
+        bytes.starts_with(b"%PDF-") && bytes.len() > 1000,
+        "a real PDF"
+    );
+    let (code, v) = jarak(dir, &["print", r, "--printer", "Microsoft Print to PDF"]);
+    assert_eq!(
+        (code, v["error"]["code"].as_str()),
+        (2, Some("usage")),
+        "{v}"
+    );
+    let dry = dir.join("dry.pdf");
+    let (code, v) = jarak(
+        dir,
+        &[
+            "print",
+            r,
+            "--printer",
+            "Microsoft Print to PDF",
+            "--output",
+            dry.to_str().unwrap(),
+            "--dry-run",
+        ],
+    );
+    assert_eq!((code, v["data"]["pages"].as_u64()), (0, Some(1)), "{v}");
+    assert!(!dry.exists(), "a dry run prints nothing");
+    assert_eq!(std::fs::read_to_string(&note).unwrap(), text, "unchanged");
 }

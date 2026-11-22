@@ -30,6 +30,7 @@ pub mod outline;
 pub mod palette;
 pub mod prefs;
 pub mod preview;
+pub mod print_ui;
 pub mod recover;
 pub mod results;
 pub mod sessions;
@@ -75,6 +76,10 @@ pub trait Dialogs: Send + Sync {
     }
     /// Step 106: the folder a Markdown document is published to.
     fn export_folder(&self) -> Option<PathBuf> {
+        None
+    }
+    /// Step 106: the print dialog (`has_selection` offers printing only the selection).
+    fn print(&self, _has_selection: bool) -> Option<print_ui::PrintChoice> {
         None
     }
 }
@@ -558,6 +563,10 @@ pub struct JarakApp {
     pub recovery_offer: Option<recover::Offer>,
     /// Step 106: publishing would replace files; asked first.
     pub publish_question: Option<export_ui::PublishQuestion>,
+    /// Step 106: where print jobs go (none until the program gives the Windows spooler) and the
+    /// job on its way.
+    pub printers: Arc<dyn jarak_core::print::Printers>,
+    pub printing: Option<print_ui::Running>,
     /// Step 105: the settings applied to the window, the Settings window, and what was applied
     /// (the language is fixed for the run when `--lang` named it, or by a test).
     pub prefs: prefs::Prefs,
@@ -618,6 +627,12 @@ impl JarakApp {
     /// Step 95: where Replace in Files keeps the originals (the program passes its journal folder).
     pub fn with_journal(mut self, dir: PathBuf) -> JarakApp {
         self.journal_root = Some(dir);
+        self
+    }
+
+    /// Step 106: where print jobs go (the Windows spooler in the program).
+    pub fn with_printers(mut self, p: Arc<dyn jarak_core::print::Printers>) -> JarakApp {
+        self.printers = p;
         self
     }
 
@@ -1722,6 +1737,8 @@ impl JarakApp {
             recovery: None,
             recovery_offer: None,
             publish_question: None,
+            printers: Arc::new(jarak_core::print::NoPrinters),
+            printing: None,
             prefs: prefs::Prefs::default(),
             settings_win: None,
             lang_fixed: true,
@@ -2411,6 +2428,8 @@ fn main() {
             Action::Macro(_) => self.play_recorded(),
             Action::RunDialog => self.open_run(),
             Action::Settings => self.open_settings(None),
+            Action::Print => self.print_dialog(),
+            Action::PrintNow => self.print_now(),
             Action::QuickOpen => self.open_quick(),
             Action::Complete(k) => match k {
                 0 => self.open_completion(assist::Trigger::All),
@@ -3155,6 +3174,7 @@ fn main() {
         self.disk_question_ui(&ctx, &c);
         self.recovery_offer_ui(&ctx, &c);
         self.publish_question_ui(&ctx, &c);
+        self.print_frame(&ctx);
         // Step 105: the Settings window (its audit is written by that window, ADR 0100).
         self.settings_window(&ctx);
         if kim_ui::inspect::active() && !self.audit_settings {
@@ -3959,6 +3979,93 @@ impl Dialogs for WinDialogs {
         win_folder_dialog("Publish to a folder (the page and an assets folder are written into it)")
             .map(PathBuf::from)
     }
+    fn print(&self, has_selection: bool) -> Option<print_ui::PrintChoice> {
+        win_print_dialog(has_selection)
+    }
+}
+
+/// Step 106: the Windows print dialog (`PrintDlgW`): the printer, its settings (copies, paper,
+/// orientation as `DEVMODEW`), and all pages, the selection or a page range.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn win_print_dialog(has_selection: bool) -> Option<print_ui::PrintChoice> {
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+    use windows_sys::Win32::UI::Controls::Dialogs::{
+        DEVNAMES, PD_ALLPAGES, PD_HIDEPRINTTOFILE, PD_NOSELECTION, PD_PAGENUMS, PD_SELECTION,
+        PD_USEDEVMODECOPIESANDCOLLATE, PRINTDLGW, PrintDlgW,
+    };
+    // SAFETY: PRINTDLGW is plain data; all-zero is its empty state.
+    let mut pd: PRINTDLGW = unsafe { std::mem::zeroed() };
+    pd.lStructSize = size_of::<PRINTDLGW>() as u32;
+    pd.Flags = PD_ALLPAGES
+        | PD_USEDEVMODECOPIESANDCOLLATE
+        | PD_HIDEPRINTTOFILE
+        | if has_selection { 0 } else { PD_NOSELECTION };
+    pd.nFromPage = 1;
+    pd.nToPage = 1;
+    pd.nMinPage = 1;
+    pd.nMaxPage = 9999;
+    pd.nCopies = 1;
+    // SAFETY: `pd` lives across the modal call.
+    let ok = unsafe { PrintDlgW(&mut pd) } != 0;
+    let free = |h: windows_sys::Win32::Foundation::HGLOBAL| {
+        if !h.is_null() {
+            // SAFETY: the dialog allocated the handle; freed once.
+            unsafe { GlobalFree(h) };
+        }
+    };
+    if !ok || pd.hDevNames.is_null() {
+        free(pd.hDevMode);
+        free(pd.hDevNames);
+        return None;
+    }
+    // SAFETY: the handles came from the dialog; each is locked, read within its size and
+    // unlocked; DEVNAMES offsets count UTF-16 units from its start.
+    let (printer, devmode) = unsafe {
+        let names = GlobalLock(pd.hDevNames) as *const DEVNAMES;
+        let printer = if names.is_null() {
+            String::new()
+        } else {
+            let base = names as *const u16;
+            let p = base.add(usize::from((*names).wDeviceOffset));
+            let mut n = 0;
+            while *p.add(n) != 0 {
+                n += 1;
+            }
+            let s = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));
+            GlobalUnlock(pd.hDevNames);
+            s
+        };
+        let devmode = if pd.hDevMode.is_null() {
+            None
+        } else {
+            let size = GlobalSize(pd.hDevMode);
+            let p = GlobalLock(pd.hDevMode) as *const u8;
+            let v =
+                (!p.is_null() && size > 0).then(|| std::slice::from_raw_parts(p, size).to_vec());
+            GlobalUnlock(pd.hDevMode);
+            v
+        };
+        (printer, devmode)
+    };
+    free(pd.hDevMode);
+    free(pd.hDevNames);
+    if printer.is_empty() {
+        return None;
+    }
+    let range = if pd.Flags & PD_SELECTION != 0 {
+        print_ui::Range::Selection
+    } else if pd.Flags & PD_PAGENUMS != 0 {
+        print_ui::Range::Pages(u32::from(pd.nFromPage), u32::from(pd.nToPage))
+    } else {
+        print_ui::Range::All
+    };
+    Some(print_ui::PrintChoice {
+        printer,
+        devmode,
+        range,
+    })
 }
 
 /// The Windows folder picker (`SHBrowseForFolderW`, new dialog style).

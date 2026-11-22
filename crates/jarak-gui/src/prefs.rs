@@ -42,6 +42,8 @@ pub struct Prefs {
     pub new_eol: Eol,
     pub recent_max: usize,
     pub recovery_interval: f64,
+    /// Step 106: the print settings (Files → Printing).
+    pub print: jarak_core::print::Setup,
 }
 
 impl Default for Prefs {
@@ -92,6 +94,7 @@ impl Prefs {
             },
             recent_max: n("recent_max", 0, 50) as usize,
             recovery_interval: n("recovery_interval", 0, 3600) as f64,
+            print: jarak_core::settings::print_setup(get, n("tab_width", 1, 16) as usize),
         }
     }
 

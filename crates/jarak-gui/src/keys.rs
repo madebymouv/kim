@@ -90,6 +90,10 @@ pub enum Action {
     RunDialog,
     /// Step 105: Ctrl+, the Settings window.
     Settings,
+    /// Step 106: File → Print… (the print dialog) and Print now (the default printer). No
+    /// default keys (Ctrl+P is Go to file); Settings → Keyboard gives them some.
+    Print,
+    PrintNow,
     GoTo,
     MatchBrace,
     SelectBraces,
@@ -428,6 +432,7 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::Macro(_) => "F9",
         A::RunDialog => "F5",
         A::Settings => "Ctrl+,",
+        A::Print | A::PrintNow => return None,
         A::Complete(0) => "Ctrl+Space",
         A::Complete(1) => "Ctrl+Enter",
         A::Complete(2) => "Ctrl+Alt+Space",

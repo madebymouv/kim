@@ -771,6 +771,22 @@
       "title": "Settings…"
     },
     {
+      "defaults": [],
+      "id": "file.print",
+      "scopes": [
+        "app"
+      ],
+      "title": "Print…"
+    },
+    {
+      "defaults": [],
+      "id": "file.print-now",
+      "scopes": [
+        "app"
+      ],
+      "title": "Print now (default printer)"
+    },
+    {
       "defaults": [
         "Ctrl+Z"
       ],
@@ -961,6 +977,38 @@
       "title": "Split lines at the window's width"
     },
     {
+      "defaults": [],
+      "id": "line.remove-duplicates",
+      "scopes": [
+        "app"
+      ],
+      "title": "Remove duplicate lines"
+    },
+    {
+      "defaults": [],
+      "id": "line.remove-consecutive-duplicates",
+      "scopes": [
+        "app"
+      ],
+      "title": "Remove consecutive duplicate lines"
+    },
+    {
+      "defaults": [],
+      "id": "line.remove-empty",
+      "scopes": [
+        "app"
+      ],
+      "title": "Remove empty lines"
+    },
+    {
+      "defaults": [],
+      "id": "line.remove-blank",
+      "scopes": [
+        "app"
+      ],
+      "title": "Remove empty lines (also with blanks only)"
+    },
+    {
       "defaults": [
         "Ctrl+Alt+Enter"
       ],
@@ -979,6 +1027,134 @@
         "app"
       ],
       "title": "Insert a blank line below"
+    },
+    {
+      "defaults": [],
+      "id": "line.reverse",
+      "scopes": [
+        "app"
+      ],
+      "title": "Reverse the line order"
+    },
+    {
+      "defaults": [],
+      "id": "line.randomize",
+      "scopes": [
+        "app"
+      ],
+      "title": "Randomize the line order"
+    },
+    {
+      "defaults": [],
+      "id": "sort.lex-asc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines lexicographically ascending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.lex-desc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines lexicographically descending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.nocase-asc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines ignoring case ascending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.nocase-desc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines ignoring case descending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.locale-asc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines in locale order ascending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.locale-desc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines in locale order descending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.integer-asc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines as integers ascending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.integer-desc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines as integers descending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.decimal-dot-asc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines as decimals (dot) ascending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.decimal-dot-desc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines as decimals (dot) descending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.decimal-comma-asc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines as decimals (comma) ascending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.decimal-comma-desc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines as decimals (comma) descending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.length-asc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines by length ascending"
+    },
+    {
+      "defaults": [],
+      "id": "sort.length-desc",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sort lines by length descending"
     },
     {
       "defaults": [
@@ -1041,6 +1217,166 @@
       "title": "Sentence case (blend)"
     },
     {
+      "defaults": [],
+      "id": "case.invert",
+      "scopes": [
+        "app"
+      ],
+      "title": "iNVERT cASE"
+    },
+    {
+      "defaults": [],
+      "id": "case.random",
+      "scopes": [
+        "app"
+      ],
+      "title": "ranDOm CasE"
+    },
+    {
+      "defaults": [],
+      "id": "blank.trim-trailing",
+      "scopes": [
+        "app"
+      ],
+      "title": "Trim trailing space"
+    },
+    {
+      "defaults": [],
+      "id": "blank.trim-leading",
+      "scopes": [
+        "app"
+      ],
+      "title": "Trim leading space"
+    },
+    {
+      "defaults": [],
+      "id": "blank.trim-both",
+      "scopes": [
+        "app"
+      ],
+      "title": "Trim leading and trailing space"
+    },
+    {
+      "defaults": [],
+      "id": "blank.eol-to-space",
+      "scopes": [
+        "app"
+      ],
+      "title": "EOL to space"
+    },
+    {
+      "defaults": [],
+      "id": "blank.trim-eol-to-space",
+      "scopes": [
+        "app"
+      ],
+      "title": "Trim both and EOL to space"
+    },
+    {
+      "defaults": [],
+      "id": "blank.tab-to-space",
+      "scopes": [
+        "app"
+      ],
+      "title": "TAB to space"
+    },
+    {
+      "defaults": [],
+      "id": "blank.space-to-tab",
+      "scopes": [
+        "app"
+      ],
+      "title": "Space to TAB (all)"
+    },
+    {
+      "defaults": [],
+      "id": "blank.space-to-tab-leading",
+      "scopes": [
+        "app"
+      ],
+      "title": "Space to TAB (leading)"
+    },
+    {
+      "defaults": [],
+      "id": "mime.base64-encode",
+      "scopes": [
+        "app"
+      ],
+      "title": "Base64 encode"
+    },
+    {
+      "defaults": [],
+      "id": "mime.base64-encode-nopad",
+      "scopes": [
+        "app"
+      ],
+      "title": "Base64 encode (no padding)"
+    },
+    {
+      "defaults": [],
+      "id": "mime.base64url-encode",
+      "scopes": [
+        "app"
+      ],
+      "title": "Base64 encode (URL-safe)"
+    },
+    {
+      "defaults": [],
+      "id": "mime.base64-decode",
+      "scopes": [
+        "app"
+      ],
+      "title": "Base64 decode"
+    },
+    {
+      "defaults": [],
+      "id": "mime.url-encode",
+      "scopes": [
+        "app"
+      ],
+      "title": "URL encode"
+    },
+    {
+      "defaults": [],
+      "id": "mime.url-decode",
+      "scopes": [
+        "app"
+      ],
+      "title": "URL decode"
+    },
+    {
+      "defaults": [],
+      "id": "mime.qp-encode",
+      "scopes": [
+        "app"
+      ],
+      "title": "Quoted-printable encode"
+    },
+    {
+      "defaults": [],
+      "id": "mime.qp-decode",
+      "scopes": [
+        "app"
+      ],
+      "title": "Quoted-printable decode"
+    },
+    {
+      "defaults": [],
+      "id": "convert.ascii-to-hex",
+      "scopes": [
+        "app"
+      ],
+      "title": "ASCII to hex"
+    },
+    {
+      "defaults": [],
+      "id": "convert.hex-to-ascii",
+      "scopes": [
+        "app"
+      ],
+      "title": "Hex to ASCII"
+    },
+    {
       "defaults": [
         "Ctrl+Q"
       ],
@@ -1081,6 +1417,14 @@
       "title": "Block comment"
     },
     {
+      "defaults": [],
+      "id": "comment.block-remove",
+      "scopes": [
+        "app"
+      ],
+      "title": "Block uncomment"
+    },
+    {
       "defaults": [
         "Ctrl+F2"
       ],
@@ -1111,6 +1455,62 @@
       "title": "Previous bookmark"
     },
     {
+      "defaults": [],
+      "id": "bookmark.clear",
+      "scopes": [
+        "app"
+      ],
+      "title": "Clear all bookmarks"
+    },
+    {
+      "defaults": [],
+      "id": "bookmark.invert",
+      "scopes": [
+        "app"
+      ],
+      "title": "Inverse bookmarks"
+    },
+    {
+      "defaults": [],
+      "id": "bookmark.remove-lines",
+      "scopes": [
+        "app"
+      ],
+      "title": "Remove the bookmarked lines"
+    },
+    {
+      "defaults": [],
+      "id": "bookmark.remove-unmarked",
+      "scopes": [
+        "app"
+      ],
+      "title": "Remove the lines without a bookmark"
+    },
+    {
+      "defaults": [],
+      "id": "change.next",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go to the next change"
+    },
+    {
+      "defaults": [],
+      "id": "change.previous",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go to the previous change"
+    },
+    {
+      "defaults": [],
+      "id": "change.clear",
+      "scopes": [
+        "app"
+      ],
+      "title": "Clear the change history"
+    },
+    {
       "defaults": [
         "Alt+H"
       ],
@@ -1119,6 +1519,14 @@
         "app"
       ],
       "title": "Hide lines"
+    },
+    {
+      "defaults": [],
+      "id": "view.show-lines",
+      "scopes": [
+        "app"
+      ],
+      "title": "Show all hidden lines"
     }
   ],
   "backend": "focus",
@@ -1126,5 +1534,5 @@
   "schema": "kim.hotkey-manifest",
   "schema_version": 1,
   "tool": "jarak",
-  "version": "0.0.25"
+  "version": "0.0.28"
 }

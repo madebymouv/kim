@@ -1,22 +1,21 @@
 # Jarak — export
 
-Status: **current** (Step 106, part 1: HTML, RTF, publishing, Copy as HTML / RTF; printing and PDF
-are the next part of Step 106 and are **not** in this build) ·
-Requirements: `JARAK-FR-141`, `JARAK-SEC-001`, `JARAK-SEC-003`, `JARAK-SEC-004`
+Status: **current** (Step 106) ·
+Requirements: `JARAK-FR-140`, `JARAK-FR-141`, `JARAK-SEC-001`, `JARAK-SEC-003`, `JARAK-SEC-004`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Architecture:
-[JARAK_ARCHITECTURE §28](JARAK_ARCHITECTURE.md) · Matrix: `PLUG-07`
-([JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)) · CLI: `jarak export`
-([CLI_CONTRACT](CLI_CONTRACT.md))
+[JARAK_ARCHITECTURE §28](JARAK_ARCHITECTURE.md) · Matrix: `PLUG-07`, `FILE-19`, `FILE-20`, `SET-12`
+([JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)) · CLI: `jarak export`, `jarak print`,
+`jarak printers` ([CLI_CONTRACT](CLI_CONTRACT.md))
 
 Jarak writes exports locally. Nothing is uploaded, nothing remote is fetched, and the document
 itself is never changed.
 
 ## What each document exports as
 
-| Document | HTML | RTF | Folder |
-| --- | --- | --- | --- |
-| Markdown (`.md`, `.markdown`, `.mdown`, `.mkd`, or the Markdown language chosen) | Rendered, as the preview shows it, images embedded | Its highlighted text | The rendered page and copies of its images |
-| Anything else | Its highlighted text (the language of Step 98) | Its highlighted text | — |
+| Document | HTML | RTF | Folder | Print and PDF |
+| --- | --- | --- | --- | --- |
+| Markdown (`.md`, `.markdown`, `.mdown`, `.mkd`, or the Markdown language chosen) | Rendered, as the preview shows it, images embedded | Its highlighted text | The rendered page and copies of its images | Rendered, with its local images |
+| Anything else | Its highlighted text (the language of Step 98) | Its highlighted text | — | Its highlighted text |
 
 - **Colours** are kim-design's: the light palette, and the dark one when the reader's system is
   dark (HTML only, `prefers-color-scheme`); printed HTML is light. Keywords, tags and headings take
@@ -72,6 +71,36 @@ itself is never changed.
   Notepad++'s NppExport does. They have no default keys; Settings → Keyboard does not list them
   (only commands with keys are remappable).
 
+## Printing and PDF
+
+- **File → Print…** opens the Windows print dialog: the printer, its settings (copies, paper,
+  orientation), all pages, the selection or a page range. **File → Print now** prints on the
+  default printer without a dialog. **File → Export as PDF…** prints to *Microsoft Print to PDF*
+  into the file the Save dialog names. None of them has a default key (Ctrl+P is Go to file, as
+  in Step 101); Settings → Keyboard can give them one — Ctrl+P too, which Go to file then loses.
+- A printer that **writes a file** (Microsoft Print to PDF, the XPS writer: port `PORTPROMPT:`)
+  gets its file from Jarak's Save dialog, which asks before replacing one — the driver never asks
+  on its own, and the command line refuses such a printer without `--output`.
+- The job prints the text as it is in the window, saved or not, on a thread; the status bar says
+  *Printed n pages on …* or *Saved … (n pages)*, or why it failed.
+- **Layout** (`jarak-core::print`, the same for the window and the command line): the page's
+  size and resolution come from the printer. Highlighted text is Consolas at the print size, with
+  line numbers on a line's first row, tabs expanded, long lines wrapped at a blank (a long word at
+  a character). Rendered Markdown uses Segoe UI one point larger: headings (with a rule under the
+  first two levels), paragraphs with bold, italic, struck, code and link text, lists and task
+  lists, quotes with bars, code blocks on a grey band, tables with their alignment and a header
+  band, rules, raw HTML as monospace text, footnotes at the end, and local images at their screen
+  size (96 dpi), narrower than the column and shorter than a page. Korean and any character the
+  font lacks print in Malgun Gothic.
+- **Header and footer**: `left|center|right` templates with `{file}`, `{path}`, `{page}`, `{pages}`,
+  `{date}` and `{time}`; defaults `{file}||{date} {time}` and `||{page} / {pages}`; a line
+  separates each from the text.
+- **Print settings** (Settings → Files → Printing, `print_*` in `settings.toml`): header, footer,
+  line numbers, colours (the window's or black on white), the text size (6–24 pt), and the four
+  margins (0–50 mm). They apply to the next job.
+- Images are decoded only for printing, bounded like the preview (64 MiB of data, 16 384 pixels a
+  side, 40 million pixels); one that fails prints as a thin line, the rest of the page prints.
+
 ## On the command line
 
 ```text
@@ -90,11 +119,32 @@ jarak export <file> --output <path> [--to html|rtf|folder] [--line-numbers] [--l
   `remote`, `missing`, `refused` with its `reason`). Examples:
   `docs/contracts/examples/cli-envelope-v1/jarak-export.json`, `jarak-export-exists.json`,
   `jarak-export-folder-dry-run.json`.
-- PDF (`--to pdf`, `.pdf`) is refused in this build: it is printing to Microsoft Print to PDF and
-  comes with the next part of Step 106.
+- PDF (`--to pdf`, or a `.pdf` output) prints the document to Microsoft Print to PDF with the
+  print settings, into the output file (the same overwrite rules); a machine without that printer
+  says `printer_not_found` (exit 3).
 
-## Not in this build
+```text
+jarak print <file> [--printer <name>] [--output <file>] [--pages <a-b>] [--overwrite] [--dry-run]
+jarak printers
+```
 
-Printing (the Windows print dialog, Print Now), PDF, the print settings (margins, header, footer,
-colours), Copy as HTML / RTF verified against the real Windows clipboard (the formats are tested;
-pasting into another program is **not tested** yet).
+- `jarak print` uses the default printer unless `--printer` names one (`printer_not_found`, exit 3);
+  a printer that writes a file needs `--output` (`usage`, exit 2 — it would ask otherwise); an
+  existing output needs `--overwrite` (`export_exists`); `--pages 2-3` prints a range; `--dry-run`
+  lays the pages out on the real printer and prints nothing. A failure of the spooler is
+  `print_failed` (exit 1). No dialog ever opens (`KIM-FR-012`).
+- `jarak printers` lists every printer with its port, whether it is the default and whether it
+  writes a file. Examples: `jarak-printers.json`, `jarak-print-dry-run.json`,
+  `jarak-printer-not-found.json`.
+
+## Verified, and not tested
+
+- Real PDFs printed through Microsoft Print to PDF by `jarak export --to pdf` (a Rust file and the
+  rendered Markdown sample) were rendered with Windows' own PDF renderer and reviewed: colours,
+  line numbers, Korean through Malgun Gothic, header and footer, headings, table, lists, quote,
+  code band, footnote.
+- **Not tested**: a paper printer (this PC has none); the Windows print dialog and Save dialog
+  opened on the real desktop, and Copy as HTML / RTF pasted from the real clipboard into another
+  program (the maintainer was at the PC; the code paths are tested with scripted dialogs and the
+  in-memory clipboard).
+- Not in Jarak: a print preview, header and footer fonts, printing in two columns.

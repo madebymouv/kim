@@ -361,6 +361,8 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `batch_not_found` | 3 | Step 95: `jarak journal undo` of a batch the journal does not hold (`jarak journal list`). Nothing was changed. |
 | `setting_not_found` | 3 | Step 105: `jarak settings get/set/reset` of a key that is not a setting (`jarak settings list` names them). Nothing was changed. |
 | `export_exists` | 7 | Step 106: `jarak export` would replace files that exist (`details` lists them); pass `--overwrite`. Nothing was written. |
+| `printer_not_found` | 3 | Step 106: `jarak print --printer` (or `jarak export --to pdf`) names a printer Windows does not have, or there is no default printer; `jarak printers` lists them. Nothing was printed. |
+| `print_failed` | 1 | Step 106: the printer or the spooler refused the job (it could not start, a page failed, or the PDF was not written within 60 s). |
 | `export_into_source` | 2 | Step 106: the output of `jarak export` is the document itself, or (`--to folder`) the document's own folder; never allowed, even with `--overwrite`. Nothing was written. |
 | `setting_invalid` | 2 | Step 105: `jarak settings set` with a value the setting does not take; the message and hint say what it takes. Nothing was written. |
 
@@ -386,8 +388,13 @@ Step 106: `jarak export <file> --output <path> [--to html|rtf|folder] [--line-nu
 HTML or RTF, a Markdown document rendered with its images embedded (or linked), or published to a
 folder with copies of its images; nothing is fetched or uploaded and the document is never
 changed. An existing output is `export_exists` (exit 7) unless `--overwrite`; the document or its
-own folder as the output is `export_into_source` (exit 2). Examples: `jarak-export.json`,
-`jarak-export-exists.json`, `jarak-export-folder-dry-run.json`.
+own folder as the output is `export_into_source` (exit 2). `--to pdf` prints to Microsoft Print
+to PDF. `jarak print <file> [--printer <name>] [--output <file>] [--pages <a-b>] [--overwrite]` is
+`write` with `--dry-run` (the pages laid out on the real printer, nothing printed): a printer that
+writes a file needs `--output` (`usage`: it would ask, and the CLI never asks); an unknown printer
+is `printer_not_found` (exit 3); a spooler failure `print_failed` (exit 1). `jarak printers` reads.
+Examples: `jarak-export.json`, `jarak-export-exists.json`, `jarak-export-folder-dry-run.json`,
+`jarak-printers.json`, `jarak-print-dry-run.json`, `jarak-printer-not-found.json`.
 
 Step 105: `jarak settings list [<section>] | get <key> | set <key> <value> | reset <key>` read and
 write `%APPDATA%\mouv\jarak\settings.toml` (the registry of [JARAK_SETTINGS](JARAK_SETTINGS.md),

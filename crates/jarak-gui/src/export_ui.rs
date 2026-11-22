@@ -34,7 +34,8 @@ impl JarakApp {
             .is_some_and(|l| l.style == jarak_core::syntax::Style::Markdown)
     }
 
-    /// The export commands: 0 HTML, 1 RTF, 2 publish to a folder, 3 copy as HTML, 4 copy as RTF.
+    /// The export commands: 0 HTML, 1 RTF, 2 publish to a folder, 3 copy as HTML, 4 copy as RTF,
+    /// 5 PDF (printing, `print_ui`).
     pub fn export_tool(&mut self, n: u8) {
         let i = self.active;
         if i >= self.tabs.len() {
@@ -45,6 +46,7 @@ impl JarakApp {
             1 => self.export_file(i, Format::Rtf),
             2 => self.publish_ask(i),
             3 | 4 => self.copy_as(i, n == 3),
+            5 => self.export_pdf(),
             _ => {}
         }
     }

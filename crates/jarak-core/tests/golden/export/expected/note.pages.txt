@@ -1,0 +1,72 @@
+page 1
+  text 177,335 Sans bold 22.0pt #1c1b24 "Export note"
+  fill 177,364 2126x3 #77738c
+  text 177,436 Sans 11.0pt #1c1b24 "A paragraph with "
+  text 645,436 Sans italic 11.0pt #1c1b24 "emphasis"
+  text 865,436 Sans 11.0pt #1c1b24 ", "
+  text 920,436 Sans bold 11.0pt #1c1b24 "strong"
+  text 1085,436 Sans 11.0pt #1c1b24 ", "
+  text 1140,436 Sans 11.0pt #1c1b24 strike "strike"
+  text 1305,436 Sans 11.0pt #1c1b24 ", "
+  text 1360,436 Mono 10.0pt #23703e "code"
+  text 1460,436 Sans 11.0pt #1c1b24 " and a "
+  text 1652,436 Sans 11.0pt #5f49c4 underline "link"
+  text 1762,436 Sans 11.0pt #1c1b24 ". An unsafe script "
+  text 177,493 Sans 11.0pt #1c1b24 "link keeps only its text."
+  image 177,533 6x6 dot.png
+  text 177,693 Sans bold 17.6pt #1c1b24 "A table"
+  fill 177,717 2126x3 #77738c
+  fill 177,743 610x90 #ecebf2
+  fill 177,743 610x3 #77738c
+  fill 177,743 3x90 #77738c
+  text 210,805 Sans bold 11.0pt #1c1b24 "Left"
+  fill 353,743 3x90 #77738c
+  text 386,805 Sans bold 11.0pt #1c1b24 "Center"
+  fill 584,743 3x90 #77738c
+  text 617,805 Sans bold 11.0pt #1c1b24 "Right"
+  fill 788,743 3x90 #77738c
+  fill 177,833 610x3 #77738c
+  fill 177,833 3x90 #77738c
+  text 210,895 Sans 11.0pt #1c1b24 "한글"
+  fill 353,833 3x90 #77738c
+  text 406,895 Mono 10.0pt #23703e "x < y"
+  fill 584,833 3x90 #77738c
+  text 727,895 Sans 11.0pt #1c1b24 "3"
+  fill 788,833 3x90 #77738c
+  fill 177,923 610x3 #77738c
+  text 177,1060 Sans bold 17.6pt #1c1b24 "Lists"
+  fill 177,1084 2126x3 #77738c
+  text 128,1155 Sans 11.0pt #1c1b24 "[x]"
+  text 238,1155 Sans 11.0pt #1c1b24 "done"
+  text 128,1213 Sans 11.0pt #1c1b24 "[ ]"
+  text 238,1213 Sans 11.0pt #1c1b24 "to do"
+  text 155,1293 Sans 11.0pt #1c1b24 "1."
+  text 238,1293 Sans 11.0pt #1c1b24 "first"
+  text 155,1350 Sans 11.0pt #1c1b24 "2."
+  text 238,1350 Sans 11.0pt #1c1b24 "second"
+  fill 177,1385 10x57 #77738c
+  text 210,1430 Sans 11.0pt #45425a "A quote with a footnote."
+  text 870,1430 Sans 8.8pt #5f49c4 "[n]"
+  fill 177,1471 2126x52 #ecebf2
+  text 215,1512 Mono 10.0pt #5f49c4 "fn"
+  text 265,1512 Mono 10.0pt #1c1b24 " main"
+  text 390,1512 Mono 10.0pt #45425a "()"
+  text 465,1512 Mono 10.0pt #45425a "{"
+  text 490,1512 Mono 10.0pt #1c1b24 " println"
+  text 690,1512 Mono 10.0pt #45425a "!("
+  text 740,1512 Mono 10.0pt #23703e "\"hi\""
+  text 840,1512 Mono 10.0pt #45425a ");"
+  text 915,1512 Mono 10.0pt #45425a "}"
+  text 177,1593 Mono 10.0pt #45425a "<div onclick=\"alert(1)\">raw HTML stays text</div>"
+  text 177,1678 Sans italic 11.0pt #55526b "[remote: remote image, not loaded]"
+  text 177,1792 Sans italic 11.0pt #55526b "[missing: not found]"
+  text 177,1907 Sans italic 11.0pt #55526b "[outside: not shown]"
+  fill 177,1976 2126x3 #77738c
+  fill 177,2033 638x3 #77738c
+  text 154,2101 Sans 9.4pt #1c1b24 "[n]"
+  text 248,2101 Sans 9.4pt #1c1b24 "The footnote."
+  text 177,210 Sans 8.0pt #55526b "note.markdown"
+  text 1983,210 Sans 8.0pt #55526b "2026-11-22 18:00"
+  fill 177,227 2126x2 #77738c
+  text 2203,3322 Sans 8.0pt #55526b "1 / 1"
+  fill 177,3277 2126x2 #77738c

@@ -74,8 +74,8 @@ pub enum Run {
     /// Step 104: `JarakApp::disk_tool` 0–4 (reload from disk, monitoring, detecting changes,
     /// reloading unmodified documents silently, recovery snapshots).
     Disk(u8),
-    /// Step 106: `JarakApp::export_tool` 0–4 (export as HTML, as RTF, publish to a folder, copy
-    /// as HTML, copy as RTF).
+    /// Step 106: `JarakApp::export_tool` 0–5 (export as HTML, as RTF, publish to a folder, copy
+    /// as HTML, copy as RTF, export as PDF).
     Export(u8),
 }
 
@@ -1610,6 +1610,21 @@ pub fn entries() -> Vec<Entry> {
             M::File,
         ),
         // Step 106: export (NppExport) and publishing.
+        act("file.print", "Print…", "인쇄…", Action::Print, M::File),
+        act(
+            "file.print-now",
+            "Print now (default printer)",
+            "바로 인쇄(기본 프린터)",
+            Action::PrintNow,
+            M::File,
+        ),
+        run(
+            "file.export-pdf",
+            "Export as PDF…",
+            "PDF로 내보내기…",
+            Run::Export(5),
+            M::File,
+        ),
         run(
             "file.export-html",
             "Export as HTML…",
@@ -1732,13 +1747,15 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), ids.len(), "ids are unique");
-        // Every window action shows a key; a registry command shows its key when it has one
-        // (Step 97: many are in the palette and the menus only).
+        // Every window action shows a key (but Print and Print now: Step 106, Ctrl+P is Go to
+        // file); a registry command shows its key when it has one (Step 97: many are in the
+        // palette and the menus only).
         for x in &e {
             match x.run {
                 Run::Act(Action::Cmd(c)) => {
                     assert_eq!(x.keys, key_label(Action::Cmd(c)), "{}", x.id);
                 }
+                Run::Act(Action::Print | Action::PrintNow) => assert!(x.keys.is_none()),
                 Run::Act(_) => assert!(x.keys.is_some(), "{}", x.id),
                 _ => {}
             }

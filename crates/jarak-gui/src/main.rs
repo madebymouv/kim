@@ -267,6 +267,11 @@ fn run(
             .with_runner(Arc::new(jarak_gui::macros::ProcessRunner))
             // Step 104: files changed by other programs are checked by the window itself.
             .with_watching();
+            // Step 106: print jobs go to the Windows spooler.
+            #[cfg(windows)]
+            {
+                app = app.with_printers(Arc::new(jarak_core::print::gdi::WinPrinters));
+            }
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
             if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());

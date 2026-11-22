@@ -1,0 +1,15 @@
+{
+  "command": "print",
+  "data": {
+    "dry_run": true,
+    "output": "C:\\Users\\me\\Documents\\out\\sample.pdf",
+    "pages": 1,
+    "printed": false,
+    "printer": "Microsoft Print to PDF",
+    "rendered": false,
+    "source": "C:\\Users\\me\\Documents\\doc\\sample.rs"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

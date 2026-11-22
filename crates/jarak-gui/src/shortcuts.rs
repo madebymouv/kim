@@ -162,23 +162,32 @@ pub fn manifest_json() -> serde_json::Value {
     let mut actions = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for e in crate::palette::entries() {
-        let (Some(keys), crate::palette::Run::Act(_)) = (e.keys, e.run) else {
+        let crate::palette::Run::Act(_) = e.run else {
             continue;
         };
         if !seen.insert(e.id) {
             continue;
         }
-        let Some(spec) = canonical(keys) else {
-            continue;
+        // Step 106: a command without default keys (Print…) is listed too, so it can get some.
+        let defaults: Vec<String> = match e.keys {
+            None => Vec::new(),
+            Some(keys) => {
+                let Some(spec) = canonical(keys) else {
+                    continue;
+                };
+                // A key reserved for every Kim window (navigation and editing) is the editor's
+                // own.
+                if kim_hotkeys::keys::Chord::parse(&spec).is_ok_and(|c| {
+                    kim_hotkeys::reserved::chord(&c, &kim_hotkeys::scope::Scope::App, true)
+                        .is_some()
+                }) {
+                    continue;
+                }
+                vec![spec]
+            }
         };
-        // A key reserved for every Kim window (navigation and editing) is the editor's own.
-        if kim_hotkeys::keys::Chord::parse(&spec).is_ok_and(|c| {
-            kim_hotkeys::reserved::chord(&c, &kim_hotkeys::scope::Scope::App, true).is_some()
-        }) {
-            continue;
-        }
         actions.push(serde_json::json!({
-            "id": e.id, "title": e.en, "scopes": ["app"], "defaults": [spec]
+            "id": e.id, "title": e.en, "scopes": ["app"], "defaults": defaults
         }));
     }
     serde_json::json!({

@@ -666,6 +666,109 @@ pub const SETTINGS: &[Setting] = &[
         Kind::Int { min: 0, max: 3600 },
         "10"
     ),
+    // Step 106: printing (SET-12).
+    s!(
+        "print_header",
+        Files,
+        ("Printing", "인쇄"),
+        "Header",
+        "머리글",
+        "left|center|right with {file}, {path}, {page}, {pages}, {date}, {time}; empty prints none.",
+        "왼쪽|가운데|오른쪽. {file}, {path}, {page}, {pages}, {date}, {time}를 씁니다. 비우면 없습니다.",
+        Kind::Text { must: "" },
+        "{file}||{date} {time}"
+    ),
+    s!(
+        "print_footer",
+        Files,
+        ("Printing", "인쇄"),
+        "Footer",
+        "바닥글",
+        "The same parts and variables as the header.",
+        "머리글과 같은 부분과 변수를 씁니다.",
+        Kind::Text { must: "" },
+        "||{page} / {pages}"
+    ),
+    s!(
+        "print_line_numbers",
+        Files,
+        ("Printing", "인쇄"),
+        "Line numbers",
+        "줄 번호",
+        "Before each line of printed text (rendered Markdown has none).",
+        "인쇄하는 텍스트의 줄마다 앞에 붙입니다(렌더링한 Markdown에는 없음).",
+        Kind::Bool,
+        "true"
+    ),
+    s!(
+        "print_colors",
+        Files,
+        ("Printing", "인쇄"),
+        "Colours",
+        "색",
+        "The window's colours, or everything black on white.",
+        "창의 색 그대로, 또는 흰 바탕에 모두 검정.",
+        Kind::Choice(&[
+            ("color", "Colour", "색"),
+            ("black", "Black on white", "흰 바탕에 검정")
+        ]),
+        "color"
+    ),
+    s!(
+        "print_font_size",
+        Files,
+        ("Printing", "인쇄"),
+        "Text size (points)",
+        "글자 크기(포인트)",
+        "Printed text and code; rendered Markdown's body is one point larger.",
+        "인쇄하는 텍스트와 코드. 렌더링한 Markdown 본문은 1포인트 큽니다.",
+        Kind::Int { min: 6, max: 24 },
+        "10"
+    ),
+    s!(
+        "print_margin_left",
+        Files,
+        ("Printing", "인쇄"),
+        "Left margin (mm)",
+        "왼쪽 여백(mm)",
+        "The empty edge of the paper.",
+        "종이의 빈 가장자리.",
+        Kind::Int { min: 0, max: 50 },
+        "15"
+    ),
+    s!(
+        "print_margin_top",
+        Files,
+        ("Printing", "인쇄"),
+        "Top margin (mm)",
+        "위쪽 여백(mm)",
+        "Above the header.",
+        "머리글 위.",
+        Kind::Int { min: 0, max: 50 },
+        "15"
+    ),
+    s!(
+        "print_margin_right",
+        Files,
+        ("Printing", "인쇄"),
+        "Right margin (mm)",
+        "오른쪽 여백(mm)",
+        "The empty edge of the paper.",
+        "종이의 빈 가장자리.",
+        Kind::Int { min: 0, max: 50 },
+        "15"
+    ),
+    s!(
+        "print_margin_bottom",
+        Files,
+        ("Printing", "인쇄"),
+        "Bottom margin (mm)",
+        "아래쪽 여백(mm)",
+        "Below the footer.",
+        "바닥글 아래.",
+        Kind::Int { min: 0, max: 50 },
+        "15"
+    ),
     // Advanced.
     s!(
         "search_engine",
@@ -690,6 +793,29 @@ pub const SETTINGS: &[Setting] = &[
         "yyyy-MM-dd HH:mm:ss"
     ),
 ];
+
+/// Step 106: the print settings from `get` (a setting's value; defaults for anything missing).
+pub fn print_setup(get: &dyn Fn(&str) -> Option<String>, tab_width: usize) -> crate::print::Setup {
+    let num = |k: &str, d: f32| get(k).and_then(|v| v.parse::<f32>().ok()).unwrap_or(d);
+    crate::print::Setup {
+        margins_mm: [
+            num("print_margin_left", 15.0),
+            num("print_margin_top", 15.0),
+            num("print_margin_right", 15.0),
+            num("print_margin_bottom", 15.0),
+        ],
+        font_pt: num("print_font_size", 10.0),
+        line_numbers: get("print_line_numbers").as_deref() != Some("false"),
+        colors: if get("print_colors").as_deref() == Some("black") {
+            crate::print::Colors::Black
+        } else {
+            crate::print::Colors::Color
+        },
+        header: get("print_header").unwrap_or_else(|| crate::print::DEFAULT_HEADER.into()),
+        footer: get("print_footer").unwrap_or_else(|| crate::print::DEFAULT_FOOTER.into()),
+        tab_width,
+    }
+}
 
 /// The setting named `key`.
 pub fn find(key: &str) -> Option<&'static Setting> {
@@ -974,6 +1100,8 @@ mod tests {
             } else {
                 s.default
             };
+            // A table cell writes `|` as `\|`.
+            let d = d.replace('|', "\\|");
             assert!(
                 doc.contains(&format!("| `{}` | {} |", s.key, s.en))
                     && doc.contains(&format!("`{d}` |")),

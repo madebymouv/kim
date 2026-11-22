@@ -1,6 +1,6 @@
 [package]
 name = "jarak-gui"
-version = "0.0.27"
+version = "0.0.28"
 description = "Jarak (자락): the editor window (egui + glow through kim-ui); one process per user session"
 edition.workspace = true
 rust-version.workspace = true
@@ -18,7 +18,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-jarak-core = { version = "0.0.27", path = "../jarak-core" }
+jarak-core = { version = "0.0.28", path = "../jarak-core" }
 kim-ui = { version = "0.0.5", path = "../kim-ui" }
 kim-design = { version = "0.0.3", path = "../kim-design" }
 # Step 102: the reserved keys of the hotkey contract (macro and command shortcuts).
@@ -35,10 +35,11 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 [target."cfg(windows)".dependencies]
 # One window per user session (JARAK-FR-002): a named mutex marks the owner, a named event tells
 # it that a second start left files in the hand-off folder. The Open and Save As dialogs
-# (GetOpenFileNameW / GetSaveFileNameW, Step 88).
+# (GetOpenFileNameW / GetSaveFileNameW, Step 88). Step 106: the print dialog (PrintDlgW).
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_System_Com",
     "Win32_System_DataExchange",

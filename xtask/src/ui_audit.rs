@@ -173,6 +173,8 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 104: a file changed on disk and here, the recovery offer.
                 "disk-question",
                 "recovery",
+                // Step 106: publishing would replace files.
+                "publish-question",
                 // Step 105: every section of the Settings window (its own window).
                 "settings-general",
                 "settings-editor",

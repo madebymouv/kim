@@ -29,6 +29,7 @@ pub mod lineops;
 pub mod macros;
 pub mod markdown;
 pub mod paths;
+pub mod print;
 pub mod recovery;
 pub mod search;
 pub mod selection;

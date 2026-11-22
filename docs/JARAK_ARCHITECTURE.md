@@ -1274,7 +1274,8 @@ Requirements `JARAK-FR-130`, `JARAK-FR-131`, `JARAK-FR-132`; the reference is
   insert spaces to the next stop), `assets::write_new_in` (the pasted-image folder), the menu and
   status bars, new documents' line ending, `single_window` in `main.rs`, Ctrl+, (`Action::Settings`).
 - **Shortcuts** (part 2): `jarak-core::hotkeys` — the manifest (`hotkeys.manifest.json`, 112 `app`
-  actions, backend `focus`), `load` (manifest + user layer, safe mode for a broken or newer file),
+  actions in Step 105, 163 since Step 106 with the commands that have no default keys; backend
+  `focus`), `load` (manifest + user layer, safe mode for a broken or newer file),
   `change` (`Set` / `Disable` / `Reset` / `ResetAll` through `kim_hotkeys::edit`, written with
   `store::save`; a refusal writes nothing; a newer file is never replaced, an invalid one only by
   Reset all), `keys_of`. `jarak hotkeys list/show/set/disable/reset/check` use it with the shared
@@ -1303,7 +1304,8 @@ now (`kim_ui::inspect::last_text_is_users_size`); then PASS.
 ## 28. Export (Step 106)
 
 [JARAK_EXPORT](JARAK_EXPORT.md) is the user reference. Part 1: HTML, RTF, publishing, Copy as HTML /
-RTF and `jarak export`; printing and PDF are part 2.
+RTF and `jarak export`; part 2: printing, PDF, the print settings, `jarak print` and
+`jarak printers`.
 
 - `jarak-core::export` (no UI toolkit; kim-design for its palettes, which are plain data):
   - `lines`, `highlight` (the Step 98 lexer line by line, its state carried; tokens cut into runs
@@ -1342,3 +1344,48 @@ reviewed by reading them); CLI 1 (formats, `export_exists`, `--overwrite`, `expo
 dry run, refused options); window flows 4 (Markdown export with unsaved text, RTF and Copy as HTML
 / RTF, publishing asks before replacing, publishing needs a saved Markdown document). e2e
 `step106_jarak_export.rs`: PASS on its first run.
+
+Part 2 (printing):
+
+- `jarak-core::print` lays a document out into pages of drawing operations (`Op::Text` with a
+  baseline, `Op::Fill`, `Op::Image`), a pure function of the text, the page (`Geometry`: size and
+  resolution from the printer), the settings (`Setup`, from `settings::print_setup`) and a
+  `Measure` of the device's fonts (`Font`: `Mono` / `Sans`, size, bold, italic). `code_pages`:
+  the Step 98 runs wrapped at blanks (a long word at characters), tabs expanded, line numbers in a
+  gutter; `markdown_pages`: the render model's blocks as rows (headings, paragraphs of styled
+  characters, lists, quotes with bars, code bands through the same code layout, tables with
+  natural column widths scaled to the column, rules, footnotes last, images from
+  `assets::resolve` sized from their header at 96 dpi). `paginate` puts rows on pages and adds the
+  header and footer (`expand`: `left|center|right`, the variables). `describe` prints pages as
+  text for golden tests. `Printers` is the backend interface (`list`, `print(job, layout)` — the
+  layout runs on the device's measure); `NoPrinters` and `RecordingPrinters` (`FakeMeasure`, A4 at
+  300 dpi) serve tests; `Printer::writes_a_file` (port `PORTPROMPT:`); `Job` (printer, output,
+  the dialog's `DEVMODEW`, name, dry run).
+- `jarak-core::print::gdi` (Windows): `printers` (`EnumPrintersW` level 2), `default_printer`, and
+  `WinPrinters::print`: `CreateDCW` with the dialog's `DEVMODEW` (copied into aligned memory), the
+  physical page and offsets from `GetDeviceCaps`, `Fonts` (Consolas / Segoe UI, Malgun Gothic for
+  any character `GetGlyphIndicesW` says the face lacks; widths from `GetTextExtentPoint32W` and
+  metrics cached), then `StartDocW` with `lpszOutput` for a file-writing printer (no dialog),
+  `TextOutW` at baselines per font run, `FillRect`, `StretchDIBits` (images decoded within the
+  limits, alpha over white), and for an output file a wait until the spooler has written and
+  closed it (60 s at most). A dry run stops after the layout.
+- `jarak print` / `jarak printers` / `jarak export --to pdf` (`print_document`): the print settings
+  from `settings.toml`, the document's language, the printer checked (`printer_not_found`, a
+  file-writing printer without `--output` refused), the overwrite rules of the exports.
+- `jarak-gui::print_ui`: `Action::Print` (the print dialog, `Dialogs::print` → `PrintDlgW` with
+  `PD_USEDEVMODECOPIESANDCOLLATE`, the printer from `DEVNAMES`, the `DEVMODEW` bytes, the range),
+  `Action::PrintNow` (the default printer), `export_tool(5)` (Export as PDF); `output_for` asks
+  the export Save dialog for a file-writing printer; `start_print` runs the job on a thread with
+  the document's text as it is, the language, `prefs.print` and the variables; `print_frame`
+  shows the result. `JarakApp::printers` is `NoPrinters` until `main` gives it `WinPrinters`.
+  The manifest now also lists the commands without default keys (`defaults: []`), so *Print…*
+  can be given Ctrl+P.
+
+Tests (part 2): core print 5 (templates, wrapping, code pages numbered / wrapped / paginated /
+black, Markdown blocks and images, the recorder's rules) and golden pages 1
+(`sample.rs.pages.txt`, `note.pages.txt`); CLI 1 (options, `printer_not_found`, a file-writing
+printer without `--output`, a dry run on the real Microsoft Print to PDF, `export_exists`,
+`export_into_source`); window flows 4 (the dialog's printer, settings and selection range; the Save
+dialog for a PDF printer, Print now, Export as PDF; no printers; the print settings live). e2e
+`step106_jarak_export.rs` section 5: a real PDF through Microsoft Print to PDF, PASS. Real PDFs of
+both samples were rendered with `Windows.Data.Pdf` and reviewed.

@@ -55,10 +55,11 @@ binary content of `JARAK-FR-027` (the real Windows clipboard checked 2026-11-22;
 and `JARAK-FR-122` (files changed on disk, recovery snapshots, the session's backup;
 [JARAK_RECOVERY](JARAK_RECOVERY.md)); Step 105 implements `JARAK-FR-130`, `JARAK-FR-131` and
 `JARAK-FR-132` (the Settings window, live settings, `jarak settings`, the shortcut mapper on the
-hotkey contract, `jarak hotkeys`; [JARAK_SETTINGS](JARAK_SETTINGS.md)); Step 106 implements the
-HTML, RTF and folder half of `JARAK-FR-141` (exports, publishing, Copy as HTML / RTF,
-`jarak export`; [JARAK_EXPORT](JARAK_EXPORT.md)), printing and PDF (`JARAK-FR-140`, the PDF half of
-`JARAK-FR-141`) follow;
+hotkey contract, `jarak hotkeys`; [JARAK_SETTINGS](JARAK_SETTINGS.md)); Step 106 implements
+`JARAK-FR-140` and `JARAK-FR-141` (exports, publishing, Copy as HTML / RTF, printing through the
+Windows print dialog and GDI, PDF through Microsoft Print to PDF, `jarak export`, `jarak print`,
+`jarak printers`; [JARAK_EXPORT](JARAK_EXPORT.md); the real print dialog is still to be opened on
+the desktop);
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

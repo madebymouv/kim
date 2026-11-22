@@ -115,7 +115,7 @@ screen (smart highlighting).
 | F2 / Shift+F2 | Next / previous bookmark |
 | Alt+H | Hide the selected lines (a click on the mark above shows them again) |
 | Alt+Left / Alt+Right | Back / forward in the navigation history |
-| Ctrl+P | Go to file (open documents and the workspace's files) — Notepad++ prints with it; Jarak's print key comes with Step 106 |
+| Ctrl+P | Go to file (open documents and the workspace's files) — Notepad++ prints with it; Jarak's *Print…* and *Print now* (Step 106) have no default keys: Settings → Keyboard can give *Print…* Ctrl+P (Go to file then loses it) |
 | Ctrl+Shift+R | Start / stop recording a macro |
 | F9 | Play back the recorded macro (Notepad++'s Ctrl+Shift+P is Jarak's command palette) |
 | F5 | Run… (a command line, shown exactly before it runs — [JARAK_MACROS](JARAK_MACROS.md)) |
