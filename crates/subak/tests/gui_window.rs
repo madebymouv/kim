@@ -303,7 +303,20 @@ fn pane(t: &Value) -> &Value {
 
 /// The Host-side screen of a Terminal (`subak capture`): what the pane really printed.
 fn capture(ep: &str, target: &str) -> String {
-    let (code, doc) = sub(ep, &["capture", target]);
+    let until = Instant::now() + LONG;
+    let (code, doc) = loop {
+        let (code, doc) = sub(ep, &["capture", target]);
+        // A Terminal that is still starting has no screen yet (`invalid_state`, `state:
+        // starting`; e.g. right after switching a profile in place): wait for it.
+        let starting = code == 7
+            && doc["error"]["details"]
+                .as_array()
+                .is_some_and(|d| d.iter().any(|x| x == "state: starting"));
+        if !starting || Instant::now() >= until {
+            break (code, doc);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
     assert_eq!(code, 0, "{doc}");
     doc["data"]["lines"]
         .as_array()
