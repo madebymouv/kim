@@ -1,6 +1,6 @@
 [package]
 name = "subak-term"
-version = "0.0.7"
+version = "0.0.8"
 description = "Subak terminal emulation core: the VT parser and screen model shared by the Host and its clients, the client view state and input encoding, and (feature `render`) the CPU cell-grid renderer"
 edition.workspace = true
 rust-version.workspace = true

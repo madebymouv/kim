@@ -103,6 +103,38 @@
         }
       }
     },
+    "profile_defaults": {
+      "description": "#98 T4 (SHELL-14): what every local or SSH profile has unless it says otherwise. env joins (the profile's own variables win); a variable a profile removes is not set back. Detected shells take the local folder and variables.",
+      "type": "object",
+      "properties": {
+        "local": {
+          "type": "object",
+          "properties": {
+            "cwd": { "type": "string" },
+            "env": { "type": "object", "additionalProperties": { "type": "string" } },
+            "unset_env": { "type": "array", "items": { "type": "string" } },
+            "group": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "ssh": {
+          "type": "object",
+          "properties": {
+            "cwd": { "type": "string" },
+            "env": { "type": "object", "additionalProperties": { "type": "string" } },
+            "unset_env": { "type": "array", "items": { "type": "string" } },
+            "group": { "type": "string" },
+            "identity": { "type": "string" },
+            "jump": { "type": "array", "items": { "type": "string" } },
+            "forwards": { "type": "array", "items": { "type": "string" } },
+            "agent_forward": { "type": "boolean" },
+            "login_script": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "profiles": {
       "description": "Basic local shell profiles ([[profiles]] in the file). SSH and other profile kinds are Step 33.",
       "type": "array",

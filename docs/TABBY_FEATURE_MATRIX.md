@@ -202,7 +202,7 @@ Each row has a permanent ID (`CORE-01`) so that commits, tests and later audits 
 | `SHELL-11` Visual Studio Developer Prompt | S `vs.ts` ("Developer Prompt for VS <version>") | Detected with `vswhere`, one profile per Visual Studio install *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. *#98 T4 (2026-11-14):* One `Developer Prompt for <product>` per Visual Studio instance, found from its `state.json` under `%ProgramData%\Microsoft\VisualStudio\Packages\_Instances` (no `vswhere` run): `cmd.exe /k Common7\Tools\VsDevCmd.bat`. | implemented | #98 T4 | T: `crates/subak/src/shells.rs::tests::the_extra_shells_are_found_by_their_files`; T: `crates/subak/src/shells.rs::tests::detection_finds_this_pcs_shells_without_running_anything`; real desktop (#98 T4): `Developer Prompt for Visual Studio Community 2022` was detected here and `subak new --profile` showed "Visual Studio 2022 Developer Command Prompt v17.14.21" |
 | `SHELL-12` Custom shell profiles | R: "Custom shell profiles" | TOML profiles with command, args, cwd, env, title, icon and color scheme (SUBAK-FR-011) *Partial (Step 20):* `[[profiles]]` in `config.toml` with `name`, `program`, `args`, `cwd`, `env`, `unset_env`, resolved by the client into explicit `terminal.create` parameters (the Host never reads them); no title, icon or colour scheme (Step 33); secrets never written, shown as `***` | partial | Step 20 | T: `crates/subak/tests/config_cli.rs::a_profile_launches_its_exact_argv_cwd_and_env_and_settings_never_touch_running_terminals`, `crates/subak/src/config.rs` unit tests (Step 20) |
 | `SHELL-13` Default profile | S `terminal.profile` | The user picks the default for `Ctrl+T` and the CLI. *Partial (Step 20):* `terminal.default_profile` for `Ctrl+T`, `+` and `subak new` without a program (`--no-profile` bypasses it); "New Terminal: <name>" in the window's menu | partial | Step 20 | T: `crates/subak/tests/gui_settings.rs::profiles_the_settings_menu_and_mouse_and_keyboard_choices`, `crates/subak/tests/config_cli.rs` (Step 20) |
-| `SHELL-14` Defaults per profile type | S `profileDefaults` | Defaults inherited per kind (local, SSH, serial) *Not in Step 20* *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
+| `SHELL-14` Defaults per profile type | S `profileDefaults` | Defaults inherited per kind (local, SSH, serial) *Not in Step 20* *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. *#98 T4 (2026-11-23):* `[profile_defaults.local]` (cwd, env, unset_env, group; detected shells take the folder and variables) and `[profile_defaults.ssh]` (also identity, jump, forwards, agent_forward, login_script) fill what a profile does not set; env joins, a variable a profile removes is not set back, a wrong default is reported and not used. Missing: serial and Telnet connections are not profiles yet (T6). | partial | #98 T4 | T: `crates/subak/src/config.rs::tests::profile_defaults_fill_what_a_profile_does_not_say`; E2E: `e2e/tests/issue98_subak_profile_defaults.rs` |
 | `SHELL-15` Per-profile environment | S `terminal.environment`, `windowsRefreshEnvironment`, `setComSpec` | Non-secret variables are saved. Secret ones become Credential Manager references (SUBAK-SEC-011). The environment is refreshed from the registry at spawn. *Step 34 (2026-11-11):* SSH secrets use Credential Manager; secret profile variables as Credential Manager references and the registry refresh move to Step 36. *Step 36 (2026-11-11):* not implemented; follow-up #98 T4. | planned | #98 T4 | — |
 | `SHELL-16` Profile groups and tree | S `groups`, `showProfileTree`, `editProfileGroupModal` | Groups in the config, shown as a collapsible tree in the launcher and settings *Step 33 (2026-11-11):* not done in Step 33; moved to Step 36, whose parity review files any remainder as a follow-up. *Step 36 (2026-11-11):* A profile `group` (detected shells: `Detected`) in `config.toml` and `profile list`; the collapsible tree in the window: #98 T4. *#98 T4 (2026-11-14):* Profiles with a `group` are a submenu of the New Terminal list (the tree; detected shells are the `Detected` group). Remaining: the tree in the Terminal manager and a settings window to edit groups. | partial | #98 T4 | T: `crates/subak/tests/gui_window.rs::copy_path_switch_profile_and_profile_groups`; real desktop (#98 T4): a real right click showed "New Terminal: Work" and "New Terminal: Detected" submenus |
 | `SHELL-17` Quick launcher with recent profiles | S `profile-selector`, `showRecentProfiles: 3`, `showBuiltinProfiles`, `profileBlacklist` | Launcher with search, recent profiles and an option to hide built-in ones *Step 33 (2026-11-11):* *Partial:* the `+`/tab menu lists configured and detected profiles, and `Ctrl+B N` opens it from the keyboard; no search or recent list yet (Step 36). | partial | Step 33 | T: `crates/subak/tests/profiles_integration.rs::detected_and_configured_profiles_start_real_shells_and_missing_ones_fail_clearly` (Step 33) |
@@ -446,12 +446,12 @@ where each area belongs. The named Step confirms or changes the placement.
 
 ## Summary counts
 
-Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last: #98 T4 colour schemes, 2026-11-23).
+Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last: #98 T4 profile defaults, 2026-11-23).
 
 | Status | Rows |
 | --- | --- |
-| `planned` | 41 |
-| `partial` | 92 |
+| `planned` | 40 |
+| `partial` | 93 |
 | `implemented` | 45 |
 | `excluded` | 27 |
 | `blocked` | 4 (`CORE-06` Sixel, `CORE-43` ligatures, `SHELL-22` run as administrator, `APP-13` Windows ARM64) |
@@ -460,7 +460,7 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | Group | planned | partial | implemented | excluded | blocked | Total |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1. Terminal core (`CORE`) | 4 | 50 | 24 | 3 | 2 | 83 |
-| 2. Shells and profiles (`SHELL`) | 7 | 7 | 10 | 2 | 1 | 27 |
+| 2. Shells and profiles (`SHELL`) | 6 | 8 | 10 | 2 | 1 | 27 |
 | 3. SSH (`SSH`) | 29 | 0 | 0 | 2 | 0 | 31 |
 | 4. File transfer (`XFER`) | 7 | 0 | 0 | 0 | 0 | 7 |
 | 5. Serial (`SER`) | 14 | 0 | 0 | 0 | 0 | 14 |
@@ -494,6 +494,7 @@ Recomputed in the Step 32 audit (2026-11-11); kept equal to the rows since (last
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | Titles, density, new windows, on exit: `CORE-23`, `CORE-48` `implemented`; `CORE-20` (reconnect remains), `CORE-21` (per-window sets remain) `partial`. No Tabby re-fetch. |
 | 2026-11-13 | v1.0.238 (2026-10-07) | #98 T1 | The command palette: `CORE-63` `implemented`. No Tabby re-fetch. |
 | 2026-11-23 | v1.0.238 (2026-10-07) | #98 T4 | Colour schemes: `PLUG-05` (scheme files in Windows Terminal's format) and `CORE-38` (Windows Terminal's nine default schemes, MIT) `implemented`. No Tabby re-fetch. |
+| 2026-11-23 | v1.0.238 (2026-10-07) | #98 T4 | Defaults per kind of profile: `SHELL-14` `partial` (local and SSH; serial and Telnet are not profiles yet). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Pane labels: `CORE-32` `implemented`. No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T1 | Tab colours: `CORE-24` `partial` (per Terminal; per-profile colours and icons remain). No Tabby re-fetch. |
 | 2026-11-14 | v1.0.238 (2026-10-07) | #98 T4 | Detected shells: `SHELL-04` (Clink), `SHELL-08` (Cygwin), `SHELL-09` (MSYS2), `SHELL-10` (Cmder), `SHELL-11` (Visual Studio developer prompts) `implemented` (only the Visual Studio prompt could be started on the development PC). No Tabby re-fetch. |

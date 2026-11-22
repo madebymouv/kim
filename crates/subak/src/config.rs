@@ -356,7 +356,215 @@ pub struct Settings {
     pub quick_commands: Vec<QuickCommand>,
     /// #98 T4 (`PLUG-08`): keyword rules the window draws (`[[highlights]]`).
     pub highlights: Vec<Highlight>,
+    /// #98 T4 (`SHELL-14`): what every local or SSH profile has unless it says otherwise
+    /// (`[profile_defaults.local]`, `[profile_defaults.ssh]`), already merged into `profiles`.
+    pub profile_defaults: ProfileDefaults,
     pub profiles: Vec<Profile>,
+}
+
+/// #98 T4 (`SHELL-14`): defaults per kind of profile, as the checked tables of `config.toml`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ProfileDefaults {
+    pub local: toml::Table,
+    pub ssh: toml::Table,
+}
+
+/// The fields a default may give every profile of its kind.
+const DEFAULT_FIELDS: [&str; 4] = ["cwd", "env", "unset_env", "group"];
+/// The further fields an SSH default may give.
+const DEFAULT_FIELDS_SSH: [&str; 5] = [
+    "identity",
+    "jump",
+    "forwards",
+    "agent_forward",
+    "login_script",
+];
+
+impl ProfileDefaults {
+    /// `profile` (a `[[profiles]]` table) with the defaults of its kind for the fields it does not
+    /// set: `env` joins (the profile's own variables win), and a variable the profile removes is
+    /// not set by a default (nor removed when the profile sets it).
+    fn merged(&self, profile: &toml::Value) -> toml::Value {
+        let Some(t) = profile.as_table() else {
+            return profile.clone();
+        };
+        let d = if t.contains_key("ssh") {
+            &self.ssh
+        } else {
+            &self.local
+        };
+        if d.is_empty() {
+            return profile.clone();
+        }
+        let mut out = t.clone();
+        let names = |v: Option<&toml::Value>| -> Vec<String> {
+            match v {
+                Some(toml::Value::Table(e)) => e.keys().map(|k| k.to_lowercase()).collect(),
+                Some(toml::Value::Array(a)) => a
+                    .iter()
+                    .filter_map(|x| x.as_str().map(str::to_lowercase))
+                    .collect(),
+                _ => Vec::new(),
+            }
+        };
+        let own_set = names(t.get("env"));
+        let own_unset = names(t.get("unset_env"));
+        for (k, v) in d {
+            match (k.as_str(), out.get_mut(k)) {
+                ("env", Some(toml::Value::Table(own))) => {
+                    if let Some(dv) = v.as_table() {
+                        for (n, x) in dv {
+                            if !own.keys().any(|o| o.eq_ignore_ascii_case(n))
+                                && !own_unset.contains(&n.to_lowercase())
+                            {
+                                own.insert(n.clone(), x.clone());
+                            }
+                        }
+                    }
+                }
+                ("env", None) => {
+                    if let Some(dv) = v.as_table() {
+                        let kept: toml::Table = dv
+                            .iter()
+                            .filter(|(n, _)| !own_unset.contains(&n.to_lowercase()))
+                            .map(|(n, x)| (n.clone(), x.clone()))
+                            .collect();
+                        out.insert("env".into(), toml::Value::Table(kept));
+                    }
+                }
+                ("unset_env", None) => {
+                    if let Some(a) = v.as_array() {
+                        let kept: Vec<toml::Value> = a
+                            .iter()
+                            .filter(|x| {
+                                x.as_str()
+                                    .is_some_and(|n| !own_set.contains(&n.to_lowercase()))
+                            })
+                            .cloned()
+                            .collect();
+                        out.insert("unset_env".into(), toml::Value::Array(kept));
+                    }
+                }
+                (_, None) => {
+                    out.insert(k.clone(), v.clone());
+                }
+                _ => {}
+            }
+        }
+        toml::Value::Table(out)
+    }
+
+    /// A detected shell (not in `config.toml`) with the local defaults' folder and variables.
+    fn apply_to_detected(&self, p: &mut Profile) {
+        if self.local.is_empty() {
+            return;
+        }
+        let mut t = self.local.clone();
+        t.remove("group");
+        t.insert("name".into(), toml::Value::String(p.name.clone()));
+        t.insert("program".into(), toml::Value::String(p.program.clone()));
+        let Ok(d) = parse_profile(&toml::Value::Table(t)) else {
+            return;
+        };
+        if p.cwd.is_none() {
+            p.cwd = d.cwd;
+        }
+        for (n, v) in d.env {
+            if !p.env.iter().any(|(o, _)| o.eq_ignore_ascii_case(&n))
+                && !p.unset_env.iter().any(|o| o.eq_ignore_ascii_case(&n))
+            {
+                p.env.push((n, v));
+            }
+        }
+        for n in d.unset_env {
+            if !p.unset_env.iter().any(|o| o.eq_ignore_ascii_case(&n))
+                && !p.env.iter().any(|(o, _)| o.eq_ignore_ascii_case(&n))
+            {
+                p.unset_env.push(n);
+            }
+        }
+        p.env.sort_by_key(|(n, _)| crate::pty::var_key(n));
+    }
+}
+
+/// `[profile_defaults]`: `local` and `ssh` tables of the fields a default may give, each checked
+/// as a profile would be.
+fn parse_profile_defaults(text: &str, v: &toml::Value, out: &mut Parsed) {
+    let Some(t) = v.as_table() else {
+        out.problems.push(Problem {
+            key: "profile_defaults".into(),
+            line: line_of(text, "", "profile_defaults"),
+            severity: Severity::Error,
+            message: "`profile_defaults` must be a table ([profile_defaults.local], [profile_defaults.ssh]); no default is used".into(),
+        });
+        return;
+    };
+    for (kind, d) in t {
+        let ssh = match kind.as_str() {
+            "local" => false,
+            "ssh" => true,
+            other => {
+                out.problems.push(Problem {
+                    key: format!("profile_defaults.{other}"),
+                    line: None,
+                    severity: Severity::Error,
+                    message: format!(
+                        "`profile_defaults.{other}` is not a kind of profile (local or ssh); it is not used"
+                    ),
+                });
+                continue;
+            }
+        };
+        let Some(table) = d.as_table() else {
+            out.problems.push(Problem {
+                key: format!("profile_defaults.{kind}"),
+                line: None,
+                severity: Severity::Error,
+                message: format!("`profile_defaults.{kind}` must be a table; it is not used"),
+            });
+            continue;
+        };
+        if let Some(bad) = table.keys().find(|k| {
+            !DEFAULT_FIELDS.contains(&k.as_str())
+                && !(ssh && DEFAULT_FIELDS_SSH.contains(&k.as_str()))
+        }) {
+            out.problems.push(Problem {
+                key: format!("profile_defaults.{kind}.{bad}"),
+                line: None,
+                severity: Severity::Error,
+                message: format!(
+                    "`{bad}` is not a default of {kind} profiles ({}); `profile_defaults.{kind}` is not used",
+                    if ssh {
+                        "cwd, env, unset_env, group, identity, jump, forwards, agent_forward, login_script"
+                    } else {
+                        "cwd, env, unset_env, group"
+                    }
+                ),
+            });
+            continue;
+        }
+        // Checked as a profile of that kind would be.
+        let mut probe = table.clone();
+        probe.insert("name".into(), toml::Value::String("defaults".into()));
+        if ssh {
+            probe.insert("ssh".into(), toml::Value::String("defaults.invalid".into()));
+        } else {
+            probe.insert("program".into(), toml::Value::String("cmd.exe".into()));
+        }
+        match parse_profile(&toml::Value::Table(probe)) {
+            Ok(_) if ssh => out.settings.profile_defaults.ssh = table.clone(),
+            Ok(_) => out.settings.profile_defaults.local = table.clone(),
+            Err((field, why)) => out.problems.push(Problem {
+                key: format!(
+                    "profile_defaults.{kind}{}",
+                    field.map(|f| format!(".{f}")).unwrap_or_default()
+                ),
+                line: None,
+                severity: Severity::Error,
+                message: format!("profile_defaults.{kind}: {why}; it is not used"),
+            }),
+        }
+    }
 }
 
 /// #98 T3: `[dropdown]`.
@@ -548,6 +756,7 @@ impl Default for Settings {
             },
             quick_commands: Vec::new(),
             highlights: Vec::new(),
+            profile_defaults: ProfileDefaults::default(),
             tabs: TabsPrefs {
                 close_buttons: true,
                 cycle: true,
@@ -572,11 +781,13 @@ impl Settings {
     pub fn all_profiles(&self) -> Vec<Profile> {
         let mut v = self.profiles.clone();
         if self.terminal.detect_shells {
-            for d in crate::shells::detect() {
+            for mut d in crate::shells::detect() {
                 if !v
                     .iter()
                     .any(|p| p.name.to_lowercase() == d.name.to_lowercase())
                 {
+                    // #98 T4 (`SHELL-14`): the local defaults' folder and variables.
+                    self.profile_defaults.apply_to_detected(&mut d);
                     v.push(d);
                 }
             }
@@ -1390,9 +1601,13 @@ pub fn parse(text: &str) -> Parsed {
             return out;
         }
     }
+    // #98 T4 (`SHELL-14`): the defaults first, so every profile gets them.
+    if let Some(v) = table.get("profile_defaults") {
+        parse_profile_defaults(text, v, &mut out);
+    }
     for (top, v) in &table {
         match top.as_str() {
-            "config_version" => {}
+            "config_version" | "profile_defaults" => {}
             "profiles" => parse_profiles(text, v, &mut out),
             "quick_commands" => parse_quick_commands(v, &mut out),
             "highlights" => parse_highlights(v, &mut out),
@@ -1553,7 +1768,7 @@ fn parse_profiles(text: &str, v: &toml::Value, out: &mut Parsed) {
             });
             continue;
         }
-        match parse_profile(item) {
+        match parse_profile(&out.settings.profile_defaults.merged(item)) {
             Ok(mut p) => {
                 p.line = line;
                 if out
@@ -3178,6 +3393,117 @@ forwards = [\"L:0.0.0.0:1:h:2\"]
                 .iter()
                 .any(|x| x.message.contains("beyond loopback"))
         );
+    }
+
+    /// #98 T4 (`SHELL-14`): defaults per kind of profile fill what a profile does not say; the
+    /// profile's own values win, variables join (a removed one is not set back), SSH defaults
+    /// reach only SSH profiles, a wrong default is reported and not used, and detected shells get
+    /// the local defaults' folder and variables.
+    #[test]
+    fn profile_defaults_fill_what_a_profile_does_not_say() {
+        let p = parse(
+            "[profile_defaults.local]
+cwd = 'C:\\Work'
+env = { EDITOR = \"code\", LANG = \"ko_KR.UTF-8\" }
+group = \"Local\"
+
+[profile_defaults.ssh]
+identity = 'C:\\Keys\\id_ed25519'
+group = \"Servers\"
+agent_forward = false
+
+[[profiles]]
+name = \"Plain\"
+program = \"cmd.exe\"
+
+[[profiles]]
+name = \"Own\"
+program = \"pwsh.exe\"
+cwd = 'D:\\Code'
+env = { EDITOR = \"vim\" }
+unset_env = [\"LANG\"]
+group = \"Mine\"
+
+[[profiles]]
+name = \"Prod\"
+ssh = \"ops@prod\"
+",
+        );
+        assert!(p.problems.is_empty(), "{:?}", p.problems);
+        let by = |n: &str| p.settings.profile(n).unwrap().clone();
+        let plain = by("Plain");
+        assert_eq!(plain.cwd.as_deref(), Some("C:\\Work"));
+        assert_eq!(plain.group.as_deref(), Some("Local"));
+        assert_eq!(
+            plain.env,
+            [
+                ("EDITOR".to_string(), "code".to_string()),
+                ("LANG".to_string(), "ko_KR.UTF-8".to_string())
+            ]
+        );
+        let own = by("Own");
+        assert_eq!(own.cwd.as_deref(), Some("D:\\Code"));
+        assert_eq!(own.group.as_deref(), Some("Mine"));
+        assert_eq!(own.env, [("EDITOR".to_string(), "vim".to_string())]);
+        assert_eq!(own.unset_env, ["LANG"]);
+        let prod = by("Prod");
+        assert_eq!(prod.identity.as_deref(), Some("C:\\Keys\\id_ed25519"));
+        assert_eq!(prod.group.as_deref(), Some("Servers"));
+        assert!(prod.cwd.is_none(), "local defaults stay local");
+        // A detected shell takes the local folder and variables, not the group.
+        let mut d = Profile {
+            name: "PowerShell".into(),
+            program: "pwsh.exe".into(),
+            args: Vec::new(),
+            cwd: None,
+            env: Vec::new(),
+            unset_env: Vec::new(),
+            title: None,
+            detected: true,
+            ssh: None,
+            identity: None,
+            jump: Vec::new(),
+            forwards: Vec::new(),
+            agent_forward: false,
+            login_script: None,
+            group: Some("Detected".into()),
+            line: None,
+        };
+        p.settings.profile_defaults.apply_to_detected(&mut d);
+        assert_eq!(d.cwd.as_deref(), Some("C:\\Work"));
+        assert_eq!(d.group.as_deref(), Some("Detected"));
+        assert_eq!(d.env.len(), 2);
+        // Wrong defaults: an SSH field for local profiles, an unknown kind, a bad value.
+        let bad = parse(
+            "[profile_defaults.local]
+identity = 'C:\\k'
+
+[profile_defaults.serial]
+cwd = 'C:\\x'
+
+[profile_defaults.ssh]
+cwd = \"relative\"
+
+[[profiles]]
+name = \"Plain\"
+program = \"cmd.exe\"
+",
+        );
+        let text: Vec<&str> = bad.problems.iter().map(|x| x.message.as_str()).collect();
+        assert!(
+            text.iter()
+                .any(|m| m.contains("`identity` is not a default of local profiles")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|m| m.contains("not a kind of profile")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|m| m.starts_with("profile_defaults.ssh:")),
+            "{text:?}"
+        );
+        assert!(bad.settings.profile("Plain").unwrap().cwd.is_none());
     }
 
     /// #98 T2 (`CORE-61`, `CORE-62`): Alt as Meta and the Backspace mode are settings with the

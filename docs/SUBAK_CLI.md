@@ -368,7 +368,12 @@ window, and never change a running Terminal. The window's Settings menu changes 
 `menu`, `paste`, `none`), `terminal.middle_click` (`none`, `paste`), `terminal.word_separators`.
 Booleans take `true`/`false` (or `on`/`off`). A value that starts with `-` is given as
 `<key>=<value>`. Profiles are `[[profiles]]` tables of the file (`name`, `program`, `args`, `cwd`,
-`env`, `unset_env`); edit them by hand or `import` a file.
+`env`, `unset_env`); edit them by hand or `import` a file. `[profile_defaults.local]` and
+`[profile_defaults.ssh]` (#98 T4, `SHELL-14`) give every local or SSH profile the fields it does
+not set (`cwd`, `env`, `unset_env`, `group`; for SSH also `identity`, `jump`, `forwards`,
+`agent_forward`, `login_script`): `env` joins, a variable a profile removes is not set back, and
+detected shells take the local folder and variables. `profile list` and `profile show` show the
+merged profiles; a wrong default is reported by `config show` and not used.
 
 **Safety.** An invalid or newer file is never rewritten by `set` or `reset <key>`
 (`config_invalid`, exit 4; `config_from_newer_version`, exit 5); `reset --all --yes` replaces an

@@ -1023,6 +1023,14 @@ args = ["-NoLogo"]
 cwd = 'C:\Users\me\src'              # absolute; absent = your profile folder
 env = { RUST_BACKTRACE = "1" }       # set in the pane
 unset_env = ["HTTP_PROXY"]           # removed from the pane's environment
+
+[profile_defaults.local]             # #98 T4 (SHELL-14): every local profile unless it says otherwise
+cwd = 'C:\Users\me\src'             # also the folder of detected shells
+env = { LANG = "ko_KR.UTF-8" }       # joins each profile's env (the profile's own values win)
+group = "Local"
+
+[profile_defaults.ssh]               # every SSH profile: cwd, env, unset_env, group, identity,
+identity = 'C:\Users\me\.ssh\id_ed25519'   # jump, forwards, agent_forward, login_script
 ```
 
 | Theme | Draws with |
