@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -95,7 +95,7 @@ palette, the headless CLI) follow in §2.
 | EDIT-11 | Set read-only for the document / clear the file's read-only attribute | partial | `JARAK-FR-027` | 87 | T | Step 87: read-only files refused and lossy/binary documents read-only with a reason (tests); the menu commands come with Step 88 |
 | EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | planned | `JARAK-FR-027` | 103 | T | — |
 | EDIT-13 | Paste HTML / RTF clipboard content as source | planned | `JARAK-FR-087` | 110 | T | — |
-| EDIT-14 | On selection: open the selected path as a file / its folder | planned | `JARAK-FR-103` | 101 | T | — |
+| EDIT-14 | On selection: open the selected path as a file / its folder | supported | `JARAK-FR-103` | 101 | T | Step 101: *Open the selected path* / *Show the selected path's folder*, relative to the document's folder (palette, Edit) |
 | EDIT-15 | On selection: search on the internet (explicit, configurable engine) | planned | `JARAK-FR-111` | 102 | T | — |
 | EDIT-16 | Character panel (insert a character by code) | planned | `JARAK-FR-087` | 110 | T | — |
 | EDIT-17 | Clipboard history panel | planned | `JARAK-FR-087` | 110 | T | — |
@@ -224,13 +224,13 @@ palette, the headless CLI) follow in §2.
 | MARK-06 | Clear a style / all styles | supported | `JARAK-FR-071` | 94 | T | Step 94: *Clear style 1…5*, *Clear all styles* (`token_styles_jump_copy_and_clear`) |
 | MARK-07 | Jump up / down to the next styled occurrence | supported | `JARAK-FR-071` | 94 | T | Step 94: *Jump to the next / previous styled text*, wrapping (`token_styles_jump_copy_and_clear`) |
 | MARK-08 | Copy styled text | supported | `JARAK-FR-071` | 94 | T | Step 94: *Copy the styled text* (`token_styles_jump_copy_and_clear`) |
-| MARK-09 | Toggle bookmark (Ctrl+F2) | planned | `JARAK-FR-100` | 101 | T | — |
-| MARK-10 | Next / previous bookmark (F2, Shift+F2) | planned | `JARAK-FR-100` | 101 | T | — |
-| MARK-11 | Clear all bookmarks | planned | `JARAK-FR-100` | 101 | T | — |
-| MARK-12 | Cut / copy / paste-replace / remove bookmarked lines | planned | `JARAK-FR-100` | 101 | T | — |
-| MARK-13 | Remove unmarked lines | planned | `JARAK-FR-100` | 101 | T | — |
-| MARK-14 | Inverse bookmarks | planned | `JARAK-FR-100` | 101 | T | — |
-| MARK-15 | Change history: go to next / previous change, clear history | planned | `JARAK-FR-101` | 101 | T | — |
+| MARK-09 | Toggle bookmark (Ctrl+F2) | supported | `JARAK-FR-100` | 101 | T | Step 101: Ctrl+F2 on every caret's line, also in read-only documents (`navigate::tests::bookmarks_toggle_step_invert_and_take_their_lines`, `bookmark_keys_and_the_bookmarked_lines_with_the_clipboard`) |
+| MARK-10 | Next / previous bookmark (F2, Shift+F2) | supported | `JARAK-FR-100` | 101 | T | Step 101: F2 / Shift+F2, wrapping (`navigate::tests::bookmarks_toggle_step_invert_and_take_their_lines`, `bookmark_keys_and_the_bookmarked_lines_with_the_clipboard`) |
+| MARK-11 | Clear all bookmarks | supported | `JARAK-FR-100` | 101 | T | Step 101: *Clear all bookmarks* (`navigate::tests::bookmarks_toggle_step_invert_and_take_their_lines`) |
+| MARK-12 | Cut / copy / paste-replace / remove bookmarked lines | supported | `JARAK-FR-100` | 101 | T | Step 101: copy, cut, paste to (replace) line by line, remove the bookmarked lines, one undo step (`navigate::tests::bookmarks_toggle_step_invert_and_take_their_lines`, `bookmark_keys_and_the_bookmarked_lines_with_the_clipboard`) |
+| MARK-13 | Remove unmarked lines | supported | `JARAK-FR-100` | 101 | T | Step 101: *Remove the lines without a bookmark* (`navigate::tests::bookmarks_toggle_step_invert_and_take_their_lines`) |
+| MARK-14 | Inverse bookmarks | supported | `JARAK-FR-100` | 101 | T | Step 101: *Inverse bookmarks* (`navigate::tests::bookmarks_toggle_step_invert_and_take_their_lines`) |
+| MARK-15 | Change history: go to next / previous change, clear history | supported | `JARAK-FR-101` | 101 | T | Step 101: modified / saved bars in the margin, next / previous change, clear (`navigate::tests::the_change_history_marks_edits_and_saving`, `the_change_history_shows_in_the_margin_and_hidden_lines_come_back`; real desktop pending) |
 
 ### FIF — Find in Files and the search results window (sources S)
 
@@ -262,8 +262,8 @@ palette, the headless CLI) follow in §2.
 | VIEW-11 | Show wrap symbol | planned | `JARAK-FR-037` | 103 | T | — |
 | VIEW-12 | Zoom in / out / restore (Ctrl+wheel, Ctrl+Num+/-/) | supported | `JARAK-FR-034` | 88 | T | Step 88: Ctrl+=, Ctrl+-, Ctrl+0, Ctrl+wheel (window test) |
 | VIEW-13 | Word wrap | supported | `JARAK-FR-030` | 88 | T | Step 88: Alt+Z, wrapped selections and caret (window test; audited `editor-wrap` view) |
-| VIEW-14 | Hide lines | planned | `JARAK-FR-104` | 101 | T | — |
-| VIEW-15 | Summary (characters, words, lines, bytes) | planned | `JARAK-FR-104` | 101 | T | — |
+| VIEW-14 | Hide lines | supported | `JARAK-FR-104` | 101 | T | Step 101: Alt+H, the mark above shows them again, *Show all hidden lines* (`navigate::tests::hidden_lines_hide_and_show_and_the_summary_counts`, `the_change_history_shows_in_the_margin_and_hidden_lines_come_back`) |
+| VIEW-15 | Summary (characters, words, lines, bytes) | supported | `JARAK-FR-104` | 101 | T | Step 101: path, created, modified, characters, words, lines, bytes as saved, the selection (`navigate::tests::hidden_lines_hide_and_show_and_the_summary_counts`, `quick_open_finds_open_documents_and_the_workspaces_files`, UI audit `summary`) |
 | VIEW-16 | Text direction right-to-left / left-to-right | planned | `JARAK-NFR-008` | 110 | M | — |
 | VIEW-17 | Monitoring (tail -f) | planned | `JARAK-FR-122` | 104 | T | — |
 
@@ -279,7 +279,7 @@ palette, the headless CLI) follow in §2.
 | VIEWS-06 | Go to tab 1–9, next / previous tab | supported | `JARAK-FR-060` | 93 | T | Step 93: Ctrl+1…9 (9 the last), Ctrl+Tab / Ctrl+Shift+Tab within the focused view (window test) |
 | VIEWS-07 | Move tab forward / backward | supported | `JARAK-FR-060` | 93 | T | Step 93: Ctrl+Shift+PageUp/PageDown and dragging a tab (window test) |
 | VIEWS-08 | Tab colouring | planned | `JARAK-FR-060` | 110 | T | — |
-| VIEWS-09 | Document Map panel | planned | `JARAK-FR-102` | 101 | T, M | — |
+| VIEWS-09 | Document Map panel | supported | `JARAK-FR-102` | 101 | T, M | Step 101: bars per row, the lines on screen framed, click and drag; 10 MB: first frame 0.8 ms, keystroke p95 0.85 ms (`the_document_map_scrolls_and_the_navigation_history_goes_back_and_forward`, `the_document_map_of_a_10_mb_document`, UI audit `docmap`; real desktop pending) |
 | VIEWS-10 | Document List panel | supported | `JARAK-FR-064` | 93 | T | Step 93: the side panel's Documents page (window test, UI audit) |
 | VIEWS-11 | Function List panel | supported | `JARAK-FR-093` | 99 | T, M | Step 99: symbols per language and Markdown/HTML headings, filter, jump, next/previous symbol, rows in view only (`structure::tests`::symbols_of_each_language_family, `the_function_list_lists_filters_and_jumps_to_symbols`, headless audit, UI audit `functions`; real desktop pending) |
 | VIEWS-12 | Folder as Workspace panel | supported | `JARAK-FR-063` | 93 | T, M | Step 93: the side panel's Folder page: lazy tree, filter, Refresh (unit + window test, UI audit) |
@@ -474,7 +474,7 @@ palette, the headless CLI) follow in §2.
 | JRK-10 | Vim: : command line | supported | `JARAK-FR-053` | 92 | T | Step 92: :w :q :q! :wq :x :e :e! :s with ranges and flags, :noh, :set, :N, / ? (engine tests, window test, e2e step92 writes with :w, real desktop :wq) |
 | JRK-11 | Command palette listing every command with its keys | supported | `JARAK-FR-054` | 92 | T, M | Step 92: Ctrl+Shift+P lists every window action and registry command with its keys (labels checked against the bindings), filter in English/Korean/id/keys (window test, e2e, UI audit) |
 | JRK-12 | Snippets with tab stops | supported | `JARAK-FR-095` | 100 | T | Step 100: `snippets.json` (per language and `*`), `$n`, `${n:placeholder}`, mirrors, `$0`, Tab/Shift+Tab, built-ins (`assist::tests::snippets_expand_with_tab_stops_mirrors_and_indentation`, `a_snippet_expands_from_the_list_and_tab_walks_its_stops`) |
-| JRK-13 | Quick open of files (Ctrl+P) and navigation history | planned | `JARAK-FR-103` | 101 | T | — |
+| JRK-13 | Quick open of files (Ctrl+P) and navigation history | supported | `JARAK-FR-103` | 101 | T | Step 101: Ctrl+P (open documents, the workspace's files on a worker, letters in order) and Alt+Left / Alt+Right (`quick_open_finds_open_documents_and_the_workspaces_files`, `the_document_map_scrolls_and_the_navigation_history_goes_back_and_forward`) |
 | JRK-14 | Headless CLI with --json (info, find, replace --dry-run, convert, export) | planned | `JARAK-FR-150` | 107 | T | — |
 | JRK-15 | Kim interoperability (Subak, Noeul, Ddalgak) | planned | `JARAK-FR-151` | 107 | T, M | — |
 | JRK-16 | Recovery of untitled documents after a crash | planned | `JARAK-FR-121` | 104 | T, M | — |

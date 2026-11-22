@@ -52,6 +52,9 @@ pub enum Run {
     Outline(u8),
     /// Step 100: the assistance settings and files (see `JarakApp::assist_tool`).
     Assist(u8),
+    /// Step 101: 0 the Document Map on/off, then `JarakApp::bookmark_tool` 0–5 (copy, cut,
+    /// paste into the bookmarked lines, open the selected path, its folder, the Summary).
+    Nav(u8),
 }
 
 /// The menu an entry belongs to.
@@ -1321,11 +1324,82 @@ pub fn entries() -> Vec<Entry> {
             M::Search,
         ),
     ]);
+    v.extend([
+        run(
+            "view.document-map",
+            "Document Map",
+            "문서 지도",
+            Run::Nav(0),
+            M::View,
+        ),
+        act(
+            "go.back",
+            "Go back (navigation history)",
+            "뒤로 (이동 기록)",
+            A::Navigate(true),
+            M::Go,
+        ),
+        act(
+            "go.forward",
+            "Go forward (navigation history)",
+            "앞으로 (이동 기록)",
+            A::Navigate(false),
+            M::Go,
+        ),
+        act(
+            "go.quick-open",
+            "Go to file…",
+            "파일로 이동…",
+            A::QuickOpen,
+            M::Go,
+        ),
+        run(
+            "bookmark.copy-lines",
+            "Copy the bookmarked lines",
+            "책갈피 줄 복사",
+            Run::Nav(1),
+            M::Search,
+        ),
+        run(
+            "bookmark.cut-lines",
+            "Cut the bookmarked lines",
+            "책갈피 줄 잘라내기",
+            Run::Nav(2),
+            M::Search,
+        ),
+        run(
+            "bookmark.paste-lines",
+            "Paste to (replace) the bookmarked lines",
+            "책갈피 줄에 붙여넣기(바꾸기)",
+            Run::Nav(3),
+            M::Search,
+        ),
+        run(
+            "edit.open-selected",
+            "Open the selected path",
+            "선택한 경로 열기",
+            Run::Nav(4),
+            M::Edit,
+        ),
+        run(
+            "edit.open-selected-folder",
+            "Show the selected path's folder",
+            "선택한 경로의 폴더 보기",
+            Run::Nav(5),
+            M::Edit,
+        ),
+        run("view.summary", "Summary…", "요약…", Run::Nav(6), M::View),
+    ]);
     for c in COMMANDS {
         let menu = if c.id.starts_with("select.") {
             M::Selection
         } else if c.id.starts_with("cursor.") {
             M::Go
+        } else if c.id.starts_with("bookmark.") || c.id.starts_with("change.") {
+            // Step 101: Notepad++ keeps them in the Search menu.
+            M::Search
+        } else if c.id.starts_with("view.") {
+            M::View
         } else {
             M::Edit
         };

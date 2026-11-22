@@ -279,6 +279,19 @@ impl JarakApp {
             }
             !inside
         });
+        // Step 101: lines the user hid (Alt+H) — like folded folds; a caret inside shows them.
+        let mut reveal = Vec::new();
+        let blocks: Vec<(usize, usize)> = doc
+            .hidden_blocks()
+            .into_iter()
+            .filter(|(s, n)| {
+                let inside = carets.iter().any(|c| *s < *c && *c <= s + n);
+                if inside {
+                    reveal.push(*s);
+                }
+                !inside
+            })
+            .collect();
         // The margin: every fold when they are current; while they are found again, those above
         // the first edit and the folded ones.
         let from = if fresh {
@@ -308,6 +321,11 @@ impl JarakApp {
             m.sort();
             m
         };
+        if !blocks.is_empty() {
+            marks.extend(blocks.iter().map(|(s, _)| (*s, true)));
+            // A folded mark first, so the line's mark says folded.
+            marks.sort_unstable_by_key(|m| (m.0, !m.1));
+        }
         marks.dedup_by_key(|m| m.0);
         let mut hidden: Vec<(usize, usize)> = spans
             .iter()
@@ -315,6 +333,12 @@ impl JarakApp {
             .map(|(s, n)| (s + 1, (s + n).min(last)))
             .filter(|(a, b)| a <= b)
             .collect();
+        hidden.extend(
+            blocks
+                .iter()
+                .map(|(s, n)| (s + 1, (s + n).min(last)))
+                .filter(|(a, b)| a <= b),
+        );
         hidden.sort();
         let mut merged: Vec<(usize, usize)> = Vec::new();
         for (s, e) in hidden {
@@ -327,6 +351,9 @@ impl JarakApp {
         let t = &mut self.tabs[k];
         if !open.is_empty() {
             t.file.doc.set_folded_many(&open, false);
+        }
+        for s in reveal {
+            t.file.doc.show_lines(Some(s));
         }
         t.outline.spans = spans;
         t.outline.marks = Arc::new(marks);
@@ -348,6 +375,18 @@ impl JarakApp {
     /// Folds or unfolds the fold starting on `line` of the active document (the margin).
     pub fn toggle_fold(&mut self, line: usize) {
         let k = self.active;
+        // Step 101: the mark above hidden lines shows them again.
+        if self.tabs[k]
+            .file
+            .doc
+            .hidden_blocks()
+            .iter()
+            .any(|(s, _)| *s == line)
+        {
+            self.tabs[k].file.doc.show_lines(Some(line));
+            self.apply_folds(k);
+            return;
+        }
         let folded = self.tabs[k]
             .file
             .doc
@@ -654,6 +693,8 @@ impl JarakApp {
         let Some(g) = self.goto.as_mut() else {
             return;
         };
+        // The frame it opens in, Enter is the palette's that opened it (not a "Go").
+        let fresh = g.focus;
         let (enter, esc) = ctx.input(|i| {
             (
                 i.key_pressed(egui::Key::Enter),
@@ -723,7 +764,7 @@ impl JarakApp {
         );
         if esc {
             act = Some(false);
-        } else if enter && act.is_none() {
+        } else if enter && act.is_none() && !fresh {
             act = Some(true);
         }
         match act {

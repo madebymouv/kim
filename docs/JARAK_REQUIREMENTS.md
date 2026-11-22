@@ -44,7 +44,9 @@ offset part of `JARAK-FR-103` (folding by syntax, indentation, sections, heading
 fold margin and keys, the Function List; [JARAK_ARCHITECTURE §21](JARAK_ARCHITECTURE.md)); Step 100
 implemented `JARAK-FR-094`, `JARAK-FR-095` and the rest of `JARAK-FR-096` (completion, parameter
 hints, Notepad++ API files, path completion, snippets, closing brackets, quotes and tags, smart
-indentation, the bracket and tag highlight; [JARAK_ASSIST](JARAK_ASSIST.md));
+indentation, the bracket and tag highlight; [JARAK_ASSIST](JARAK_ASSIST.md)); Step 101 implemented
+`JARAK-FR-100`, `JARAK-FR-101`, `JARAK-FR-102`, `JARAK-FR-104` and the navigation history and
+quick open of `JARAK-FR-103` ([JARAK_ARCHITECTURE §23](JARAK_ARCHITECTURE.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

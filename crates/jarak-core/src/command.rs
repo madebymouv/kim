@@ -103,6 +103,19 @@ pub enum Command {
     LineUncomment,
     BlockComment,
     BlockUncomment,
+    // Step 101: bookmarks, the change history, hidden lines.
+    ToggleBookmark,
+    NextBookmark,
+    PreviousBookmark,
+    ClearBookmarks,
+    InvertBookmarks,
+    RemoveBookmarkedLines,
+    RemoveUnmarkedLines,
+    NextChange,
+    PreviousChange,
+    ClearChanges,
+    HideLines,
+    ShowHiddenLines,
 }
 
 /// A command's identity in the registry.
@@ -217,9 +230,39 @@ registry! {
     LineUncomment, "comment.line-remove", "Uncomment the lines", "줄 주석 없애기";
     BlockComment, "comment.block", "Block comment", "블록 주석 달기";
     BlockUncomment, "comment.block-remove", "Block uncomment", "블록 주석 없애기";
+    ToggleBookmark, "bookmark.toggle", "Toggle the bookmark", "책갈피 켜기/끄기";
+    NextBookmark, "bookmark.next", "Next bookmark", "다음 책갈피";
+    PreviousBookmark, "bookmark.previous", "Previous bookmark", "이전 책갈피";
+    ClearBookmarks, "bookmark.clear", "Clear all bookmarks", "책갈피 모두 지우기";
+    InvertBookmarks, "bookmark.invert", "Inverse bookmarks", "책갈피 반전";
+    RemoveBookmarkedLines, "bookmark.remove-lines", "Remove the bookmarked lines", "책갈피 줄 지우기";
+    RemoveUnmarkedLines, "bookmark.remove-unmarked", "Remove the lines without a bookmark", "책갈피 없는 줄 지우기";
+    NextChange, "change.next", "Go to the next change", "다음 변경으로";
+    PreviousChange, "change.previous", "Go to the previous change", "이전 변경으로";
+    ClearChanges, "change.clear", "Clear the change history", "변경 기록 지우기";
+    HideLines, "view.hide-lines", "Hide lines", "줄 숨기기";
+    ShowHiddenLines, "view.show-lines", "Show all hidden lines", "숨긴 줄 모두 보이기";
 }
 
 impl Command {
+    /// Whether the command changes the text (a read-only document refuses those). Moving,
+    /// selecting, bookmarks, the change history and hidden lines do not.
+    pub fn edits(self) -> bool {
+        let id = self.id();
+        !(id.starts_with("cursor.")
+            || id.starts_with("select.")
+            || id.starts_with("change.")
+            || id.starts_with("view.")
+            || matches!(
+                self,
+                Command::ToggleBookmark
+                    | Command::NextBookmark
+                    | Command::PreviousBookmark
+                    | Command::ClearBookmarks
+                    | Command::InvertBookmarks
+            ))
+    }
+
     /// The registry entry.
     pub fn info(self) -> &'static CommandInfo {
         COMMANDS
@@ -341,6 +384,31 @@ impl Document {
             Command::LineUncomment => return self.comment_lines(CommentMode::Remove),
             Command::BlockComment => return self.block_comment(false),
             Command::BlockUncomment => return self.block_comment(true),
+            Command::ToggleBookmark => self.toggle_bookmarks(),
+            Command::NextBookmark | Command::PreviousBookmark => {
+                if !self.step_bookmark(cmd == Command::PreviousBookmark) {
+                    self.notice = Some("No bookmark.".into());
+                }
+            }
+            Command::ClearBookmarks => self.clear_bookmarks(),
+            Command::InvertBookmarks => self.invert_bookmarks(),
+            Command::RemoveBookmarkedLines | Command::RemoveUnmarkedLines => {
+                if self.remove_lines_by_bookmark(cmd == Command::RemoveBookmarkedLines) == 0 {
+                    self.notice = Some("No line to remove.".into());
+                }
+            }
+            Command::NextChange | Command::PreviousChange => {
+                if !self.step_change(cmd == Command::PreviousChange) {
+                    self.notice = Some("No change.".into());
+                }
+            }
+            Command::ClearChanges => self.clear_changes(),
+            Command::HideLines => {
+                if self.hide_lines() == 0 {
+                    self.notice = Some("The first line cannot be hidden.".into());
+                }
+            }
+            Command::ShowHiddenLines => self.show_lines(None),
         }
         before != (self.history().state(), self.selection().clone())
     }

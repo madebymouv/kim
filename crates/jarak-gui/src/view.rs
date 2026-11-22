@@ -69,6 +69,8 @@ pub struct ViewState {
     /// Step 100: the bracket (or tag name) at the caret and its partner (char ranges; `false`
     /// for one without a partner).
     pub braces: Vec<(usize, usize, bool)>,
+    /// Step 101: the change history of the lines on screen (a bar in the margin).
+    pub changes: Vec<(usize, jarak_core::document::navigate::Change)>,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -110,6 +112,7 @@ impl Default for ViewState {
             syntax: Vec::new(),
             fold_marks: Arc::default(),
             braces: Vec::new(),
+            changes: Vec::new(),
             drag: None,
             clicks: None,
         }
@@ -505,6 +508,20 @@ pub fn show(
                 egui::pos2(rect.left() + m.char_w * 0.7, l.origin.y + m.row / 2.0),
                 (m.row * 0.22).max(3.0),
                 c.accent,
+            );
+        }
+        if let Ok(i) = state.changes.binary_search_by_key(&l.line, |c| c.0) {
+            // Step 101: the change history — a bar between the numbers and the fold margin,
+            // warning-coloured for an unsaved change, success-coloured for a saved one.
+            let col = match state.changes[i].1 {
+                jarak_core::document::navigate::Change::Modified => c.warning,
+                jarak_core::document::navigate::Change::Saved => c.success,
+            };
+            let x = text_rect.left() - 1.75 * m.char_w;
+            painter.rect_filled(
+                Rect::from_min_size(egui::pos2(x, l.origin.y), egui::vec2(2.0, l.height)),
+                CornerRadius::ZERO,
+                col,
             );
         }
         if let Ok(i) = state.fold_marks.binary_search_by_key(&l.line, |m| m.0) {

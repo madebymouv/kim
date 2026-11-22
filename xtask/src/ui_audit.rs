@@ -160,6 +160,10 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 100: the completion popup, the parameter hint.
                 "completion",
                 "hint",
+                // Step 101: the Document Map, quick open, the Summary.
+                "docmap",
+                "quick-open",
+                "summary",
             ],
         ),
     ];

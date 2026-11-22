@@ -93,6 +93,8 @@ pub struct Document {
     /// Step 100: the typing aids in effect (the window sets them) and the snippet being filled
     /// (its stop numbers in order, the current one).
     pub aids: assist::Aids,
+    /// Step 101: edits mark the change history (on unless a caller turns it off).
+    pub track_changes: bool,
     snippet: Vec<u8>,
     snippet_at: usize,
     /// Columns per tab stop (display and vertical moves).
@@ -135,6 +137,7 @@ impl Document {
             hidden: Vec::new(),
             fold_gen: 0,
             aids: assist::Aids::default(),
+            track_changes: true,
             snippet: Vec::new(),
             snippet_at: 0,
             tab_width: 4,
@@ -203,6 +206,8 @@ impl Document {
     pub fn mark_saved(&mut self) {
         self.saved = self.history.state();
         self.history.seal();
+        // Step 101: the changes so far are saved ones.
+        self.changes_saved();
     }
 
     /// 0-based line and display column of `pos`.
@@ -244,6 +249,8 @@ impl Document {
         if !self.markers.is_empty() {
             self.shift_markers(e.at, n, e.inserted.chars().count());
         }
+        // Step 101: the change history.
+        self.note_change(e.at, e.inserted.chars().count());
     }
 
     /// Markers after an edit at `at` that removed `removed` and inserted `inserted` characters:
@@ -1007,6 +1014,9 @@ pub mod multi;
 
 /// Step 100: typing aids and snippets.
 pub mod assist;
+
+/// Step 101: bookmarks, the change history, hidden lines and the summary.
+pub mod navigate;
 
 #[cfg(test)]
 mod tests;

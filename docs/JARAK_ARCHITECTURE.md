@@ -1002,3 +1002,54 @@ the user's snippets and API files with a broken one named; paths, tag matching a
 popup and the hint under the UI audit's rules, headless; one structure worker at a time); the 10 MB
 measurement. UI audit views `completion`, `hint`. e2e `step100_jarak_assist.rs` — compiled; its
 first run and the real-desktop check wait until the maintainer allows visible test windows.
+
+## 23. Bookmarks, the change history, the Document Map and quick navigation (Step 101)
+
+`JARAK-FR-100`…`JARAK-FR-102`, `JARAK-FR-104`, the navigation history and quick open of
+`JARAK-FR-103`; matrix rows `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`,
+`EDIT-14`.
+
+- **Bookmarks** (`document::navigate`; the marker of Step 94): toggle on every caret's line
+  (Ctrl+F2), next / previous wrapping (F2 / Shift+F2), clear, inverse; copy, cut, remove the
+  bookmarked lines, remove all the others, paste to (replace) them line by line (the last
+  clipboard line again when it runs out). Removing a line removes its bookmark; undo brings the
+  text back, not the bookmark (as in Notepad++). Bookmarks are not edits: a read-only document
+  takes them (`Command::edits`).
+- **The change history**: every edit (typing, paste, undo, a line operation) marks what it inserted
+  (`CHANGED`, a marker that moves with later edits; a run of typing extends one, a deletion leaves
+  an empty one); saving turns them into `SAVED`. The margin shows a bar between the line numbers
+  and the fold margin — the warning colour for an unsaved change, the success colour for a saved
+  one. Next / previous change (the first line of each run of changed lines, wrapping), clear.
+- **Hidden lines** (Alt+H, Notepad++'s Hide Lines): a `HIDDEN` marker over the selected lines
+  (a selection ending at a line's start does not take it; the first line of the text cannot be
+  hidden). They are folded away like folded folds (not drawn, skipped by moves); the line above
+  shows the folded triangle, a click on it shows them again; a caret that lands inside shows them;
+  *Show all hidden lines*.
+- **The Document Map** (View; a right panel 112 points wide): one bar per row from each sampled
+  line's indentation and end (up to 120 columns; up to 3 points a line in a short document, many
+  lines a row in a long one), the lines on screen in an accent frame; a click or a drag scrolls
+  there. The rows are found again only when the text or the panel's height changes; the map asks
+  for no repaint of its own. Measured (release, 10 MB, 149 798 lines, 856 rows): the first frame
+  0.8 ms, keystroke p95 0.85 ms, scroll p95 0.40 ms.
+- **The navigation history** (Alt+Left / Alt+Right): a jump — another document, or a move of more
+  than a screen (Ctrl+End, Go to, a search hit, a symbol; the map scrolls without moving the caret) —
+  remembers where the caret was (100 places); back and forward open the document again (a closed one is said so).
+- **Quick open** (Ctrl+P; Go → *Go to file…*): open documents first, then the workspace's files (the
+  open folder, else the active document's), walked on a worker thread (50 000 files at most, 12
+  levels, `.git`, `target`, `node_modules`, `.svn`, `.hg`, `__pycache__`, `.venv` skipped), matched
+  by the letters in order (contiguous and file-name matches first). Notepad++ prints with Ctrl+P;
+  Jarak's printing (Step 106) takes another key.
+- **The Summary** (View): full path, created, modified, characters without line endings, words,
+  lines, the document's length in bytes as saving writes it (its encoding and BOM), the selection.
+- **Open the selected path / its folder** (Edit): relative to the document's folder.
+- The core's notices (*No bookmark.*, *No change.* …) are shown in the window's language.
+
+Tests: `navigate` 4 (bookmarks toggled, stepped, inverted, their lines copied, removed, replaced;
+the change history modified → saved, its runs and clearing; hidden lines and the summary's
+counts; which commands edit); window flows 5 (bookmark keys and the clipboard commands, read-only
+documents; the change bars, Alt+H and the margin; the map's click and the history back and
+forward; quick open with the workspace and the Summary; the map, quick open and the Summary under
+the UI audit's rules, headless); the 10 MB map measurement. A Go to dialog opened from the palette
+no longer takes the palette's Enter (found while testing the Summary, which had the same problem).
+UI audit views `docmap`, `quick-open`, `summary`. e2e `step101_jarak_navigation.rs` — compiled; its
+first run and the real-desktop check wait until visible test windows are allowed.

@@ -508,3 +508,64 @@ fn assisted_typing_in_a_10_mb_rust_file() {
     assert!(p(0.95) < 16.0, "p95 {:.2} ms", p(0.95));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Step 101 (#120): the Document Map of a 10 MB document — its first frame (the rows found), a
+/// keystroke frame (found again after the edit) and a scroll frame (drawn from the rows kept).
+/// `cargo test --release -p jarak-gui --test perf document_map -- --ignored --nocapture`
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn the_document_map_of_a_10_mb_document() {
+    let line = "The quick brown fox 한글 문장 jumps over the lazy dog 0123456789\r\n";
+    let text = line.repeat(10 * 1024 * 1024 / line.len() + 1);
+    let dir = std::env::temp_dir().join(format!("jarak-perf-map-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ten.txt");
+    std::fs::write(&file, &text).unwrap();
+    let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let app = JarakApp::new(Lang::En, &[format!("{}:70000", file.display())], incoming);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    h.state_mut().doc_map = true;
+    let t = Instant::now();
+    h.step();
+    let first_ms = t.elapsed().as_secs_f64() * 1000.0;
+    assert!(!h.state().tab().map.rows.is_empty(), "the map is drawn");
+    let mut typing = Vec::new();
+    for _ in 0..200 {
+        let t = Instant::now();
+        h.event(egui::Event::Text("x".into()));
+        h.step();
+        typing.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    let mut scrolling = Vec::new();
+    h.event(egui::Event::PointerMoved(egui::pos2(500.0, 400.0)));
+    for i in 0..200 {
+        let t = Instant::now();
+        h.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, if i % 2 == 0 { -400.0 } else { 400.0 }),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+        scrolling.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    let p = |v: &mut Vec<f64>, q: f64| {
+        v.sort_by(f64::total_cmp);
+        v[((v.len() as f64 - 1.0) * q) as usize]
+    };
+    let (tp, sp) = (p(&mut typing, 0.95), p(&mut scrolling, 0.95));
+    println!(
+        "document map (10 MB, {} lines, {} rows): first frame {first_ms:.1} ms; keystroke p95 {tp:.2} ms; scroll p95 {sp:.2} ms",
+        h.state().tab().file.doc.text().len_lines(),
+        h.state().tab().map.rows.len()
+    );
+    assert!(
+        tp < 16.0 && sp < 16.0,
+        "keystroke p95 {tp:.2} ms, scroll p95 {sp:.2} ms"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

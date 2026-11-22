@@ -22,6 +22,7 @@ pub mod images;
 pub mod keys;
 pub mod languages;
 pub mod media;
+pub mod navmap;
 pub mod outline;
 pub mod palette;
 pub mod preview;
@@ -101,6 +102,8 @@ pub struct Tab {
     pub outline: outline::Outline,
     /// Step 100: what the bracket highlight was found for (edit generation, caret, on).
     pub(crate) brace_key: Option<(u64, usize, bool)>,
+    /// Step 101: the Document Map's rows.
+    pub map: navmap::MapCache,
     pub file: FileDocument,
     pub view: ViewState,
     pub mode: Mode,
@@ -126,6 +129,7 @@ impl Tab {
             hl_lang: String::new(),
             outline: outline::Outline::default(),
             brace_key: None,
+            map: navmap::MapCache::default(),
             file,
             view: ViewState::default(),
             mode: Mode::Source,
@@ -472,6 +476,15 @@ pub struct JarakApp {
     pub apis: Vec<jarak_core::assist::Api>,
     pub snippets: Vec<jarak_core::assist::Snippet>,
     pub assist_dir: Option<PathBuf>,
+    /// Step 101: the Document Map, the navigation history (places, where in it, the last place
+    /// seen, a jump of its own), quick open, the Summary.
+    pub doc_map: bool,
+    pub nav: Vec<navmap::Place>,
+    pub nav_at: usize,
+    pub nav_last: Option<navmap::Place>,
+    pub nav_moving: bool,
+    pub quick: Option<navmap::QuickOpen>,
+    pub summary_open: bool,
 }
 
 /// The assets dialog's content.
@@ -537,6 +550,23 @@ impl JarakApp {
         self.assist = assist::AssistSettings::read(&path);
         self.settings = Some(path);
         self
+    }
+
+    /// A document's notice in the window's language (the core says them in English).
+    pub(crate) fn notice_text(&self, n: &str) -> String {
+        let ko = match n {
+            "Select the text first." => "먼저 텍스트를 선택하세요.",
+            "This language has no comments." => "이 언어에는 주석이 없습니다.",
+            "The selection is not in a block comment." => {
+                "선택 영역이 블록 주석 안에 있지 않습니다."
+            }
+            "No bookmark." => "책갈피가 없습니다.",
+            "No line to remove." => "지울 줄이 없습니다.",
+            "No change." => "변경이 없습니다.",
+            "The first line cannot be hidden." => "첫 줄은 숨길 수 없습니다.",
+            _ => return n.to_string(),
+        };
+        self.t(n, ko).to_string()
     }
 
     /// Switches between Standard and Vim editing (and remembers it).
@@ -752,6 +782,8 @@ impl JarakApp {
             marks.sort_unstable();
             marks.dedup();
             t.view.bookmarks = marks;
+            // Step 101: the change history of the lines on screen.
+            t.view.changes = t.file.doc.changed_lines_in(first, last);
         }
         if self.editing != Editing::Vim {
             let v = &mut self.tabs[i].view;
@@ -856,6 +888,8 @@ impl JarakApp {
             palette::Run::Outline(0) => self.function_list = !self.function_list,
             palette::Run::Outline(k) => self.symbol_step(k == 2),
             palette::Run::Assist(k) => self.assist_tool(k),
+            palette::Run::Nav(0) => self.doc_map = !self.doc_map,
+            palette::Run::Nav(k) => self.bookmark_tool(k - 1),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1517,6 +1551,13 @@ impl JarakApp {
             apis: Vec::new(),
             snippets: jarak_core::assist::snippets_with(&[]),
             assist_dir: None,
+            doc_map: false,
+            nav: Vec::new(),
+            nav_at: 0,
+            nav_last: None,
+            nav_moving: false,
+            quick: None,
+            summary_open: false,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1602,7 +1643,8 @@ impl JarakApp {
             // Step 98: a Rust sample (written next to the audit's copy) and the Language menu.
             // Step 99: the same sample with the Function List open and the `if` block folded, and
             // the Go to dialog.
-            "syntax" | "functions" | "goto" | "completion" | "hint" => {
+            "syntax" | "functions" | "goto" | "completion" | "hint" | "docmap" | "quick-open"
+            | "summary" => {
                 let dir = self
                     .tab()
                     .file
@@ -1636,6 +1678,18 @@ fn main() {
                         self.function_list = true;
                         // The `if` line of `main` (line 10).
                         self.tab_mut().file.doc.set_folded(9, true);
+                    } else if screen == "docmap" {
+                        // Step 101: the map with a bookmark and a changed line.
+                        self.doc_map = true;
+                        let d = &mut self.tab_mut().file.doc;
+                        d.bookmark_lines([3]);
+                        let p = d.text().line_to_char(6);
+                        d.set_selection(&jarak_core::selection::Selection::point(p));
+                        d.type_text("// 고침\n");
+                    } else if screen == "quick-open" {
+                        self.open_quick();
+                    } else if screen == "summary" {
+                        self.summary_open = true;
                     } else if screen == "completion" {
                         // Step 100: after `Po` of `Point` on the `let p` line.
                         let d = &mut self.tab_mut().file.doc;
@@ -1995,7 +2049,8 @@ fn main() {
             }
             Action::Cmd(c) => {
                 // Everything but moving the caret and selecting edits (Step 97 adds many).
-                let edits = !(c.id().starts_with("cursor.") || c.id().starts_with("select."));
+                // Step 101: bookmarks, the change history and hidden lines are not edits either.
+                let edits = c.edits();
                 if edits && read_only {
                     self.refuse_read_only();
                     return;
@@ -2006,7 +2061,7 @@ fn main() {
                 t.view.after_edit();
                 // A text operation that could not run says why.
                 if let Some(n) = t.file.doc.take_notice() {
-                    self.message = Some(n);
+                    self.message = Some(self.notice_text(&n));
                 }
             }
             Action::Indent | Action::Outdent => {
@@ -2076,6 +2131,8 @@ fn main() {
                 });
             }
             Action::MatchBrace => self.match_brace(false),
+            Action::Navigate(back) => self.navigate(back),
+            Action::QuickOpen => self.open_quick(),
             Action::Complete(k) => match k {
                 0 => self.open_completion(assist::Trigger::All),
                 1 => self.open_completion(assist::Trigger::Words),
@@ -2674,6 +2731,7 @@ fn main() {
         self.alt_toggle(&ctx);
         self.vim_frame();
         self.outline_frame(&ctx);
+        self.nav_frame();
         self.menu_bar_ui(ui, &c);
         self.status_bar(ui, &c);
         self.poll_job(&ctx);
@@ -2681,6 +2739,7 @@ fn main() {
         self.incremental_ui(ui, &c);
         self.side_ui(ui, &c);
         self.function_list_ui(ui, &c);
+        self.doc_map_ui(ui, &c);
         // The keyboard focus belongs to the focused view's text (after a move, a clone, F8).
         if self.second.is_some() {
             let (mine, other) = if self.second_focused() {
@@ -2739,7 +2798,9 @@ fn main() {
             || self.preview.is_some()
             || self.column_editor_open
             || self.hash_dialog.is_some()
-            || self.goto.is_some();
+            || self.goto.is_some()
+            || self.quick.is_some()
+            || self.summary_open;
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2777,6 +2838,8 @@ fn main() {
         self.hash_dialog_ui(&ctx, &c);
         self.goto_ui(&ctx, &c);
         self.assist_ui(&ctx, &c);
+        self.quick_ui(&ctx, &c);
+        self.summary_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self

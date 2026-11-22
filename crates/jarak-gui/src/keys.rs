@@ -81,6 +81,9 @@ pub enum Action {
     /// Step 100: completion — 0 everything (Ctrl+Space), 1 the document's words (Ctrl+Enter),
     /// 2 paths (Ctrl+Alt+Space), 3 the parameter hint (Ctrl+Shift+Space).
     Complete(u8),
+    /// Step 101: Alt+Left / Alt+Right the navigation history (back: `true`), Ctrl+P quick open.
+    Navigate(bool),
+    QuickOpen,
     GoTo,
     MatchBrace,
     SelectBraces,
@@ -97,6 +100,10 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
             return Some(A::Fold(n, !shift));
         }
         return match key {
+            // Step 101: Notepad++'s Alt+H hides lines; the navigation history.
+            Key::H if !shift => Some(A::Cmd(C::HideLines)),
+            Key::ArrowLeft if !shift => Some(A::Navigate(true)),
+            Key::ArrowRight if !shift => Some(A::Navigate(false)),
             Key::Z if !shift => Some(A::ToggleWrap),
             Key::C if !shift => Some(A::ColumnEditor),
             // Step 97: Alt+U Proper Case, Alt+Shift+U Proper Case (blend).
@@ -171,6 +178,13 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::F) if shift && !m.alt => Some(A::FindInFiles),
         (true, Key::F) if m.alt => Some(A::Fold(9, !shift)),
         (true, Key::G) if !shift && !m.alt => Some(A::GoTo),
+        (true, Key::P) if !shift && !m.alt => Some(A::QuickOpen),
+        (true, Key::F2) if !shift => Some(A::Cmd(C::ToggleBookmark)),
+        (false, Key::F2) => Some(A::Cmd(if shift {
+            C::PreviousBookmark
+        } else {
+            C::NextBookmark
+        })),
         (true, Key::Space) => Some(A::Complete(if m.alt {
             2
         } else if shift {
@@ -323,6 +337,10 @@ pub fn key_label(a: Action) -> Option<&'static str> {
             C::BlockComment => "Ctrl+Shift+Q",
             C::LineComment => "Ctrl+K",
             C::LineUncomment => "Ctrl+Shift+K",
+            C::ToggleBookmark => "Ctrl+F2",
+            C::NextBookmark => "F2",
+            C::PreviousBookmark => "Shift+F2",
+            C::HideLines => "Alt+H",
             // The rest are in the palette and the menus only.
             _ => return None,
         },
@@ -393,6 +411,9 @@ pub fn key_label(a: Action) -> Option<&'static str> {
             "Alt+Shift+8",
         ][usize::from(n.clamp(1, 8)) - 1],
         A::GoTo => "Ctrl+G",
+        A::Navigate(true) => "Alt+Left",
+        A::Navigate(false) => "Alt+Right",
+        A::QuickOpen => "Ctrl+P",
         A::Complete(0) => "Ctrl+Space",
         A::Complete(1) => "Ctrl+Enter",
         A::Complete(2) => "Ctrl+Alt+Space",
@@ -499,6 +520,9 @@ mod tests {
             Action::Fold(9, true),
             Action::Fold(9, false),
             Action::GoTo,
+            Action::Navigate(true),
+            Action::Navigate(false),
+            Action::QuickOpen,
             Action::Complete(0),
             Action::Complete(1),
             Action::Complete(2),

@@ -1897,9 +1897,9 @@ fn token_styles_jump_copy_and_clear() {
         Some("red\r\ngreen\r\nred\r\nred")
     );
     h.state_mut().style(StyleCmd::Clear(1));
-    assert_eq!(h.state().tab().file.doc.markers().len(), 1);
+    assert_eq!(marks_and_styles(&h), 1);
     h.state_mut().style(StyleCmd::Clear(0));
-    assert!(h.state().tab().file.doc.markers().is_empty());
+    assert_eq!(marks_and_styles(&h), 0);
 }
 
 #[test]
@@ -1970,11 +1970,7 @@ fn the_find_panel_has_notepad_plus_plus_alt_mnemonics() {
     h.state_mut().find.find = "y".into();
     h.run();
     key(&mut h, egui::Key::M, egui::Modifiers::ALT);
-    assert_eq!(
-        h.state().tab().file.doc.markers().len(),
-        2,
-        "Alt+M: mark all"
-    );
+    assert_eq!(marks_and_styles(&h), 2, "Alt+M: mark all");
     // The options and modes.
     let f0 = h.state().find.clone();
     for k in [egui::Key::P, egui::Key::B, egui::Key::I, egui::Key::D] {
@@ -3038,6 +3034,19 @@ fn user_languages_load_import_from_notepad_plus_plus_and_export() {
 
 // ---- Step 99: folding, the Function List, Go to, matching brackets ----------------------------
 
+/// The find marks and token styles of the active document (not bookmarks, folds, the change
+/// history …).
+fn marks_and_styles(h: &Harness<'static, JarakApp>) -> usize {
+    h.state()
+        .tab()
+        .file
+        .doc
+        .markers()
+        .iter()
+        .filter(|m| m.kind < jarak_core::document::BOOKMARK)
+        .count()
+}
+
 fn drawn_lines(h: &Harness<'static, JarakApp>) -> Vec<usize> {
     let t = h.state().tab();
     t.view.drawn_lines(&t.file.doc)
@@ -3175,6 +3184,16 @@ fn go_to_line_and_matching_brackets_open_folds() {
     assert!(h.state().goto.is_none());
     assert_eq!(caret_line(&h), 3);
     assert!(drawn_lines(&h).contains(&3), "the fold opened");
+    // From the palette: its Enter is not the dialog's.
+    palette_run(&mut h, "Go to line");
+    h.run();
+    assert!(h.state().goto.is_some(), "open");
+    assert!(
+        h.query_by_label_contains("A number").is_none(),
+        "nothing submitted"
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    h.run();
     // Not a number: it says so and stays open; Esc closes it.
     key(&mut h, egui::Key::G, egui::Modifiers::CTRL);
     h.run();
@@ -3762,5 +3781,215 @@ fn typing_before_the_first_structure_starts_one_worker_at_a_time() {
         assert!(t.elapsed().as_secs() < 20, "the structure arrives");
     }
     assert!(h.state().tab().outline.folds.len() >= 2999);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+// ---- Step 101: bookmarks, the change history, hidden lines, the map, history, quick open ------
+
+#[test]
+fn bookmark_keys_and_the_bookmarked_lines_with_the_clipboard() {
+    use jarak_gui::clipboard::Clipboard as _;
+    let d = temp("bookmarks");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "one\ntwo\nthree\nfour\n").unwrap();
+    let fs = f.display().to_string();
+    let (mut h, clip) = app_clip(&[fs.as_str()], Arc::default());
+    // Ctrl+F2 on lines 2 and 4, F2 / Shift+F2 between them.
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::F2, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::F2, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().file.doc.bookmarked_lines(), vec![1, 3]);
+    h.run();
+    assert_eq!(
+        h.state().tab().view.bookmarks,
+        vec![1, 3],
+        "drawn in the margin"
+    );
+    key(&mut h, egui::Key::F2, egui::Modifiers::NONE);
+    assert_eq!(caret_line(&h), 1, "wrapped to the first");
+    key(&mut h, egui::Key::F2, egui::Modifiers::SHIFT);
+    assert_eq!(caret_line(&h), 3);
+    // Copy, then paste into the bookmarked lines; cut them.
+    palette_run(&mut h, "Copy the bookmarked lines");
+    assert_eq!(clip.get_text().as_deref(), Some("two\nfour\n"));
+    clip.set_text("2\n4");
+    palette_run(&mut h, "Paste to (replace) the bookmarked lines");
+    assert_eq!(doc_text(&h), "one\n2\nthree\n4\n");
+    palette_run(&mut h, "Cut the bookmarked lines");
+    assert_eq!(doc_text(&h), "one\nthree\n");
+    assert_eq!(clip.get_text().as_deref(), Some("2\n4\n"));
+    // Bookmarks are not edits: a read-only document takes them.
+    h.state_mut().tab_mut().file.read_only = true;
+    key(&mut h, egui::Key::F2, egui::Modifiers::CTRL);
+    assert!(!h.state().tab().file.doc.bookmarked_lines().is_empty());
+    palette_run(&mut h, "Remove the bookmarked lines");
+    assert_eq!(
+        doc_text(&h),
+        "one\nthree\n",
+        "but removing lines is refused"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_change_history_shows_in_the_margin_and_hidden_lines_come_back() {
+    let (mut h, d) = open_doc("changes", "a.txt", "a\nb\nc\nd\ne\n");
+    h.run();
+    assert!(h.state().tab().view.changes.is_empty());
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    text(&mut h, "x");
+    h.run();
+    use jarak_core::document::navigate::Change;
+    assert_eq!(h.state().tab().view.changes, vec![(1, Change::Modified)]);
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    h.run();
+    assert_eq!(
+        h.state().tab().view.changes,
+        vec![(1, Change::Saved)],
+        "saved"
+    );
+    // Next change from the top.
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    palette_run(&mut h, "Go to the next change");
+    assert_eq!(caret_line(&h), 1);
+    // Alt+H hides the selected lines; the line above shows a mark; a click on it shows them.
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::SHIFT);
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::SHIFT);
+    // (ending at the start of line 5, which is not taken)
+    key(&mut h, egui::Key::H, egui::Modifiers::ALT);
+    h.run();
+    assert_eq!(drawn_lines(&h), vec![0, 1, 4, 5], "lines 3 and 4 hidden");
+    assert_eq!(caret_line(&h), 1);
+    let p = {
+        let t = h.state().tab();
+        t.view.fold_margin_of(&t.file.doc, 1).expect("drawn")
+    };
+    click_at(&mut h, p, egui::Modifiers::NONE);
+    h.run();
+    assert_eq!(drawn_lines(&h).len(), 6, "shown again");
+    // Hiding does not change the text.
+    assert_eq!(doc_text(&h), "a\nxb\nc\nd\ne\n");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_document_map_scrolls_and_the_navigation_history_goes_back_and_forward() {
+    let text: String = (0..2000).map(|i| format!("line {i}\n")).collect();
+    let (mut h, d) = open_doc("docmap", "a.txt", &text);
+    palette_run(&mut h, "Document Map");
+    h.run();
+    assert!(h.state().doc_map);
+    let map = h.get_by_label("Document map");
+    let r = map.rect();
+    // A click near the map's bottom scrolls there.
+    click_at(
+        &mut h,
+        egui::pos2(r.center().x, r.bottom() - 4.0),
+        egui::Modifiers::NONE,
+    );
+    h.run();
+    assert!(
+        h.state().tab().view.top_line > 1500,
+        "{}",
+        h.state().tab().view.top_line
+    );
+    // Ctrl+End is a jump: Alt+Left comes back, Alt+Right goes there again.
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    h.run();
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    h.run();
+    assert_eq!(caret_line(&h), 2000);
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::ALT);
+    h.run();
+    assert_eq!(caret_line(&h), 0, "back");
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::ALT);
+    h.run();
+    assert_eq!(caret_line(&h), 2000, "forward");
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::ALT);
+    assert!(h.query_by_label_contains("Nothing to go forward").is_some());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn quick_open_finds_open_documents_and_the_workspaces_files() {
+    let d = temp("quickopen");
+    std::fs::create_dir_all(d.join("src")).unwrap();
+    std::fs::create_dir_all(d.join("target")).unwrap();
+    std::fs::write(d.join("src").join("main.rs"), "fn main() {}\n").unwrap();
+    std::fs::write(d.join("README.md"), "# r\n").unwrap();
+    std::fs::write(d.join("target").join("skip.rs"), "").unwrap();
+    let f = d.join("notes.txt");
+    std::fs::write(&f, "n\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.state_mut().open_workspace(&d);
+    h.run();
+    key(&mut h, egui::Key::P, egui::Modifiers::CTRL);
+    // The walk runs on a worker: wait for it.
+    let t = std::time::Instant::now();
+    while h.query_by_label("main.rs").is_none() {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        h.run();
+        assert!(t.elapsed().as_secs() < 10, "the files arrive");
+    }
+    assert!(h.query_by_label("notes.txt").is_some(), "the open document");
+    assert!(h.query_by_label("skip.rs").is_none(), "target/ is skipped");
+    // A fuzzy query and Enter open the file.
+    text(&mut h, "mnrs");
+    assert!(h.query_by_label("README.md").is_none());
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    h.run();
+    assert!(h.state().quick.is_none());
+    assert_eq!(h.state().tab().file.title(), "main.rs");
+    assert_eq!(doc_text(&h), "fn main() {}\n");
+    // The Summary of it.
+    palette_run(&mut h, "Summary");
+    h.run();
+    assert!(h.query_by_label("Words").is_some());
+    assert!(h.query_by_label("13").is_some(), "the bytes of the file");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    h.run();
+    assert!(!h.state().summary_open);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 101: the map, quick open and the Summary pass the UI audit's rules (headless).
+#[test]
+fn the_map_quick_open_and_the_summary_pass_the_ui_audit_rules() {
+    let (mut h, d) = open_doc("audit101", "a.rs", RUST);
+    palette_run(&mut h, "Document Map");
+    for screen in ["docmap", "quick-open", "summary"] {
+        match screen {
+            "quick-open" => key(&mut h, egui::Key::P, egui::Modifiers::CTRL),
+            "summary" => {
+                key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+                palette_run(&mut h, "Summary");
+            }
+            _ => {}
+        }
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{screen}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        if screen == "summary" {
+            assert!(
+                r.components
+                    .iter()
+                    .any(|c| c.id.starts_with("summary:Words"))
+            );
+        }
+    }
     let _ = std::fs::remove_dir_all(&d);
 }
