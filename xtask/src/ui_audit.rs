@@ -185,6 +185,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "distraction-free",
                 "post-it",
                 "tab-color",
+                // Step 111: About Jarak, the Open with offer.
+                "about",
+                "offer-open-with",
                 // Step 105: every section of the Settings window (its own window).
                 "settings-general",
                 "settings-editor",

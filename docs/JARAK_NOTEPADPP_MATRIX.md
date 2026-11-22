@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported; Step 104 `REL-02`…`REL-05`, `JRK-16`, `VIEW-17` supported, `SET-14` partial; Step 105 `SET-01`, `SET-04`, `SET-08`, `SET-15`, `SET-16`, `SET-20`, `SET-23`, `SET-26` supported, `SET-02`, `SET-03`, `SET-05`, `SET-06`, `SET-10`, `SET-21`, `SET-22` partial; Step 106 `FILE-20`, `SET-12` supported, `FILE-19`, `PLUG-07` partial; Step 107 `HELP-03`, `HELP-04`, `HELP-05`, `HELP-10`, `JRK-14` supported, `JRK-15` partial; Step 108 `PLUG-08`, `PLUG-09` supported; Step 109 `SET-18`, `REL-06` supported; Step 110 every row reviewed — 20 rows supported, 10 partial with their gaps named, `SRCH-17`, `VIEW-16`, `SET-24` not intended, only `SET-09` and `HELP-11` (Step 111) planned — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported; Step 104 `REL-02`…`REL-05`, `JRK-16`, `VIEW-17` supported, `SET-14` partial; Step 105 `SET-01`, `SET-04`, `SET-08`, `SET-15`, `SET-16`, `SET-20`, `SET-23`, `SET-26` supported, `SET-02`, `SET-03`, `SET-05`, `SET-06`, `SET-10`, `SET-21`, `SET-22` partial; Step 106 `FILE-20`, `SET-12` supported, `FILE-19`, `PLUG-07` partial; Step 107 `HELP-03`, `HELP-04`, `HELP-05`, `HELP-10`, `JRK-14` supported, `JRK-15` partial; Step 108 `PLUG-08`, `PLUG-09` supported; Step 109 `SET-18`, `REL-06` supported; Step 110 every row reviewed — 20 rows supported, 10 partial with their gaps named, `SRCH-17`, `VIEW-16`, `SET-24` not intended, only `SET-09` and `HELP-11` (Step 111) planned; Step 111 `HELP-11` supported, `SET-09` partial (Explorer's real Open with list not yet seen) — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -345,7 +345,7 @@ palette, the headless CLI) follow in §2.
 | SET-06 | Preferences: New document (format, encoding, default language) | supported | `JARAK-FR-130` | 105 | T | Step 105: new documents' encoding and line ending (`tab_width_spaces_and_new_documents_follow_the_settings`); Step 110: their language (`new_language`, `new_language_open_folder_find_fill_and_backup_settings_apply`) |
 | SET-07 | Preferences: Default directory | supported | `JARAK-FR-130` | 105 | T | Step 110: the Open dialog starts in the current document's folder, Windows' last folder or a set folder (`open_folder`, `open_folder_path`; a folder that is gone falls back to the document's) (`new_language_open_folder_find_fill_and_backup_settings_apply`) |
 | SET-08 | Preferences: Recent files history size | supported | `JARAK-FR-130` | 105 | T | Step 105: *Recent files kept* (0–50) |
-| SET-09 | Preferences: File association (explicit, reversible) | planned | `JARAK-FR-130` | 111 | M | — |
+| SET-09 | Preferences: File association (explicit, reversible) | partial | `JARAK-FR-130` | 111 | M | Step 111: Help → *Offer Jarak in "Open with"…* and `jarak associate add/remove` — per user, one ProgID and an `OpenWithProgids` entry per checked extension, never a default program, programs and scripts refused, taken back exactly (`offering_jarak_in_open_with_and_taking_it_back`, core `removing_takes_back_exactly_what_was_added`, `the_real_registry_offer_and_removal_under_a_test_key` on the real registry under a private test key, CLI `associate_offers_refuses_and_takes_back`, e2e `step111_jarak_release` dry runs); partial: Explorer's real *Open with* list not yet checked on the desktop (it would change the maintainer's own account) |
 | SET-10 | Preferences: Language (tab size per language, replace by space) | supported | `JARAK-FR-130` | 105 | T | Step 105: tab width and *Tab inserts spaces* for every document (`tab_inserts_spaces_to_the_next_stop_when_set`); Step 110: a language's own tab width and spaces (`language_tabs`, `a_language_has_its_own_tab_width`) |
 | SET-11 | Preferences: Highlighting (smart highlight, mark-all options) | supported | `JARAK-FR-130` | 105 | T | Step 110: Settings → Editor → Highlighting — smart highlighting on/off, match case, whole words (`smart_highlighting_word_characters_and_the_length_summary`); Mark All keeps its own case and whole-word options on the find panel's Mark page (`mark_all_bookmarks_lines_clears_and_copies_marks`) |
 | SET-12 | Preferences: Print (margins, header, footer, colour mode) | supported | `JARAK-FR-140` | 106 | T | Step 106: Settings → Files → Printing — header and footer (left, centre and right parts with `{file}`, `{path}`, `{page}`, `{pages}`, `{date}`, `{time}`), line numbers, colour or black on white, text size, four margins; live for the next job (`the_print_settings_apply_to_the_next_job`); header/footer fonts are not settable |
@@ -430,7 +430,7 @@ palette, the headless CLI) follow in §2.
 | HELP-08 | Command line: -qt / -qf ghost typing | not intended | — | 107 | D | — |
 | HELP-09 | Built-in updater (WinGUp) | not intended | — | 111 | D | — |
 | HELP-10 | Debug info (versions, paths) | supported | `JARAK-FR-150` | 107 | T | Step 107: `jarak debug-info` (version, programs, folders and files, the Windows build, printers; never contents) and Window → Copy debug info (`copy_debug_info_names_the_version_and_windows`, CLI `debug_info_names_the_version_and_windows`) |
-| HELP-11 | Help / about / user manual link | planned | `JARAK-FR-171` | 111 | D | — |
+| HELP-11 | Help / about / user manual link | supported | `JARAK-FR-171` | 111 | D | Step 111: Help → *User guide* opens `docs\JARAK_GUIDE.md` from beside the program (the package carries it) read-only in the preview; *About Jarak* (version, program, folders, licence, privacy, Copy debug info) (`the_help_menu_opens_the_guide_and_about`, `the_help_dialogs_pass_the_ui_audit_rules`, e2e `step111_jarak_release` checks the installed `docs\`); [JARAK_GUIDE](JARAK_GUIDE.md) |
 
 ### REL — Sessions, backup and file status (sources U, P)
 
@@ -481,14 +481,14 @@ palette, the headless CLI) follow in §2.
 
 ## 3. Counts
 
-After Step 110 (the per-area counts are in [JARAK_PARITY_REPORT](JARAK_PARITY_REPORT.md)):
+After Step 111 (the per-area counts are in [JARAK_PARITY_REPORT](JARAK_PARITY_REPORT.md)):
 
 | | Notepad++ built-in features | Jarak additions |
 | --- | --- | --- |
 | Rows | 285 | 16 |
-| … `supported` | 252 | 15 |
-| … `partial` | 20 | 1 |
-| … `planned` | 2 | 0 |
+| … `supported` | 253 | 15 |
+| … `partial` | 21 | 1 |
+| … `planned` | 0 | 0 |
 | … `not intended` | 11 | 0 |
 
 ## 4. Not intended, and why

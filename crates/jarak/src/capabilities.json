@@ -2,11 +2,11 @@
   "schema": "kim.capabilities",
   "schema_version": 1,
   "tool": "jarak",
-  "version": "0.0.32",
+  "version": "0.0.33",
   "cli_contract": 1,
   "json_schema_version": 1,
-  "implementation": "placeholder",
-  "summary": "Pre-alpha (Step 91): the headless CLI (file inspection, image assets of Markdown documents) and the editor window (editing, files, Markdown preview, Ctrl+V images)",
+  "implementation": "implemented",
+  "summary": "Jarak, the fourth Kim tool (Step 111): a native text editor for plain text, code and Markdown. jarak.exe is the headless CLI: file inspection, find and replace with an undo journal, new, convert, export (HTML, RTF, a published folder, PDF), print, Markdown image assets, sessions, settings, shortcuts, extensions, the Open with offer and Kim interop; jarak-gui.exe is the editor window.",
   "commands": [
     { "name": "capabilities", "usage": "jarak capabilities [--json]", "summary": "This document", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
     { "name": "version", "usage": "jarak version [--json]", "summary": "Jarak's version and the contract and schema versions it speaks", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
@@ -43,7 +43,10 @@
     { "name": "hotkeys.set", "usage": "jarak hotkeys set <action> <keys>... [--replace] [--dry-run] [--json]", "summary": "Gives a command these keys in hotkeys.json (checked by the hotkey contract: syntax, reserved keys, conflicts — another of the user's bindings only with --replace); written atomically", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
     { "name": "hotkeys.disable", "usage": "jarak hotkeys disable <action> [--dry-run] [--json]", "summary": "The command gets no keys (hotkeys.json)", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
     { "name": "hotkeys.reset", "usage": "jarak hotkeys reset <action> [--dry-run] [--json]", "summary": "The command's default keys again (its override leaves hotkeys.json)", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
-    { "name": "hotkeys.check", "usage": "jarak hotkeys check [--json]", "summary": "Conflicts of Jarak's shortcuts with each other and with keys Windows, Kim and the input method reserve; changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false }
+    { "name": "hotkeys.check", "usage": "jarak hotkeys check [--json]", "summary": "Conflicts of Jarak's shortcuts with each other and with keys Windows, Kim and the input method reserve; changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
+    { "name": "associate.list", "usage": "jarak associate list [--json]", "summary": "Whether Jarak is in Windows' Open with list, for which extensions; changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
+    { "name": "associate.add", "usage": "jarak associate add <ext>... [--dry-run] [--json]", "summary": "Offers Jarak in Windows' Open with list for these extensions (per user); never changes a default program", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
+    { "name": "associate.remove", "usage": "jarak associate remove [--dry-run] [--json]", "summary": "Takes back exactly what `associate add` added; other programs' entries stay", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false }
   ],
   "provides": [
     { "id": "document.info", "version": "1.0.0", "summary": "A text file's encoding, byte-order mark, line endings, lines, language and whether Jarak opens it read-only (params: path)", "effect": "read", "network": false, "opens_window": false },

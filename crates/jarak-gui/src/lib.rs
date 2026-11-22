@@ -22,6 +22,7 @@ pub mod find;
 pub mod gaps;
 pub mod handoff;
 pub mod hashdlg;
+pub mod help;
 pub mod images;
 pub mod keys;
 pub mod languages;
@@ -594,6 +595,14 @@ pub struct JarakApp {
     /// Step 110: what Jarak copied, cut or pasted (EDIT-17, in memory) and the open small dialog.
     pub clip_history: Vec<String>,
     pub gap_dialog: Option<gaps::GapDialog>,
+    /// Step 111: the Help dialog; where Windows' Open with entries go (the real per-user classes
+    /// only when `main` gives them — tests give memory), the record of what was offered, the
+    /// program offered, and the folder the guide is looked for in (tests).
+    pub help_dialog: Option<help::HelpDialog>,
+    pub assoc: Option<Box<dyn jarak_core::assoc::Store>>,
+    pub assoc_record: Option<PathBuf>,
+    pub assoc_program: Option<PathBuf>,
+    pub guide_dir: Option<PathBuf>,
     /// Step 105: the settings applied to the window, the Settings window, and what was applied
     /// (the language is fixed for the run when `--lang` named it, or by a test).
     pub prefs: prefs::Prefs,
@@ -660,6 +669,19 @@ impl JarakApp {
     /// Step 106: where print jobs go (the Windows spooler in the program).
     pub fn with_printers(mut self, p: Arc<dyn jarak_core::print::Printers>) -> JarakApp {
         self.printers = p;
+        self
+    }
+
+    /// Step 111: where the Open with offer writes (`main`: the user's classes) and its record.
+    pub fn with_associations(
+        mut self,
+        store: Box<dyn jarak_core::assoc::Store>,
+        record: PathBuf,
+        program: Option<PathBuf>,
+    ) -> JarakApp {
+        self.assoc = Some(store);
+        self.assoc_record = Some(record);
+        self.assoc_program = program;
         self
     }
 
@@ -1076,6 +1098,7 @@ impl JarakApp {
             palette::Run::Export(k) => self.export_tool(k),
             palette::Run::Extension(k) => self.run_extension(k),
             palette::Run::Gap(k) => self.gap_tool(k),
+            palette::Run::Help(k) => self.help_tool(k),
             palette::Run::FileOp(k) => self.file_op(k),
             palette::Run::TabColor(k) => self.color_tab((k < 5).then_some(k)),
             palette::Run::DebugInfo => {
@@ -1799,6 +1822,11 @@ impl JarakApp {
             modes_applied: modes::Modes::default(),
             clip_history: Vec::new(),
             gap_dialog: None,
+            help_dialog: None,
+            assoc: None,
+            assoc_record: None,
+            assoc_program: None,
+            guide_dir: None,
             prefs: prefs::Prefs::default(),
             settings_win: None,
             lang_fixed: true,
@@ -1890,6 +1918,9 @@ of text",
                 self.gap_tool(1);
             }
             "char-range" => self.gap_tool(4),
+            // Step 111: About and the Open with offer (the dialog writes nothing until Offer).
+            "about" => self.help_tool(1),
+            "offer-open-with" => self.help_tool(2),
             // The layout only: the audit's window is never made full screen or frameless
             // (no viewport command is sent).
             "distraction-free" | "post-it" => {
@@ -3376,6 +3407,7 @@ fn main() {
         self.print_frame(&ctx);
         self.extension_question_ui(&ctx, &c);
         self.gap_dialog_ui(&ctx, &c);
+        self.help_dialog_ui(&ctx);
         self.extension_frame(&ctx);
         // Step 109: a large file never wraps (opened with the wrap setting on, or grown).
         for i in 0..self.tabs.len() {

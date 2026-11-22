@@ -7090,3 +7090,158 @@ fn a_language_has_its_own_tab_width() {
     assert_eq!(tab(&h, "b.txt"), (4, false), "the general settings");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 111: the Help menu, the Open with offer (#130) ---------------------------------------
+
+/// HELP-11 (`JARAK-FR-171`): Help → User guide opens the guide beside the program read-only in the
+/// preview (the file unchanged); About shows the version and copies the debug information; a
+/// missing guide is said.
+#[test]
+fn the_help_menu_opens_the_guide_and_about() {
+    let d = temp("help");
+    std::fs::create_dir_all(d.join("docs")).unwrap();
+    let guide = d.join("docs").join("JARAK_GUIDE.md");
+    let body = "# Jarak — user guide\n\nText.\n";
+    std::fs::write(&guide, body).unwrap();
+    let (mut h, clip) = app_clip(&[], Arc::default());
+    h.state_mut().guide_dir = Some(d.clone());
+    palette_run(&mut h, "User guide");
+    {
+        let t = h.state().tab();
+        assert_eq!(
+            t.file.path.as_deref(),
+            Some(std::path::absolute(&guide).unwrap().as_path())
+        );
+        assert!(t.file.read_only, "the guide is read-only");
+        assert_eq!(t.mode, jarak_gui::Mode::Preview);
+    }
+    h.state_mut().tab_mut().set_mode(jarak_gui::Mode::Source);
+    h.run();
+    text(&mut h, "x");
+    assert_eq!(doc_text(&h), body, "typing refused");
+    assert_eq!(std::fs::read_to_string(&guide).unwrap(), body);
+    palette_run(&mut h, "About Jarak");
+    assert!(h.state().help_dialog.is_some());
+    h.get_by_label("Copy debug info").click();
+    h.run();
+    assert!(
+        clip.text
+            .lock()
+            .unwrap()
+            .as_deref()
+            .is_some_and(|t| t.starts_with("Jarak 0.0."))
+    );
+    h.get_by_label("Close").click();
+    h.run();
+    assert!(h.state().help_dialog.is_none());
+    h.state_mut().guide_dir = Some(d.join("nowhere"));
+    palette_run(&mut h, "User guide");
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("not beside this program"))
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// SET-09 (`JARAK-FR-130`, `KIM-SEC-001`): Help → Offer Jarak in "Open with"… writes Jarak's
+/// entries for the checked extensions only (a memory store here — tests never touch the real
+/// registry) and never a default; Remove takes back exactly that.
+#[test]
+fn offering_jarak_in_open_with_and_taking_it_back() {
+    use jarak_core::assoc::{PROG_ID, SharedMemory, Store};
+    let d = temp("offer");
+    let shared = SharedMemory::default();
+    let record = d.join("associations.json");
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a.with_associations(
+        Box::new(shared.clone()),
+        record.clone(),
+        Some(PathBuf::from(r"C:\x\jarak-gui.exe")),
+    ));
+    palette_run(&mut h, "Remove Jarak from");
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("nothing to remove"))
+    );
+    palette_run(&mut h, "Offer Jarak in");
+    assert!(matches!(
+        h.state().help_dialog,
+        Some(jarak_gui::help::HelpDialog::Offer(_))
+    ));
+    h.get_by_label(".log").click();
+    h.run();
+    h.get_by_label("Offer").click();
+    h.run();
+    for (ext, on) in [
+        ("md", true),
+        ("txt", true),
+        ("markdown", true),
+        ("log", false),
+        ("json", false),
+    ] {
+        assert_eq!(
+            shared
+                .get(&format!(".{ext}\\OpenWithProgids"), PROG_ID)
+                .unwrap()
+                .is_some(),
+            on,
+            ".{ext}"
+        );
+    }
+    assert_eq!(shared.get(".md", "").unwrap(), None, "no default is set");
+    assert!(record.is_file());
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("Default apps"))
+    );
+    palette_run(&mut h, "Remove Jarak from");
+    assert!(
+        shared.0.lock().unwrap().keys.is_empty(),
+        "everything Jarak added is gone"
+    );
+    assert!(!record.exists());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 111 (`JARAK-NFR-007`): About and the Open with offer pass the UI audit rules.
+#[test]
+fn the_help_dialogs_pass_the_ui_audit_rules() {
+    for screen in ["about", "offer-open-with"] {
+        let (a, _) = app_with(&[], Arc::default());
+        let mut h = harness(a.with_associations(
+            Box::new(jarak_core::assoc::SharedMemory::default()),
+            temp("audit111").join("associations.json"),
+            None,
+        ));
+        h.state_mut().prepare_audit(screen);
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{screen}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        let t: Vec<String> = r
+            .components
+            .iter()
+            .filter_map(|c| c.text.as_ref().map(|t| t.content.clone()))
+            .collect();
+        let want = if screen == "about" {
+            "Copy debug info"
+        } else {
+            "Offer"
+        };
+        assert!(t.iter().any(|x| x == want), "{screen}: {t:?}");
+    }
+}

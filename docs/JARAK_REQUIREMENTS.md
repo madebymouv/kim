@@ -76,7 +76,10 @@ the character panel and clipboard history of `JARAK-FR-087`, more languages for 
 drag and drop of text (`JARAK-FR-032`), the text's context menu (`JARAK-FR-031`), the window
 position options of `JARAK-FR-150` and the remaining preferences of `JARAK-FR-130`, and reviewed
 every parity row ([JARAK_PARITY_REPORT](JARAK_PARITY_REPORT.md), [JARAK_ARCHITECTURE
-§32](JARAK_ARCHITECTURE.md));
+§32](JARAK_ARCHITECTURE.md)); Step 111 implements `JARAK-FR-171` (Help: the user guide carried by the
+package, About) and the file-association offer of `JARAK-FR-130` (Open with, per user, reversible;
+Explorer's real list still to be seen), packaged and installed through Kim
+([JARAK_GUIDE](JARAK_GUIDE.md), [JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

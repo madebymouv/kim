@@ -85,6 +85,8 @@ pub enum Run {
     Gap(u8),
     FileOp(u8),
     TabColor(u8),
+    /// Step 111: `JarakApp::help_tool` 0–3.
+    Help(u8),
 }
 
 /// The menu an entry belongs to.
@@ -101,10 +103,12 @@ pub enum Menu {
     Language,
     /// Step 103.
     Encoding,
+    /// Step 111: the user guide, About, the Open with offer.
+    Help,
 }
 
 impl Menu {
-    pub const ALL: [Menu; 10] = [
+    pub const ALL: [Menu; 11] = [
         Menu::File,
         Menu::Edit,
         Menu::Search,
@@ -115,6 +119,7 @@ impl Menu {
         Menu::Markdown,
         Menu::Language,
         Menu::Encoding,
+        Menu::Help,
     ];
 
     /// The menu's name (English, Korean).
@@ -130,6 +135,7 @@ impl Menu {
             Menu::Markdown => ("Markdown", "Markdown"),
             Menu::Language => ("Language", "언어"),
             Menu::Encoding => ("Encoding", "인코딩"),
+            Menu::Help => ("Help", "도움말"),
         }
     }
 }
@@ -1660,7 +1666,36 @@ pub fn entries() -> Vec<Entry> {
             "Copy debug info (versions, Windows, files)",
             "디버그 정보 복사(버전, Windows, 파일)",
             Run::DebugInfo,
-            M::Window,
+            M::Help,
+        ),
+        // Step 111: the Help menu.
+        run(
+            "help.guide",
+            "User guide",
+            "사용자 안내서",
+            Run::Help(0),
+            M::Help,
+        ),
+        run(
+            "help.about",
+            "About Jarak",
+            "자락 정보",
+            Run::Help(1),
+            M::Help,
+        ),
+        run(
+            "help.offer-open-with",
+            "Offer Jarak in \"Open with\"…",
+            "연결 프로그램 목록에 자락 넣기…",
+            Run::Help(2),
+            M::Help,
+        ),
+        run(
+            "help.remove-open-with",
+            "Remove Jarak from \"Open with\"",
+            "연결 프로그램 목록에서 자락 빼기",
+            Run::Help(3),
+            M::Help,
         ),
         // Step 110: the remaining built-ins.
         run(

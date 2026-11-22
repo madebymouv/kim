@@ -1,20 +1,20 @@
 # Jarak — Notepad++ parity report
 
-Status: **current** (Step 110, 2026-11-22) · Source: [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
+Status: **current** (Step 111, 2026-11-22) · Source: [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)
 (this report is counted from it) · Reference: Notepad++ 8.9.x built-in features · Requirements:
 [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) · Owner: mouv
 
 Step 110 walked every row of the parity matrix. Each row now has a final status with its own
 evidence: a named test, a command, an e2e scenario or a real-window check — never "a similar
 feature exists". `partial` rows name exactly what is missing; `not intended` rows give the
-reason; the two `planned` rows belong to Step 111 (packaging).
+reason. Step 111 (packaging) settled the last two: `HELP-11` supported, `SET-09` partial.
 
 ## Summary
 
-- **285 Notepad++ built-in features**: 252 supported, 20 partial,
-  2 planned (Step 111), 11 not intended.
-- Of the 274 features Jarak means to have, **92.0 %** are supported and
-  **99.3 %** are there at least in part.
+- **285 Notepad++ built-in features**: 253 supported, 21 partial,
+  0 planned, 11 not intended.
+- Of the 274 features Jarak means to have, **92.3 %** are supported and
+  **100.0 %** are there at least in part.
 - **16 Jarak additions** (Markdown preview, pasted images, Vim, Kim interop, …):
   15 supported, 1 partial.
 - Notepad++ plugin DLLs are **not** loaded and Jarak claims no binary compatibility with them
@@ -41,16 +41,16 @@ reason; the two `planned` rows belong to Step 111 (packaging).
 | **FOLD** View → folding | 6 | 6 | 0 | 0 | 0 |
 | **ENC** Encoding menu | 16 | 16 | 0 | 0 | 0 |
 | **LANG** Language menu and syntax highlighting | 11 | 10 | 1 | 0 | 0 |
-| **SET** Settings menu | 26 | 16 | 7 | 1 | 2 |
+| **SET** Settings menu | 26 | 16 | 8 | 0 | 2 |
 | **TOOL** Tools menu | 4 | 4 | 0 | 0 | 0 |
 | **MAC** Macro menu | 7 | 7 | 0 | 0 | 0 |
 | **RUN** Run menu | 5 | 5 | 0 | 0 | 0 |
 | **PLUG** Plugins menu and bundled plugin functions | 9 | 6 | 1 | 0 | 2 |
 | **WIN** Window menu | 2 | 2 | 0 | 0 | 0 |
-| **HELP** ? menu and command line | 11 | 7 | 1 | 1 | 2 |
+| **HELP** ? menu and command line | 11 | 8 | 1 | 0 | 2 |
 | **REL** Sessions, backup and file status | 6 | 6 | 0 | 0 | 0 |
 | **UI** General user interface | 10 | 9 | 0 | 0 | 1 |
-| **All Notepad++ built-in features** | **285** | **252** | **20** | **2** | **11** |
+| **All Notepad++ built-in features** | **285** | **253** | **21** | **0** | **11** |
 | **JRK** Jarak additions (not Notepad++ features) | 16 | 15 | 1 | 0 | 0 |
 
 ## What `partial` means here, row by row
@@ -74,6 +74,7 @@ name a part Notepad++ has and Jarak does not.
 - `SET-02` Preferences: Tab bar options (close button, double-click to close, multi-line) (Step 105): Step 105: close buttons on every tab or only the active / hovered one, double-click closes a tab; multi-line tab bars are not implemented
 - `SET-03` Preferences: Editing (caret, current line, line wrap, multi-editing, scrolling beyond last line) (Step 105): Step 105: current-line highlight, a blinking caret (off by default), word wrap, multi-editing (Ctrl+click), virtual space; scrolling beyond the last line is not implemented
 - `SET-05` Preferences: Margins, border, edge (line numbers, bookmark margin, edge column) (Step 105): Step 105: line numbers on/off, edge lines at columns; the bookmark margin cannot be hidden
+- `SET-09` Preferences: File association (explicit, reversible) (Step 111): Step 111: Help → *Offer Jarak in "Open with"…* and `jarak associate add/remove` — per user, one ProgID and an `OpenWithProgids` entry per checked extension, never a default program, programs and scripts refused, taken back exactly (`offering_jarak_in_open_with_and_taking_it_back`, core `removing_takes_back_exactly_what_was_added`, `the_real_registry_offer_and_removal_under_a_test_key` on the real registry under a private test key, CLI `associate_offers_refuses_and_takes_back`, e2e `step111_jarak_release` dry runs); partial: Explorer's real *Open with* list not yet checked on the desktop (it would change the maintainer's own account)
 - `SET-13` Preferences: Searching (minimum size, fill find field, confirm replace all) (Step 105): Step 110: *Selected text fills the find field* (`find_fill_selection`, `new_language_open_folder_find_fill_and_backup_settings_apply`); partial: no minimum size for *in selection* and no Replace All confirmation setting (Replace All is one undo step; Replace in Files always previews, Step 95)
 - `SET-17` Preferences: Delimiter (word characters, double-click delimiters) (Step 105): Step 110: further word characters for double-click, Ctrl+arrows and select word (`word_chars`; `further_word_characters_join_words`, `smart_highlighting_word_characters_and_the_length_summary`); partial: Notepad++'s Ctrl+double-click delimiter selection is not implemented
 - `SET-21` Preferences: MISC (file status auto-detection, document peeker, smooth font, clickable links) (Step 105): Step 105: file status auto-detection (Step 104) in Settings → Files; document peeker, smooth font and clickable-link options are not implemented
@@ -81,11 +82,6 @@ name a part Notepad++ has and Jarak does not.
 - `PLUG-07` NppExport: export to RTF / HTML, copy as RTF / HTML (Step 106): Step 106: built in — File → Export as HTML / RTF (highlighted text; Markdown rendered with embedded images), Publish Markdown to a folder, Edit → Copy as HTML / RTF (`HTML Format` / `Rich Text Format` beside the text), `jarak export` (golden tests `export_golden.rs`, window flows `code_exports_as_rtf_and_copies_as_html_and_rtf`, `exporting_markdown_embeds_its_images_and_keeps_the_document`, e2e `step106_jarak_export`); partial: pasting the copied formats into another program from the real Windows clipboard is not tested yet ([JARAK_EXPORT](JARAK_EXPORT.md))
 - `HELP-07` Command line: -x / -y window position, -alwaysOnTop (Step 110): Step 110: `jarak-gui --position x,y --always-on-top` for a new window (`a_position_is_two_numbers`; a bad position exits 2 before any window, e2e `step110_jarak_parity`); partial: the window's real place and level not yet checked on the desktop
 - `JRK-15` Kim interoperability (Subak, Noeul, Ddalgak) (Step 107): Step 107: `jarak interop invoke` provides `document.info`, `text.find`, `document.export`, `markdown.insert-image`, `document.open` — Kim installs Jarak, finds and invokes them with its consent rules in the e2e (a screenshot PNG put into a note); Ddalgak's `tool` step calls them through Kim; `jarak open file:line` hands files to the running window; partial: opening into a running window from a Subak terminal and a real Noeul capture are not yet shown on the desktop ([JARAK_CLI](JARAK_CLI.md), [INTEROP](INTEROP.md))
-
-## Planned (Step 111)
-
-- `SET-09` Preferences: File association (explicit, reversible) (Step 111): —
-- `HELP-11` Help / about / user manual link (Step 111): —
 
 ## Not intended, and why
 
@@ -105,7 +101,7 @@ name a part Notepad++ has and Jarak does not.
 
 - **Window tests** (`crates/jarak-gui/tests/window.rs`, egui_kittest, headless): the real
   `JarakApp` driven by keys, text, pointer and wheel events; its accessibility tree and document
-  are checked. 149 tests after Step 110.
+  are checked. 152 tests after Step 111.
 - **Core tests** (`crates/jarak-core`): the document model, encodings, search, syntax, Markdown,
   export, printing layout and settings (188 unit tests after Step 110), golden files and the
   security tests.
@@ -123,4 +119,5 @@ test-started windows only, when the maintainer is away): the Open and Save dialo
 (`FILE-02`, `FILE-09`), a file dropped from Explorer (`FILE-03`), the print dialog
 (`FILE-19`), the real clipboard's HTML/RTF (`EDIT-13`, `PLUG-07`), always on top, full screen,
 post-it and distraction-free (`VIEW-01`…`VIEW-04`), `--position` / `--always-on-top`
-(`HELP-07`), and the Subak and Noeul demonstrations (`JRK-15`).
+(`HELP-07`), Explorer's *Open with* list after the offer (`SET-09`), and the Subak and Noeul
+demonstrations (`JRK-15`). [JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md) is the script for all of them.

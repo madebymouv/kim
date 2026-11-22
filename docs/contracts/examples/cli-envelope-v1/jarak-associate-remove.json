@@ -1,0 +1,14 @@
+{
+  "command": "associate.remove",
+  "data": {
+    "changes": [],
+    "dry_run": true,
+    "extensions": [],
+    "location": "HKCU\\Software\\Classes",
+    "prog_id": "mouv.Jarak.Document",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

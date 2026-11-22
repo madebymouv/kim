@@ -68,6 +68,9 @@ diagnostics to stderr.
 | `jarak extensions list` / `check <folder>` | read | The installed extensions and their grants; every problem of a folder ([JARAK_EXTENSIONS](JARAK_EXTENSIONS.md)) |
 | `jarak extensions install <folder> [--replace]` / `remove <id>` / `grant <id>` / `revoke <id>` `[--dry-run]` | write | Copies a local extension folder (never downloads); removes one; grants its commands exactly its manifest's permissions, or ends that |
 | `jarak interop invoke` | as the capability | One Kim interop capability from a `kim.interop.request` on stdin ([below](#kim-interoperability)) |
+| `jarak associate list` | read | Whether Jarak is in Windows' *Open with* list, and for which extensions (Step 111) |
+| `jarak associate add <ext>... [--dry-run]` | write | Offers Jarak in *Open with* for these extensions, for this user (`HKCU\Software\Classes`): one ProgID `mouv.Jarak.Document` and an `OpenWithProgids` entry per extension; **never a default program**; programs and scripts (`exe`, `bat`, `ps1`, …) are refused (`association_invalid`, exit 2); `jarak-gui.exe` must be beside `jarak.exe` (`program_not_found`, exit 3) |
+| `jarak associate remove [--dry-run]` | write | Takes back exactly what `add` recorded in `associations.json`: Jarak's own entries, its ProgID, and keys it created while they are still empty; other programs' entries stay |
 | `jarak open [<file>[:<line>[:<column>]]...] [--language <name>] [--read-only] [--new-window] [--dry-run]` | write, opens a window | Opens the files in the editor window; a running window takes them |
 
 `--encoding` names: `utf-8`, `utf-8-bom`, `utf-16le`, `utf-16be` (both with a byte-order mark),

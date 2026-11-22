@@ -19,6 +19,7 @@
 pub mod about;
 pub mod assets;
 pub mod assist;
+pub mod assoc;
 pub mod command;
 pub mod document;
 pub mod export;

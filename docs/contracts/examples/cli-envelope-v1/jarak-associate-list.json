@@ -1,0 +1,27 @@
+{
+  "command": "associate.list",
+  "data": {
+    "defaults": [
+      "txt",
+      "md",
+      "markdown",
+      "log",
+      "ini",
+      "cfg",
+      "conf",
+      "json",
+      "xml",
+      "yaml",
+      "yml",
+      "toml",
+      "csv"
+    ],
+    "location": "HKCU\\Software\\Classes",
+    "offered": [],
+    "prog_id": "mouv.Jarak.Document",
+    "program": null
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

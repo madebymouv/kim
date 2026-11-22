@@ -1,0 +1,49 @@
+{
+  "command": "associate.add",
+  "data": {
+    "changes": [
+      {
+        "action": "set",
+        "key": "HKCU\\Software\\Classes\\mouv.Jarak.Document",
+        "name": "",
+        "value": "Jarak document"
+      },
+      {
+        "action": "set",
+        "key": "HKCU\\Software\\Classes\\mouv.Jarak.Document\\DefaultIcon",
+        "name": "",
+        "value": "\"C:\\Users\\me\\AppData\\Local\\Programs\\mouv\\jarak\\0.0.33\\jarak-gui.exe\",0"
+      },
+      {
+        "action": "set",
+        "key": "HKCU\\Software\\Classes\\mouv.Jarak.Document\\shell\\open\\command",
+        "name": "",
+        "value": "\"C:\\Users\\me\\AppData\\Local\\Programs\\mouv\\jarak\\0.0.33\\jarak-gui.exe\" \"%1\""
+      },
+      {
+        "action": "set",
+        "key": "HKCU\\Software\\Classes\\.md\\OpenWithProgids",
+        "name": "mouv.Jarak.Document",
+        "value": null
+      },
+      {
+        "action": "set",
+        "key": "HKCU\\Software\\Classes\\.txt\\OpenWithProgids",
+        "name": "mouv.Jarak.Document",
+        "value": null
+      }
+    ],
+    "dry_run": true,
+    "extensions": [
+      "md",
+      "txt"
+    ],
+    "location": "HKCU\\Software\\Classes",
+    "prog_id": "mouv.Jarak.Document",
+    "program": "C:\\Users\\me\\AppData\\Local\\Programs\\mouv\\jarak\\0.0.33\\jarak-gui.exe",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

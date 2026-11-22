@@ -343,6 +343,14 @@ fn run(
             .with_runner(Arc::new(jarak_gui::macros::ProcessRunner))
             // Step 104: files changed by other programs are checked by the window itself.
             .with_watching();
+            // Step 111 (SET-09): the Open with offer writes the user's own classes.
+            if let Some(p) = jarak_core::paths::Paths::from_env() {
+                app = app.with_associations(
+                    Box::new(jarak_core::assoc::Registry::for_program()),
+                    p.associations_file(),
+                    std::env::current_exe().ok(),
+                );
+            }
             // Step 110 (HELP-07): the window started above the others.
             if on_top {
                 app.modes.on_top = true;

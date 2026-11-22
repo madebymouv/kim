@@ -380,6 +380,9 @@ fn run(args: &[String]) -> ExitCode {
         (Some("extensions"), Some("remove")) => "extensions.remove",
         (Some("extensions"), Some("grant")) => "extensions.grant",
         (Some("extensions"), Some("revoke")) => "extensions.revoke",
+        (Some("associate"), Some("list")) => "associate.list",
+        (Some("associate"), Some("add")) => "associate.add",
+        (Some("associate"), Some("remove")) => "associate.remove",
         (Some("settings"), Some("list")) => "settings.list",
         (Some("settings"), Some("get")) => "settings.get",
         (Some("settings"), Some("set")) => "settings.set",
@@ -493,6 +496,8 @@ fn run(args: &[String]) -> ExitCode {
                 | "extensions.remove"
                 | "extensions.grant"
                 | "extensions.revoke"
+                | "associate.add"
+                | "associate.remove"
                 | "journal.undo"
                 | "settings.set"
                 | "settings.reset"
@@ -572,6 +577,23 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
                 g,
                 &p.extensions_dir(),
                 &p.extension_grants_file(),
+            )
+        }
+        c if c.starts_with("associate.") => {
+            let p = Paths::from_env()
+                .ok_or_else(|| Fail::new("io", 1, "APPDATA or LOCALAPPDATA is not set"))?;
+            let program = std::env::current_exe()
+                .ok()
+                .and_then(|e| e.parent().map(|d| d.join("jarak-gui.exe")))
+                .unwrap_or_default();
+            let mut store = jarak_core::assoc::Registry::for_program();
+            associate_in(
+                command,
+                rest,
+                g,
+                &mut store,
+                &p.associations_file(),
+                &program,
             )
         }
         "journal.list" | "journal.undo" => journal(command, rest, g),
@@ -1737,6 +1759,194 @@ fn extension_json(
 }
 
 /// Step 108: `jarak extensions …` with the extensions folder `root` and the grants file `gf`.
+/// Step 111 (SET-09): `jarak associate list | add <ext>… | remove` — Jarak in Windows' Open with
+/// list for the extensions asked for; never a default program; `remove` takes back exactly what
+/// was added.
+fn associate_in(
+    command: &str,
+    rest: &[&str],
+    g: &Global,
+    store: &mut dyn jarak_core::assoc::Store,
+    record_file: &Path,
+    program: &Path,
+) -> Result<Done, Fail> {
+    use jarak_core::assoc::{self, Record};
+    let record = Record::read(record_file);
+    let loc = store.location();
+    let cj = |c: &[assoc::Change]| -> Vec<Value> {
+        c.iter()
+            .map(|c| {
+                json!({
+                    "action": c.action,
+                    "key": format!("{loc}\\{}", c.key),
+                    "name": c.name,
+                    "value": c.value,
+                })
+            })
+            .collect()
+    };
+    let io = |e: std::io::Error| Fail::new("io", 1, format!("the registry: {e}"));
+    match command {
+        "associate.list" => {
+            if !rest.is_empty() {
+                return Err(Fail::usage("`jarak associate list` takes no arguments"));
+            }
+            let offered = match &record {
+                Some(r) => assoc::offered(store, r).map_err(io)?,
+                None => Vec::new(),
+            };
+            let human = if offered.is_empty() {
+                "Jarak is not offered in Windows' Open with list (`jarak associate add md txt` offers it).".to_string()
+            } else {
+                format!(
+                    "Jarak is in Windows' Open with list for {} ({loc}); the default program stays the user's choice.",
+                    offered
+                        .iter()
+                        .map(|e| format!(".{e}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            Ok((
+                json!({
+                    "prog_id": assoc::PROG_ID,
+                    "location": loc,
+                    "program": record.as_ref().map(|r| r.program.clone()),
+                    "offered": offered,
+                    "defaults": assoc::DEFAULT_EXTS,
+                }),
+                human,
+            ))
+        }
+        "associate.add" => {
+            if rest.is_empty() {
+                return Err(Fail {
+                    hint: Some(format!(
+                        "for example `jarak associate add md txt`; common ones: {}",
+                        assoc::DEFAULT_EXTS.join(" ")
+                    )),
+                    ..Fail::new(
+                        "association_invalid",
+                        2,
+                        "name the extensions to offer Jarak for",
+                    )
+                });
+            }
+            let mut exts = Vec::new();
+            let mut bad = Vec::new();
+            for r in rest {
+                match assoc::normalize(r) {
+                    Some(e) if !exts.contains(&e) => exts.push(e),
+                    Some(_) => {}
+                    None => bad.push((*r).to_string()),
+                }
+            }
+            if !bad.is_empty() {
+                return Err(Fail {
+                    details: bad.iter().map(|b| json!(b)).collect(),
+                    hint: Some("plain file extensions such as md or .txt; programs and scripts (exe, bat, ps1, …) are never offered".into()),
+                    ..Fail::new(
+                        "association_invalid",
+                        2,
+                        format!("not an extension Jarak can be offered for: {}", bad.join(", ")),
+                    )
+                });
+            }
+            if !program.is_file() {
+                return Err(Fail {
+                    hint: Some(
+                        "install Jarak with Kim, or run the command from Jarak's folder".into(),
+                    ),
+                    ..Fail::new(
+                        "program_not_found",
+                        3,
+                        format!(
+                            "`{}` does not exist, so it cannot be offered",
+                            program.display()
+                        ),
+                    )
+                });
+            }
+            let (changes, rec) =
+                assoc::offer(store, record.as_ref(), program, &exts, g.dry_run).map_err(io)?;
+            if !g.dry_run {
+                rec.write(record_file)
+                    .map_err(|e| Fail::new("io", 1, format!("{}: {e}", record_file.display())))?;
+            }
+            let list = exts
+                .iter()
+                .map(|e| format!(".{e}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let human = if g.dry_run {
+                format!(
+                    "Would offer Jarak in Open with for {list} ({} registry changes). Dry run: nothing was written.",
+                    changes.len()
+                )
+            } else {
+                format!(
+                    "Jarak is in Windows' Open with list for {list}. The default program is still yours to choose (Settings → Apps → Default apps); `jarak associate remove` takes it back."
+                )
+            };
+            Ok((
+                json!({
+                    "prog_id": assoc::PROG_ID,
+                    "location": loc,
+                    "program": program.display().to_string(),
+                    "extensions": exts,
+                    "changes": cj(&changes),
+                    "dry_run": g.dry_run,
+                    "written": !g.dry_run,
+                }),
+                human,
+            ))
+        }
+        _ => {
+            if !rest.is_empty() {
+                return Err(Fail::usage(
+                    "`jarak associate remove` takes no arguments (it removes everything Jarak added)",
+                ));
+            }
+            let Some(rec) = record else {
+                return Ok((
+                    json!({
+                        "prog_id": assoc::PROG_ID,
+                        "location": loc,
+                        "extensions": [],
+                        "changes": [],
+                        "dry_run": g.dry_run,
+                        "written": false,
+                    }),
+                    "Jarak was not offered in Open with; nothing to remove.".into(),
+                ));
+            };
+            let changes = assoc::remove(store, &rec, g.dry_run).map_err(io)?;
+            if !g.dry_run {
+                let _ = std::fs::remove_file(record_file);
+            }
+            let human = if g.dry_run {
+                format!(
+                    "Would remove {} registry entries Jarak added. Dry run: nothing was changed.",
+                    changes.len()
+                )
+            } else {
+                "Jarak is no longer in Windows' Open with list; other programs' entries were left as they were.".into()
+            };
+            Ok((
+                json!({
+                    "prog_id": assoc::PROG_ID,
+                    "location": loc,
+                    "extensions": rec.extensions,
+                    "changes": cj(&changes),
+                    "dry_run": g.dry_run,
+                    "written": !g.dry_run,
+                }),
+                human,
+            ))
+        }
+    }
+}
+
 fn extensions_in(
     command: &str,
     rest: &[&str],
@@ -3041,7 +3251,10 @@ mod tests {
                 "hotkeys.set",
                 "hotkeys.disable",
                 "hotkeys.reset",
-                "hotkeys.check"
+                "hotkeys.check",
+                "associate.list",
+                "associate.add",
+                "associate.remove"
             ]
         );
         // Only `open` may open a window; the commands that change something have a dry run
@@ -3612,5 +3825,92 @@ mod tests {
             info(&[missing.to_str().unwrap()], None).unwrap_err().code,
             "file_not_found"
         );
+    }
+
+    /// Step 111 (SET-09): `jarak associate` offers Jarak in Open with for the extensions named,
+    /// refuses programs and scripts, needs `jarak-gui.exe`, and `remove` takes back exactly what
+    /// was added (a memory store: the real registry is never touched here).
+    #[test]
+    fn associate_offers_refuses_and_takes_back() {
+        use jarak_core::assoc::{MemoryStore, PROG_ID, Store};
+        let d = temp("associate");
+        let record = d.join("associations.json");
+        let program = d.join("jarak-gui.exe");
+        let mut st = MemoryStore::default();
+        st.set(".md\\OpenWithProgids", "Other.md", None).unwrap();
+        let g = Global::default();
+        let dry = Global {
+            dry_run: true,
+            ..Global::default()
+        };
+        let (data, _) =
+            associate_in("associate.list", &[], &g, &mut st, &record, &program).unwrap();
+        assert_eq!(data["offered"], json!([]));
+        let e = associate_in("associate.add", &[], &g, &mut st, &record, &program).unwrap_err();
+        assert_eq!((e.code, e.exit), ("association_invalid", 2));
+        let e = associate_in(
+            "associate.add",
+            &["md", "exe", "ps1"],
+            &g,
+            &mut st,
+            &record,
+            &program,
+        )
+        .unwrap_err();
+        assert_eq!((e.code, e.exit), ("association_invalid", 2));
+        assert_eq!(e.details, vec![json!("exe"), json!("ps1")]);
+        let e = associate_in("associate.add", &["md"], &g, &mut st, &record, &program).unwrap_err();
+        assert_eq!(
+            (e.code, e.exit),
+            ("program_not_found", 3),
+            "no jarak-gui.exe yet"
+        );
+        std::fs::write(&program, b"MZ").unwrap();
+        let (data, _) = associate_in(
+            "associate.add",
+            &["md", ".TXT", "md"],
+            &dry,
+            &mut st,
+            &record,
+            &program,
+        )
+        .unwrap();
+        assert_eq!(data["extensions"], json!(["md", "txt"]));
+        assert_eq!(data["written"], false);
+        assert!(
+            !st.key_exists(PROG_ID).unwrap() && !record.exists(),
+            "a dry run writes nothing"
+        );
+        let (data, human) = associate_in(
+            "associate.add",
+            &["md", "txt"],
+            &g,
+            &mut st,
+            &record,
+            &program,
+        )
+        .unwrap();
+        assert_eq!(data["written"], true);
+        assert!(human.contains("default program"), "{human}");
+        assert!(record.is_file());
+        let (data, _) =
+            associate_in("associate.list", &[], &g, &mut st, &record, &program).unwrap();
+        assert_eq!(data["offered"], json!(["md", "txt"]));
+        let (data, _) =
+            associate_in("associate.remove", &[], &dry, &mut st, &record, &program).unwrap();
+        assert_eq!(data["changes"].as_array().unwrap().len(), 3, "{data}");
+        assert!(st.key_exists(PROG_ID).unwrap(), "a dry run removes nothing");
+        associate_in("associate.remove", &[], &g, &mut st, &record, &program).unwrap();
+        assert!(!st.key_exists(PROG_ID).unwrap() && !record.exists());
+        assert_eq!(
+            st.get(".md\\OpenWithProgids", "Other.md").unwrap(),
+            Some(None)
+        );
+        assert!(!st.key_exists(".txt").unwrap());
+        let (data, human) =
+            associate_in("associate.remove", &[], &g, &mut st, &record, &program).unwrap();
+        assert_eq!(data["changes"], json!([]));
+        assert!(human.contains("nothing to remove"));
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

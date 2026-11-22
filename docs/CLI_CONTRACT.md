@@ -369,6 +369,8 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `printer_not_found` | 3 | Step 106: `jarak print --printer` (or `jarak export --to pdf`) names a printer Windows does not have, or there is no default printer; `jarak printers` lists them. Nothing was printed. |
 | `print_failed` | 1 | Step 106: the printer or the spooler refused the job (it could not start, a page failed, or the PDF was not written within 60 s). |
 | `export_into_source` | 2 | Step 106: the output of `jarak export` is the document itself, or (`--to folder`) the document's own folder; never allowed, even with `--overwrite`. Nothing was written. |
+| `association_invalid` | 2 | Step 111: `jarak associate add` without extensions, or with one that is not a plain file extension or is a program or script (`exe`, `bat`, `ps1`, …); `details` lists them. Nothing was written. |
+| `program_not_found` | 3 | Step 111: `jarak associate add` needs `jarak-gui.exe` beside `jarak.exe` (the program Open with starts); it is not there. Nothing was written. |
 | `setting_invalid` | 2 | Step 105: `jarak settings set` with a value the setting does not take; the message and hint say what it takes. Nothing was written. |
 
 Step 94: `jarak find <file> <text>` lists the matches of a text (`--extended` escapes such as `\n`
@@ -413,6 +415,12 @@ command has a golden example (`jarak-*.json`; a test checks it): among them `jar
 `jarak-convert-dry-run.json`, `jarak-text-unencodable.json`, `jarak-session-list.json`,
 `jarak-assets-add-dry-run.json`, `jarak-interop-invoke.json`,
 `jarak-interop-capability-missing.json`, the settings and hotkeys commands.
+
+Step 111 ([JARAK_GUIDE](JARAK_GUIDE.md)): `jarak associate list` (`read`), `add <ext>...` and
+`remove` (`write`, with `--dry-run`) offer Jarak in Windows' *Open with* list per user and take it
+back; never a default program; codes `association_invalid` (2), `program_not_found` (3); the
+record is `associations.json` (`jarak-associations-v1`). Examples: `jarak-associate-*.json`,
+`jarak-association-invalid.json`.
 
 Step 108 ([JARAK_EXTENSIONS](JARAK_EXTENSIONS.md)): `jarak extensions list | check <folder>`
 (`read`) and `install <folder> [--replace] | remove <id> | grant <id> | revoke <id>` (`write`, with

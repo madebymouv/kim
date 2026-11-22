@@ -1,11 +1,12 @@
-//! `cargo xtask package <kim|subak|noeul|ddalgak> [--skip-build] [--signed]` (Step 40, docs/RELEASING.md): the Windows
+//! `cargo xtask package <kim|subak|noeul|ddalgak|jarak> [--skip-build] [--signed]` (Step 40, docs/RELEASING.md): the Windows
 //! distributable of one tool, built from this checkout.
 //!
 //! - Builds the release binaries (`cargo build --release -p <crates>`), unless `--skip-build`.
 //! - Writes `target/dist/<tool>-<version>-windows-x86_64.zip`: the programs, the tool's
 //!   `capabilities.json` (from `<tool> capabilities --json`, so Kim can read it without starting
 //!   the tool), `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY-NOTICES.txt` (every crate linked
-//!   in, with its license, from `cargo tree`) and `README.txt`.
+//!   in, with its license, from `cargo tree`) and `README.txt`; Step 111: Jarak also carries its
+//!   user guide and the references it links under `docs/` (Help → User guide opens it).
 //! - The zip is **deterministic**: sorted entries, fixed timestamps (1980-01-01) and
 //!   permissions, so the same binaries always give the same bytes (checked by packing twice).
 //! - Writes `target/dist/<tool>-<version>-release.json`: size, SHA-256, entrypoint, the build
@@ -24,6 +25,9 @@ struct Tool {
     exes: &'static [&'static str],
     entrypoint: &'static str,
     summary: &'static str,
+    /// Step 111: documents from `docs/` the package carries under `docs/` (Jarak's Help opens
+    /// the guide from there).
+    docs: &'static [&'static str],
 }
 
 /// `(tool id, crates its package builds)` for every packaged tool, so `local-mirror` builds
@@ -39,6 +43,7 @@ const TOOLS: [Tool; 5] = [
         exes: &["kim.exe", "kim-manager.exe"],
         entrypoint: "kim.exe",
         summary: "Kim: the explicit catalog and installer for Kim tools (kim.exe CLI, kim-manager.exe window)",
+        docs: &[],
     },
     Tool {
         id: "subak",
@@ -46,6 +51,7 @@ const TOOLS: [Tool; 5] = [
         exes: &["subak.exe", "subak-gui.exe"],
         entrypoint: "subak.exe",
         summary: "Subak: a persistent Windows terminal with a detached Host (subak.exe CLI and Host, subak-gui.exe window)",
+        docs: &[],
     },
     // Step 62: Noeul is packaged like the others so Kim can install it (one program: CLI,
     // resident instance, MCP adapter and interop provider).
@@ -55,6 +61,7 @@ const TOOLS: [Tool; 5] = [
         exes: &["noeul.exe", "noeulw.exe", "noeul-settings.exe"],
         entrypoint: "noeul.exe",
         summary: "Noeul: screenshots and floating pins (noeul.exe: the resident app, its CLI, the MCP adapter and the Kim interop provider; noeul-settings.exe: the settings window, ADR 0093)",
+        docs: &[],
     },
     // Step 81: Ddalgak, so Kim can install it (the headless CLI with its MCP adapter and interop
     // provider, the tray app that owns the engine, and the rule editor).
@@ -64,6 +71,7 @@ const TOOLS: [Tool; 5] = [
         exes: &["ddalgak.exe", "ddalgak-gui.exe", "ddalgak-editor.exe"],
         entrypoint: "ddalgak.exe",
         summary: "Ddalgak: key remapping and automation (ddalgak.exe: the CLI, MCP adapter and Kim interop provider; ddalgak-gui.exe: the tray app that owns the engine; ddalgak-editor.exe: the rule editor)",
+        docs: &[],
     },
     // Step 85 (ADR 0102): Jarak, the text editor (the headless CLI and the window).
     Tool {
@@ -72,6 +80,13 @@ const TOOLS: [Tool; 5] = [
         exes: &["jarak.exe", "jarak-gui.exe"],
         entrypoint: "jarak.exe",
         summary: "Jarak: a native text editor for plain text, code and Markdown (jarak.exe: the headless CLI; jarak-gui.exe: the editor window)",
+        docs: &[
+            "JARAK_GUIDE.md",
+            "JARAK_KEYS.md",
+            "JARAK_SETTINGS.md",
+            "JARAK_CLI.md",
+            "JARAK_VIM.md",
+        ],
     },
 ];
 
@@ -223,6 +238,12 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         files.push((
             l.into(),
             std::fs::read(root.join(l)).map_err(|e| format!("{l}: {e}"))?,
+        ));
+    }
+    for d in tool.docs {
+        files.push((
+            format!("docs/{d}"),
+            std::fs::read(root.join("docs").join(d)).map_err(|e| format!("docs/{d}: {e}"))?,
         ));
     }
     files.push((

@@ -61,6 +61,11 @@ impl Paths {
         self.local.join("replace-journal")
     }
 
+    /// Step 111: what was offered in Windows' Open with list (`associations.json`).
+    pub fn associations_file(&self) -> PathBuf {
+        crate::assoc::record_path(&self.local)
+    }
+
     /// Step 108: installed extensions (one folder per id).
     pub fn extensions_dir(&self) -> PathBuf {
         self.config.join("extensions")

@@ -1543,3 +1543,33 @@ session's tab colour), unit 2 (`--position`, the default context menu). e2e
 `step110_jarak_parity.rs`: the settings through `jarak settings`, the languages through `jarak
 export --dry-run`, the new screens in the release window and a refused `--position`; its first run is the
 Daily workflow's (no visible test windows while the maintainer is at the PC).
+
+## 33. Delivery: the package, Help and the Open with offer (Step 111)
+
+- **The package** (`cargo xtask package jarak`): `jarak.exe`, `jarak-gui.exe`, `capabilities.json`
+  (now `implemented`), `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY-NOTICES.txt`, `README.txt`
+  and, new, `docs\` with [JARAK_GUIDE](JARAK_GUIDE.md) and the references it links (keys,
+  settings, CLI, Vim). Kim installs it per user under `%LOCALAPPDATA%\Programs\mouv\jarak`; Kim
+  Manager's tile starts `jarak-gui.exe`.
+- **Help menu** (`jarak-gui::help`, HELP-11): *User guide* opens `docs\JARAK_GUIDE.md` from beside
+  the program (or, in a development build, the repository's `docs`) read-only in the preview;
+  *About Jarak* shows the version, the program, the settings and session files, the licence and
+  privacy, and copies the debug information.
+- **The Open with offer** (`jarak-core::assoc`, SET-09): on request only (Help → *Offer Jarak in
+  "Open with"…* with checkboxes, or `jarak associate add <ext>…`), per user under
+  `HKCU\Software\Classes`: one ProgID `mouv.Jarak.Document` (name, icon, `"jarak-gui.exe" "%1"`)
+  and an empty `OpenWithProgids` value per extension. It never writes an extension's default
+  value, so the default program stays the user's choice in Windows' Default apps. What was added
+  — the extensions and the keys Jarak created — is recorded in `associations.json`; *Remove*
+  deletes exactly Jarak's values and its ProgID, and the keys it created only while still empty.
+  Programs and scripts are never offered. Explorer is told (`SHChangeNotify`). The window gets the
+  real registry only from `main` (`with_associations`); tests use memory, the real-registry test a
+  private key under `HKCU\Software\mouv-test` that it deletes, and debug builds accept
+  `JARAK_DEV_CLASSES_KEY` (compiled out of release builds).
+
+Tests: core 5 (normalizing, an offer never a default, removal exactly, the record, the real
+registry under a test key), CLI 1 (`associate` with its codes), window 3 (the guide and About, the
+offer and its removal, both dialogs under the audit rules). e2e `step111_jarak_release.rs`: the
+real package layout through a signed catalog into Kim, the installed `jarak` (version,
+capabilities, `associate` dry runs), the other tools' `--version`, uninstall keeping the settings.
+Acceptance: [JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md).

@@ -362,9 +362,39 @@
         "requires_yes": false,
         "summary": "Conflicts of Jarak's shortcuts with each other and with keys Windows, Kim and the input method reserve; changes nothing",
         "usage": "jarak hotkeys check [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "associate.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Whether Jarak is in Windows' Open with list, for which extensions; changes nothing",
+        "usage": "jarak associate list [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "associate.add",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Offers Jarak in Windows' Open with list for these extensions (per user); never changes a default program",
+        "usage": "jarak associate add <ext>... [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "associate.remove",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Takes back exactly what `associate add` added; other programs' entries stay",
+        "usage": "jarak associate remove [--dry-run] [--json]"
       }
     ],
-    "implementation": "placeholder",
+    "implementation": "implemented",
     "json_schema_version": 1,
     "provides": [
       {
@@ -410,9 +440,9 @@
     ],
     "schema": "kim.capabilities",
     "schema_version": 1,
-    "summary": "Pre-alpha (Step 91): the headless CLI (file inspection, image assets of Markdown documents) and the editor window (editing, files, Markdown preview, Ctrl+V images)",
+    "summary": "Jarak, the fourth Kim tool (Step 111): a native text editor for plain text, code and Markdown. jarak.exe is the headless CLI: file inspection, find and replace with an undo journal, new, convert, export (HTML, RTF, a published folder, PDF), print, Markdown image assets, sessions, settings, shortcuts, extensions, the Open with offer and Kim interop; jarak-gui.exe is the editor window.",
     "tool": "jarak",
-    "version": "0.0.32"
+    "version": "0.0.33"
   },
   "ok": true,
   "schema_version": 1,

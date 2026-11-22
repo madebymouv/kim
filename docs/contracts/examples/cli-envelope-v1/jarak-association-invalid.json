@@ -1,0 +1,14 @@
+{
+  "command": "associate.add",
+  "error": {
+    "code": "association_invalid",
+    "details": [
+      "exe"
+    ],
+    "exit_code": 2,
+    "hint": "plain file extensions such as md or .txt; programs and scripts (exe, bat, ps1, …) are never offered",
+    "message": "not an extension Jarak can be offered for: exe"
+  },
+  "ok": false,
+  "schema_version": 1
+}

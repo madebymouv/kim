@@ -1,5 +1,30 @@
 # Release notes
 
+## Jarak 0.0.33 — the fourth Kim tool (preview, not yet published)
+
+- **Status:** draft (Step 111, 2026-11-22). Installable from the local mirror through Kim
+  Manager; published with the other tools once [RELEASE_READINESS](RELEASE_READINESS.md)'s
+  blockers are cleared. Package: `cargo xtask package jarak` (programs, capabilities, licences,
+  third-party notices, the user guide under `docs\`).
+- **Platform:** Windows 10 22H2 x64 tested; Windows 11 not tested; no Linux.
+- **What it is:** a native text editor for plain text, code and Markdown ([JARAK_GUIDE](JARAK_GUIDE.md)):
+  tabs and two views, sessions and crash recovery, encodings without loss, Notepad++'s keys and
+  line tools, several carets and columns, find and replace with regular expressions and Find in
+  Files with an undo journal, 38 languages with folding and completion, Vim keys, the Markdown
+  preview with pasted screenshots kept as local files, printing and PDF, HTML/RTF export,
+  extensions with granted permissions, and `jarak.exe` — a headless CLI for scripts and agents.
+- **Notepad++ parity:** 285 built-in features reviewed — 253 supported, 21 partial with their gaps
+  named, 11 not intended with reasons ([JARAK_PARITY_REPORT](JARAK_PARITY_REPORT.md)). Notepad++
+  plugin DLLs are not supported.
+- **Safety:** no automatic install or update, no account, no telemetry; the source of a document is
+  never rewritten by the preview or an export; *Open with* is offered only when asked, per user,
+  never as a default program, and taken back exactly.
+- **Known limitations:** real-desktop checks still to run with test windows (window modes,
+  `--position`, Explorer's Open with list, the real clipboard's HTML/RTF, the print dialog —
+  [JARAK_ACCEPTANCE](JARAK_ACCEPTANCE.md)); 100 MB / 1 GB measurements, High Contrast and Narrator
+  ([JARAK_PERFORMANCE](JARAK_PERFORMANCE.md), [JARAK_ACCESSIBILITY](JARAK_ACCESSIBILITY.md));
+  right-to-left text.
+
 ## Kim 0.0.1 and Subak 0.0.1 — preview (not yet published)
 
 - **Status:** draft (Step 40, 2026-11-12). Nothing is published until the blockers of
