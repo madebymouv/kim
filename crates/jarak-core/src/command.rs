@@ -5,7 +5,7 @@
 //! Step 86 registers the editing and caret commands of the text model; later Steps add theirs.
 
 use crate::document::Document;
-use crate::lineops::{Blank, Case, Codec, Rng, Sort};
+use crate::lineops::{Blank, Case, Codec, CommentMode, Rng, Sort};
 
 /// A command that needs no argument (typing text is [`Document::type_text`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -97,6 +97,12 @@ pub enum Command {
     QpDecode,
     HexEncode,
     HexDecode,
+    // Step 98: comments in the language of the document.
+    ToggleComment,
+    LineComment,
+    LineUncomment,
+    BlockComment,
+    BlockUncomment,
 }
 
 /// A command's identity in the registry.
@@ -206,6 +212,11 @@ registry! {
     QpDecode, "mime.qp-decode", "Quoted-printable decode", "Quoted-printable 디코딩";
     HexEncode, "convert.ascii-to-hex", "ASCII to hex", "ASCII를 16진으로";
     HexDecode, "convert.hex-to-ascii", "Hex to ASCII", "16진을 ASCII로";
+    ToggleComment, "comment.toggle", "Toggle the line comment", "줄 주석 켜기/끄기";
+    LineComment, "comment.line", "Comment the lines", "줄 주석 달기";
+    LineUncomment, "comment.line-remove", "Uncomment the lines", "줄 주석 없애기";
+    BlockComment, "comment.block", "Block comment", "블록 주석 달기";
+    BlockUncomment, "comment.block-remove", "Block uncomment", "블록 주석 없애기";
 }
 
 impl Command {
@@ -325,6 +336,11 @@ impl Document {
             Command::QpDecode => return self.decode(Codec::QuotedPrintable),
             Command::HexEncode => return self.encode(Codec::Hex),
             Command::HexDecode => return self.decode(Codec::Hex),
+            Command::ToggleComment => return self.comment_lines(CommentMode::Toggle),
+            Command::LineComment => return self.comment_lines(CommentMode::Add),
+            Command::LineUncomment => return self.comment_lines(CommentMode::Remove),
+            Command::BlockComment => return self.block_comment(false),
+            Command::BlockUncomment => return self.block_comment(true),
         }
         before != (self.history().state(), self.selection().clone())
     }

@@ -2885,3 +2885,153 @@ fn dates_paths_digests_and_the_copy_line_setting() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 98: syntax highlighting, the Language menu, user languages, comments ------------------
+
+fn kinds_on(h: &Harness<'static, JarakApp>, line: usize) -> Vec<jarak_core::syntax::Kind> {
+    h.state()
+        .tab()
+        .view
+        .syntax
+        .iter()
+        .find(|(l, _)| *l == line)
+        .map(|(_, t)| t.iter().map(|x| x.kind).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_rust_file_is_highlighted_and_the_language_menu_changes_it() {
+    use jarak_core::syntax::Kind as K;
+    let d = temp("syntax");
+    let f = d.join("main.rs");
+    std::fs::write(&f, "fn main() { // 주석\n    let s = \"x\";\n}\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    assert!(
+        h.query_by_label("Rust").is_some(),
+        "the status bar names the language"
+    );
+    assert_eq!(
+        kinds_on(&h, 0),
+        [
+            K::Keyword,
+            K::Operator,
+            K::Operator,
+            K::Operator,
+            K::Comment
+        ]
+    );
+    assert!(kinds_on(&h, 1).contains(&K::String));
+    // Normal text, then Python, from the Language menu (the palette).
+    palette_run(&mut h, "Language: Normal text");
+    h.run();
+    assert!(kinds_on(&h, 0).is_empty());
+    assert!(h.query_by_label("Plain text").is_some());
+    palette_run(&mut h, "Language: Python");
+    h.run();
+    assert!(h.query_by_label("Python").is_some());
+    assert_eq!(
+        kinds_on(&h, 0)[0],
+        K::Operator,
+        "fn is not a Python keyword; ( is an operator"
+    );
+    palette_run(&mut h, "Language: detect");
+    h.run();
+    assert_eq!(kinds_on(&h, 0)[0], K::Keyword);
+    // Typing re-highlights from the edited line on.
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, "/* ");
+    h.run();
+    assert_eq!(
+        kinds_on(&h, 1),
+        [K::Comment],
+        "the comment now runs over line 2"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn comment_keys_follow_the_language() {
+    let d = temp("comments");
+    let f = d.join("a.py");
+    std::fs::write(&f, "x = 1\ny = 2\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    key(&mut h, egui::Key::A, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Q, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "# x = 1\n# y = 2\n", "Ctrl+Q with Python's #");
+    key(&mut h, egui::Key::Q, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "x = 1\ny = 2\n");
+    key(&mut h, egui::Key::K, egui::Modifiers::CTRL);
+    key(
+        &mut h,
+        egui::Key::K,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(doc_text(&h), "x = 1\ny = 2\n", "Ctrl+K then Ctrl+Shift+K");
+    // CSS has only block comments.
+    palette_run(&mut h, "Language: CSS");
+    h.run();
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(
+        &mut h,
+        egui::Key::Q,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(doc_text(&h), "/* x = 1 */\ny = 2\n", "Ctrl+Shift+Q");
+    // Plain text has none: it says so.
+    palette_run(&mut h, "Language: Normal text");
+    key(&mut h, egui::Key::Q, egui::Modifiers::CTRL);
+    assert!(
+        h.query_all_by_label_contains("no comments")
+            .next()
+            .is_some()
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn user_languages_load_import_from_notepad_plus_plus_and_export() {
+    use jarak_core::syntax::Kind as K;
+    let d = temp("udl");
+    let langs = d.join("languages");
+    std::fs::create_dir_all(&langs).unwrap();
+    std::fs::write(
+        langs.join("kimlang.json"),
+        r#"{"name": "Kimlang", "extensions": ["kim"], "line_comment": ["//"], "keywords": ["say"]}"#,
+    )
+    .unwrap();
+    let f = d.join("a.kim");
+    std::fs::write(&f, "say 1 // c\n").unwrap();
+    let xml = d.join("simple.xml");
+    std::fs::write(
+        &xml,
+        r#"<NotepadPlus><UserLang name="Simple" ext="smp"><KeywordLists><Keywords name="Comments">00#</Keywords><Keywords name="Keywords1">print</Keywords></KeywordLists></UserLang></NotepadPlus>"#,
+    )
+    .unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.open.lock().unwrap().push(xml);
+    dialogs.save.lock().unwrap().push(d.join("out.json"));
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], dialogs);
+    let mut h = harness(a.with_languages(langs.clone()));
+    h.run();
+    assert!(h.query_by_label("Kimlang").is_some());
+    assert_eq!(kinds_on(&h, 0), [K::Keyword, K::Number, K::Comment]);
+    // Import a Notepad++ UDL: it is kept as JSON and in the Language menu.
+    palette_run(&mut h, "Import a Notepad++ user language");
+    assert!(langs.join("Simple.json").is_file());
+    assert_eq!(h.state().user_langs.len(), 2);
+    palette_run(&mut h, "Language: Simple");
+    h.run();
+    assert!(h.query_by_label("Simple").is_some());
+    // Export the current language as JSON.
+    palette_run(&mut h, "Export the language");
+    let out = std::fs::read_to_string(d.join("out.json")).unwrap();
+    assert_eq!(jarak_core::syntax::parse_udl(&out).unwrap().name, "Simple");
+    let _ = std::fs::remove_dir_all(&d);
+}

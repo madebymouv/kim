@@ -28,6 +28,7 @@ pub mod paths;
 pub mod search;
 pub mod selection;
 pub mod session;
+pub mod syntax;
 pub mod target;
 pub mod text;
 pub mod vim;

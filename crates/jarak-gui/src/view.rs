@@ -61,6 +61,8 @@ pub struct ViewState {
     cell: Vec2,
     /// Step 97: how many character cells fit across the text (Split Lines' width).
     pub cols: usize,
+    /// Step 98: the syntax tokens of the lines on screen (the window lexes them each frame).
+    pub syntax: Vec<(usize, Vec<jarak_core::syntax::Token>)>,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -99,6 +101,7 @@ impl Default for ViewState {
             drawn: Vec::new(),
             cell: Vec2::ZERO,
             cols: 80,
+            syntax: Vec::new(),
             drag: None,
             clicks: None,
         }
@@ -135,15 +138,30 @@ impl Metrics {
 /// tab stops would drift), the rest in runs.
 fn line_job(
     ui: &egui::Ui,
-    text: &str,
+    vis: &VisualLine,
+    toks: &[jarak_core::syntax::Token],
     m: &Metrics,
-    color: Color32,
+    c: &Colors,
     wrap_w: f32,
 ) -> egui::text::LayoutJob {
     let font = m.font();
-    let fmt = egui::text::TextFormat {
+    // Step 98: each drawn character's colour (and italics) from the syntax tokens.
+    let n = vis.text.chars().count();
+    let mut look = vec![(c.text_primary, false); n];
+    for t in toks {
+        let color = crate::languages::syntax_color(c, t.kind);
+        let italic = t.kind == jarak_core::syntax::Kind::Emphasis;
+        for o in t.start..t.end.min(vis.map.len().saturating_sub(1)) {
+            let (a, b) = (vis.map[o].min(n), vis.map[o + 1].min(n));
+            for x in &mut look[a..b] {
+                *x = (color, italic);
+            }
+        }
+    }
+    let fmt = |(color, italics): (Color32, bool)| egui::text::TextFormat {
         font_id: font.clone(),
         color,
+        italics,
         ..Default::default()
     };
     let mut job = egui::text::LayoutJob {
@@ -154,22 +172,29 @@ fn line_job(
         ..Default::default()
     };
     let mut run = String::new();
-    for ch in text.chars() {
+    let mut run_look = (c.text_primary, false);
+    for (i, ch) in vis.text.chars().enumerate() {
+        let lk = look[i];
         if unicode_width_of(ch) == 2 {
             if !run.is_empty() {
-                job.append(&run, 0.0, fmt.clone());
+                job.append(&run, 0.0, fmt(run_look));
                 run.clear();
             }
             let w = ui.fonts_mut(|f| f.glyph_width(&font, ch));
-            let mut wide = fmt.clone();
+            let mut wide = fmt(lk);
             wide.extra_letter_spacing = 2.0 * m.char_w - w;
             job.append(ch.encode_utf8(&mut [0u8; 4]), 0.0, wide);
         } else {
+            if lk != run_look && !run.is_empty() {
+                job.append(&run, 0.0, fmt(run_look));
+                run.clear();
+            }
+            run_look = lk;
             run.push(ch);
         }
     }
     if !run.is_empty() || job.sections.is_empty() {
-        job.append(&run, 0.0, fmt);
+        job.append(&run, 0.0, fmt(run_look));
     }
     job
 }
@@ -343,7 +368,12 @@ pub fn show(
         let pre = (!state.preedit.is_empty() && line == caret_line)
             .then(|| (caret - start, state.preedit.as_str()));
         let vis = VisualLine::build(&s, tab, pre);
-        let job = line_job(ui, &vis.text, &m, c.text_primary, wrap_w);
+        let toks = state
+            .syntax
+            .iter()
+            .find(|(l, _)| *l == line)
+            .map_or(&[][..], |(_, t)| t.as_slice());
+        let job = line_job(ui, &vis, toks, &m, &c, wrap_w);
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         let height = (galley.rows.len().max(1) as f32) * m.row;
         laid.push(Laid {

@@ -1,6 +1,6 @@
 [package]
 name = "jarak-gui"
-version = "0.0.16"
+version = "0.0.17"
 description = "Jarak (자락): the editor window (egui + glow through kim-ui); one process per user session"
 edition.workspace = true
 rust-version.workspace = true
@@ -18,7 +18,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-jarak-core = { version = "0.0.16", path = "../jarak-core" }
+jarak-core = { version = "0.0.17", path = "../jarak-core" }
 kim-ui = { version = "0.0.4", path = "../kim-ui" }
 kim-design = { version = "0.0.3", path = "../kim-design" }
 # ADR 0014: egui + glow for GUI chrome, AccessKit for UI Automation, the same pin as the other

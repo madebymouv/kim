@@ -35,7 +35,10 @@ implemented `JARAK-FR-080` and `JARAK-FR-081` and the Begin/End Select of `JARAK
 [JARAK_ARCHITECTURE §18](JARAK_ARCHITECTURE.md)); Step 97 implemented `JARAK-FR-082`…`JARAK-FR-085`,
 `JARAK-FR-087` and `JARAK-FR-088` (line operations, sorting, case, blanks, the date and time, paths,
 encodings and digests; [JARAK_ARCHITECTURE §19](JARAK_ARCHITECTURE.md); the clipboard history and
-character panel of `JARAK-FR-087` are not part of this Step's matrix rows);
+character panel of `JARAK-FR-087` are not part of this Step's matrix rows); Step 98 implemented
+`JARAK-FR-090`, `JARAK-FR-091` and `JARAK-FR-086` (23 languages, detection, the Language menu,
+user-defined languages and the Notepad++ UDL import, comments; [ADR 0103](adr/0103-jarak-syntax-highlighting.md),
+[JARAK_ARCHITECTURE §20](JARAK_ARCHITECTURE.md); folding with the markers is Step 99);
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

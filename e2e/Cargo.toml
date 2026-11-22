@@ -20,6 +20,8 @@ ddalgak = { path = "../crates/ddalgak" }
 ddalgak-editor = { path = "../crates/ddalgak-editor" }
 eframe = { version = "=0.37.0", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
 egui_kittest = "=0.37.0"
+# step98 converts a Notepad++ UDL with Jarak's own importer before the window reads it.
+jarak-core = { path = "../crates/jarak-core" }
 kim = { path = "../crates/kim" }
 # adr0099 checks the geometry reports of the real Subak window with the design audit.
 kim-design = { path = "../crates/kim-design" }

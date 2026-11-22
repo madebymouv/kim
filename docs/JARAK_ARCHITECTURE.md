@@ -829,3 +829,62 @@ and saves it; the palette and the digest dialog). Real desktop (r97, checked on 
 Ctrl+Shift+L, Ctrl+Shift+Down, the palette's consecutive-duplicate removal and descending sort,
 Ctrl+A Ctrl+Shift+U, Alt+U, Base64 encode and decode, Ctrl+J, Ctrl+Alt+Enter with Korean typing,
 the custom date — every step's bytes as expected, CRLF kept.
+
+## 20. Syntax highlighting, languages and comments (Step 98)
+
+`JARAK-FR-090`, `JARAK-FR-091`, `JARAK-FR-086`; [ADR 0103](adr/0103-jarak-syntax-highlighting.md);
+matrix rows `LANG-01`, `LANG-03`…`LANG-07`, `LANG-09`…`LANG-11`, `CMT-01`…`CMT-03` (supported),
+`LANG-08` (partial: folding itself is Step 99).
+
+- **Languages** (`jarak-core::syntax`): 23 built in — C, C++, C#, Rust, Go, Java, JavaScript,
+  TypeScript, Python, PowerShell, Batch, Shell, HTML, CSS, JSON, YAML, TOML, XML, SQL, Markdown,
+  INI, Lua, PHP, Ruby — each a `Lang` declaration run by the code, markup or Markdown lexer. HTML
+  embeds JavaScript in `<script>` and CSS in `<style>`; PHP files are markup with `<?php … ?>`
+  blocks of PHP code; Markdown highlights fenced code in the fence's language (`rust`, `py`, `js`,
+  `sh` …). Detection: the extension (user languages first), then a `#!` line (`env` understood,
+  version suffixes such as `python3`), then `<?xml`; else plain text.
+- **Tokens**: keyword, type, constant, string, number, comment, operator, preprocessor, tag,
+  attribute, variable, heading, emphasis, code, link — coloured with kim-design's tokens
+  (`languages::syntax_color`; emphasis in italics).
+- **Incremental**: a line is lexed from the state its previous line ended in; the window keeps each
+  document's line-start states, lexes the lines on screen of each view every frame and drops the
+  states from the first line an edit touched (`Document::edits_since`, a log of the newest 1024
+  edits); switching the language starts over. Measured (release): 10 MB of Rust, 415 280 lines —
+  lexing to the end the first time 164 ms, a screen 0.02 ms, after an edit 0.04 ms; opening it at its
+  end 514 ms; a keystroke frame p95 0.29 ms.
+- **The Language menu** (palette and menu bar): *detect from the file*, *Normal text*, every
+  built-in and user language; the status bar names the language. The choice is per document and
+  not kept in the session yet.
+- **User-defined languages**: JSON files in `%APPDATA%\mouv\jarak\languages\` — `name`,
+  `extensions`, `shebang`, `case_sensitive`, `line_comment`, `line_start_comment`,
+  `block_comment` and `strings` (`open`, `close`, `escape`, `multiline`, `line_start`, `max_len`),
+  `keywords`, `types`, `constants`, `operators`, `variable_prefix`, `preprocessor`, `ident_chars`,
+  `key_separator`, `sections`, `numbers`, `fold` ([open, close] pairs). A broken file is skipped and
+  named. *Import a Notepad++ user language (XML)* converts a UDL 2.x file into such a JSON file
+  (never replacing one: `name-2.json`); *Export the language* writes the current language (a
+  built-in one too) as JSON; *Open the user languages folder*, *Read the user languages again*.
+  Imported from a UDL: name, extensions, case, comments (`00` line, `03`/`04` block), Keywords1
+  (keywords), 2 (types), 3 (constants), 4–8 (keywords), the operators, eight delimiters with their
+  escapes, the code folding markers. Not imported: styles and colours, prefix and number
+  definitions, comment folding, line-comment continuation and position rules.
+- **Folding markers** (`syntax::fold_ranges`): matched open/close markers outside comments and
+  strings become fold ranges; the folding margin and commands that use them are Step 99.
+- **Comments** (registry commands; Notepad++'s keys): toggle the line comment (Ctrl+Q), comment
+  (Ctrl+K), uncomment (Ctrl+Shift+K) — the language's line comment at the lines' common indentation,
+  or its block comment around each line where it has none (HTML, CSS, XML, Markdown use
+  `<!-- -->`); block comment (Ctrl+Shift+Q) around the selection or the caret's line and block
+  uncomment (palette). A selection stays on the rewritten lines; plain text says it has no comments.
+
+Tests: `syntax` 11 golden tests (a fixture per language with the kind of each key construct, the
+state carried across lines; detection of every listed extension and of shebangs; a JSON user
+language highlighting and folding; a Notepad++ UDL imported, highlighting a sample, folding and
+surviving a JSON round trip; the state cache dropping states after an edit) plus the 10 MB
+measurement; `lineops` comment and edit-log tests; window flows 3 new (a Rust file highlighted, the
+Language menu to plain text, Python and back, re-highlighting after typing; comment keys following
+Python, CSS and plain text; user languages loaded, a Notepad++ UDL imported through the dialog and
+exported); a highlighted keystroke-frame measurement. UI audit views `syntax`, `palette-language`
+(165 runs, 0 failures). e2e `step98_jarak_syntax_languages.rs` (a Rust file, a JSON user language
+and an imported Notepad++ UDL picked by extension in the release window, the Language menu) —
+compiled; its first run waits until the maintainer is away from the PC (2026-11-22: the maintainer
+is using the mouse, keyboard and monitor, so no visible test windows), as does the real-desktop
+check.

@@ -44,6 +44,10 @@ pub enum Run {
     Multi(u8),
     /// Step 97: dates, paths, digests and the copy-line setting (see `JarakApp::edit_tool`).
     Edit(u8),
+    /// Step 98: the Language menu (0 detect, 1 plain text, then the languages) and the user
+    /// language tools (see `JarakApp::udl_tool`).
+    Language(u16),
+    Udl(u8),
 }
 
 /// The menu an entry belongs to.
@@ -57,10 +61,11 @@ pub enum Menu {
     View,
     Window,
     Markdown,
+    Language,
 }
 
 impl Menu {
-    pub const ALL: [Menu; 8] = [
+    pub const ALL: [Menu; 9] = [
         Menu::File,
         Menu::Edit,
         Menu::Search,
@@ -69,6 +74,7 @@ impl Menu {
         Menu::View,
         Menu::Window,
         Menu::Markdown,
+        Menu::Language,
     ];
 
     /// The menu's name (English, Korean).
@@ -82,6 +88,7 @@ impl Menu {
             Menu::View => ("View", "보기"),
             Menu::Window => ("Window", "창"),
             Menu::Markdown => ("Markdown", "Markdown"),
+            Menu::Language => ("Language", "언어"),
         }
     }
 }
@@ -715,6 +722,36 @@ pub fn entries() -> Vec<Entry> {
             "선택이 없을 때 줄 복사 (켬/끔)",
             Run::Edit(17),
             M::Edit,
+        ),
+    ]);
+    v.extend([
+        run(
+            "language.import-udl",
+            "Import a Notepad++ user language (XML)…",
+            "Notepad++ 사용자 언어 가져오기(XML)…",
+            Run::Udl(0),
+            M::Language,
+        ),
+        run(
+            "language.export-udl",
+            "Export the language as a user language (JSON)…",
+            "언어를 사용자 언어로 내보내기(JSON)…",
+            Run::Udl(1),
+            M::Language,
+        ),
+        run(
+            "language.open-folder",
+            "Open the user languages folder",
+            "사용자 언어 폴더 열기",
+            Run::Udl(2),
+            M::Language,
+        ),
+        run(
+            "language.reload",
+            "Read the user languages again",
+            "사용자 언어 다시 읽기",
+            Run::Udl(3),
+            M::Language,
         ),
     ]);
     use crate::find::StyleCmd as S;

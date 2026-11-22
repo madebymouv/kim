@@ -51,6 +51,11 @@ impl Paths {
         self.local.join("recovery")
     }
 
+    /// Step 98: user-defined languages (`*.json`).
+    pub fn languages_dir(&self) -> PathBuf {
+        self.config.join("languages")
+    }
+
     /// Step 95: the Replace in Files journal (the originals of each batch, for undo).
     pub fn journal_dir(&self) -> PathBuf {
         self.local.join("replace-journal")

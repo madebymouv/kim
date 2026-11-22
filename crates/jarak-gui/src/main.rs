@@ -260,6 +260,8 @@ fn run(
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
             if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());
+                // Step 98: the user-defined languages.
+                app = app.with_languages(p.languages_dir());
                 // Step 95: Replace in Files journals the originals here (not in a UI audit).
                 if !kim_ui::inspect::active() {
                     app = app.with_journal(p.journal_dir());

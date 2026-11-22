@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96; line and case keys since Step 97) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
+Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96; line and case keys since Step 97; comment keys since Step 98) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -96,6 +96,9 @@ screen (smart highlighting).
 | Ctrl+Shift+U / Ctrl+U | UPPERCASE / lowercase |
 | Alt+U / Alt+Shift+U | Proper Case / Proper Case (blend) |
 | Ctrl+Alt+U / Ctrl+Alt+Shift+U | Sentence case / Sentence case (blend) |
+| Ctrl+Q | Toggle the line comment (in the document's language) |
+| Ctrl+K / Ctrl+Shift+K | Comment / uncomment the lines |
+| Ctrl+Shift+Q | Block comment (block uncomment: the palette) |
 
 The palette and the Edit menu have the rest: removing duplicate, consecutive duplicate and empty
 lines, reverse, randomize, the sorts (lexicographic, ignoring case, locale, integers, decimals,

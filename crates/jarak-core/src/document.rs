@@ -75,6 +75,14 @@ pub struct Document {
     pub(crate) notice: Option<String>,
     /// Step 97: the width (display columns) Split Lines splits at — the window sets its own.
     pub split_width: usize,
+    /// Step 98: every edit's position with a generation number (the newest 1024), so a highlighter
+    /// knows from where to lex again.
+    edit_gen: u64,
+    edit_log: std::collections::VecDeque<(u64, usize)>,
+    /// Step 98: the language's comment tokens (the window sets them): a line comment, a block
+    /// comment's open and close.
+    pub comment_line: Option<String>,
+    pub comment_block: Option<(String, String)>,
     /// Columns per tab stop (display and vertical moves).
     pub tab_width: usize,
     /// What Enter inserts.
@@ -108,6 +116,10 @@ impl Document {
             occ_word: false,
             notice: None,
             split_width: 80,
+            edit_gen: 0,
+            edit_log: std::collections::VecDeque::new(),
+            comment_line: None,
+            comment_block: None,
             tab_width: 4,
             eol,
         }
@@ -137,6 +149,28 @@ impl Document {
             goal: r.goal,
         });
         self.history.seal();
+    }
+
+    /// Step 98: the generation of the newest edit (see [`Document::edits_since`]).
+    pub fn edit_gen(&self) -> u64 {
+        self.edit_gen
+    }
+
+    /// Step 98: the smallest position any edit after generation `since` touched (the text from
+    /// there on may have changed); `None` without edits since. Older than the log: `Some(0)`.
+    pub fn edits_since(&self, since: u64) -> Option<usize> {
+        if since >= self.edit_gen {
+            return None;
+        }
+        match self.edit_log.front() {
+            Some((first, _)) if *first <= since + 1 => self
+                .edit_log
+                .iter()
+                .filter(|(g, _)| *g > since)
+                .map(|(_, at)| *at)
+                .min(),
+            _ => Some(0),
+        }
     }
 
     pub fn history(&self) -> &History {
@@ -181,6 +215,11 @@ impl Document {
 
     /// Applies one edit to the text and moves the markers with it.
     fn apply_edit(&mut self, e: &Edit) {
+        self.edit_gen += 1;
+        self.edit_log.push_back((self.edit_gen, e.at));
+        if self.edit_log.len() > 1024 {
+            self.edit_log.pop_front();
+        }
         let n = e.removed.chars().count();
         debug_assert_eq!(self.text.slice(e.at..e.at + n).to_string(), e.removed);
         self.text.remove(e.at..e.at + n);

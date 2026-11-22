@@ -151,6 +151,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 97: the digest dialog, the palette's line commands.
                 "hash",
                 "palette-lines",
+                // Step 98: a highlighted Rust sample, the Language menu.
+                "syntax",
+                "palette-language",
             ],
         ),
     ];

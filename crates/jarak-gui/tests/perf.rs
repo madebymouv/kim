@@ -265,3 +265,55 @@ fn vim_keys_in_a_10_mb_document() {
     assert!(p(0.95) < 16.0, "p95 {:.2} ms", p(0.95));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Step 98 (#117): a keystroke frame in a 10 MB Rust file with highlighting, after the first jump
+/// to its end (which lexes every line once). `cargo test --release -p jarak-gui --test perf
+/// highlighted -- --ignored --nocapture`
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn a_highlighted_keystroke_frame_in_a_10_mb_rust_file() {
+    let unit = "/* block\n   comment */\nfn main() { let s = \"한글 string\"; // line comment\n    let n = 0x1F + 42; }\n";
+    let text = unit.repeat(10 * 1024 * 1024 / unit.len() + 1);
+    let dir = std::env::temp_dir().join(format!("jarak-perf-rs-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ten.rs");
+    std::fs::write(&file, &text).unwrap();
+    let lines = text.lines().count();
+    let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let t = Instant::now();
+    let app = JarakApp::new(Lang::En, &[format!("{}:{lines}", file.display())], incoming);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    let first_ms = t.elapsed().as_secs_f64() * 1000.0;
+    assert!(!h.state().tab().view.syntax.is_empty(), "highlighted");
+    let mut times = Vec::new();
+    for i in 0..300 {
+        let ev = if i % 10 == 9 {
+            egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }
+        } else {
+            egui::Event::Text(if i % 2 == 0 { "a" } else { "한" }.into())
+        };
+        let t = Instant::now();
+        h.event(ev);
+        h.step();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(f64::total_cmp);
+    let p = |q: f64| times[((times.len() as f64 - 1.0) * q) as usize];
+    println!(
+        "highlighted 10 MB Rust ({lines} lines): opening (reading 10 MB, lexing to the end, the first frames) {first_ms:.0} ms; keystroke frame p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms",
+        p(0.5),
+        p(0.95),
+        p(1.0)
+    );
+    assert!(p(0.95) < 16.0, "p95 {:.2} ms", p(0.95));
+    let _ = std::fs::remove_dir_all(&dir);
+}

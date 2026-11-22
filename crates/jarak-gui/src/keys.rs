@@ -175,6 +175,17 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
             C::SentenceCase
         })),
         (true, Key::U) => Some(A::Cmd(if shift { C::UpperCase } else { C::LowerCase })),
+        // Step 98: Notepad++'s comment keys.
+        (true, Key::Q) if !m.alt => Some(A::Cmd(if shift {
+            C::BlockComment
+        } else {
+            C::ToggleComment
+        })),
+        (true, Key::K) if !m.alt => Some(A::Cmd(if shift {
+            C::LineUncomment
+        } else {
+            C::LineComment
+        })),
         (false, Key::Escape) if !shift => Some(A::SingleCaret),
         (true, Key::F) if !shift && !m.alt => Some(A::Find),
         (false, Key::F4) => Some(if shift {
@@ -271,6 +282,10 @@ pub fn key_label(a: Action) -> Option<&'static str> {
             C::ProperCaseBlend => "Alt+Shift+U",
             C::SentenceCase => "Ctrl+Alt+U",
             C::SentenceCaseBlend => "Ctrl+Alt+Shift+U",
+            C::ToggleComment => "Ctrl+Q",
+            C::BlockComment => "Ctrl+Shift+Q",
+            C::LineComment => "Ctrl+K",
+            C::LineUncomment => "Ctrl+Shift+K",
             // The rest are in the palette and the menus only.
             _ => return None,
         },
@@ -484,6 +499,6 @@ mod tests {
         assert_eq!(action_for(Key::Z, alt), Some(A::ToggleWrap));
         // Letters without Ctrl are text, not actions.
         assert_eq!(k(Key::A, false, false), None);
-        assert_eq!(k(Key::Q, true, false), None);
+        assert_eq!(k(Key::R, true, false), None);
     }
 }

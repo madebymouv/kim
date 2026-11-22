@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported, `LANG-08` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -140,9 +140,9 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| CMT-01 | Toggle single-line comment (Ctrl+Q) | planned | `JARAK-FR-086` | 98 | T | — |
-| CMT-02 | Single-line comment / uncomment | planned | `JARAK-FR-086` | 98 | T | — |
-| CMT-03 | Block comment / block uncomment | planned | `JARAK-FR-086` | 98 | T | — |
+| CMT-01 | Toggle single-line comment (Ctrl+Q) | supported | `JARAK-FR-086` | 98 | T | Step 98: Ctrl+Q in the document's language, the selection kept (`lineops::tests::comments_toggle_add_remove_block_and_markup`, `comment_keys_follow_the_language`) |
+| CMT-02 | Single-line comment / uncomment | supported | `JARAK-FR-086` | 98 | T | Step 98: Ctrl+K / Ctrl+Shift+K at the common indentation; block comments per line where a language has no line comment (`lineops::tests::comments_toggle_add_remove_block_and_markup`, window test) |
+| CMT-03 | Block comment / block uncomment | supported | `JARAK-FR-086` | 98 | T | Step 98: Ctrl+Shift+Q and the palette's block uncomment (`lineops::tests::comments_toggle_add_remove_block_and_markup`, `comment_keys_follow_the_language`) |
 
 ### BLANK — Edit → Blank Operations and EOL (sources U, E)
 
@@ -321,17 +321,17 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| LANG-01 | Built-in language highlighting (the JARAK-FR-090 list) | planned | `JARAK-FR-090` | 98 | T | — |
+| LANG-01 | Built-in language highlighting (the JARAK-FR-090 list) | supported | `JARAK-FR-090` | 98 | T | Step 98: 23 languages, own line-state lexers (ADR 0103), golden fixtures for each (`syntax::tests`: c_and_cpp … sql_markdown_lua_php_ruby, UI audit `syntax`); 10 MB: 164 ms to lex to the end, keystroke frame p95 0.29 ms |
 | LANG-02 | Further Notepad++ languages (Ada, ASM, AutoIt, COBOL, D, Fortran, Haskell, Lisp, Pascal, Perl, R, Scheme, Swift, VHDL, Verilog, …) | planned | `JARAK-FR-090` | 110 | T | — |
-| LANG-03 | Language detection by extension | planned | `JARAK-FR-090` | 98 | T | — |
-| LANG-04 | Language detection by first line / shebang | planned | `JARAK-FR-090` | 98 | T | — |
-| LANG-05 | Manual language selection (Language menu) | planned | `JARAK-FR-090` | 98 | T | — |
-| LANG-06 | Normal text (no highlighting) | planned | `JARAK-FR-090` | 98 | T | — |
-| LANG-07 | User Defined Language: define keywords, comments, operators, delimiters, numbers | planned | `JARAK-FR-091` | 98 | T | — |
-| LANG-08 | User Defined Language: folding markers | planned | `JARAK-FR-091` | 98 | T | — |
-| LANG-09 | Import / export of user-defined languages | planned | `JARAK-FR-091` | 98 | T | — |
-| LANG-10 | Import Notepad++ UDL XML files | planned | `JARAK-FR-091` | 98 | T | — |
-| LANG-11 | Embedded languages (script and style inside HTML, PHP) | planned | `JARAK-FR-090` | 98 | T | — |
+| LANG-03 | Language detection by extension | supported | `JARAK-FR-090` | 98 | T | Step 98: by extension, user languages first (`syntax::tests`::every_listed_language_is_built_in_and_detected, `a_rust_file_is_highlighted_and_the_language_menu_changes_it`) |
+| LANG-04 | Language detection by first line / shebang | supported | `JARAK-FR-090` | 98 | T | Step 98: `#!` lines (with `env` and version suffixes) and `<?xml` (`syntax::tests`::every_listed_language_is_built_in_and_detected) |
+| LANG-05 | Manual language selection (Language menu) | supported | `JARAK-FR-090` | 98 | T | Step 98: the Language menu in the palette and the menu bar, the status bar names the language (`a_rust_file_is_highlighted_and_the_language_menu_changes_it`, UI audit `palette-language`) |
+| LANG-06 | Normal text (no highlighting) | supported | `JARAK-FR-090` | 98 | T | Step 98: *Language: Normal text*, and undetected files (`a_rust_file_is_highlighted_and_the_language_menu_changes_it`) |
+| LANG-07 | User Defined Language: define keywords, comments, operators, delimiters, numbers | supported | `JARAK-FR-091` | 98 | T | Step 98: JSON user languages — keywords (3 lists), comments, operators, delimiters with escapes, numbers (`syntax::tests`::a_user_defined_language_from_json_highlights_and_folds, `user_languages_load_import_from_notepad_plus_plus_and_export`) |
+| LANG-08 | User Defined Language: folding markers | partial | `JARAK-FR-091` | 98 | T | Step 98: `fold` markers in user languages and in imported UDLs, matched outside comments and strings into fold ranges (`syntax::tests`::a_user_defined_language_from_json_highlights_and_folds); folding in the window (margin, commands) is Step 99 |
+| LANG-09 | Import / export of user-defined languages | supported | `JARAK-FR-091` | 98 | T | Step 98: import (Notepad++ XML → JSON, never replacing a file) and export of the current language as JSON (`syntax::tests`::a_notepad_plus_plus_udl_is_imported_and_highlights_a_sample, `user_languages_load_import_from_notepad_plus_plus_and_export`) |
+| LANG-10 | Import Notepad++ UDL XML files | supported | `JARAK-FR-091` | 98 | T | Step 98: UDL 2.x XML: name, extensions, case, comments, Keywords1–8, operators, delimiters, code folding; styles, prefixes, number and comment-folding rules are not taken (documented) (`syntax::tests`::a_notepad_plus_plus_udl_is_imported_and_highlights_a_sample) |
+| LANG-11 | Embedded languages (script and style inside HTML, PHP) | supported | `JARAK-FR-090` | 98 | T | Step 98: JavaScript in `<script>`, CSS in `<style>`, PHP blocks in PHP files, fenced code in Markdown (`syntax::tests`::html_with_script_and_style_css_xml, sql_markdown_lua_php_ruby) |
 
 ### SET — Settings menu (sources R, P)
 

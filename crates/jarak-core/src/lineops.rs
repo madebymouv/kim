@@ -1083,6 +1083,136 @@ impl Document {
     }
 }
 
+/// Line comment commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommentMode {
+    Toggle,
+    Add,
+    Remove,
+}
+
+impl Document {
+    /// Ctrl+Q / Ctrl+K / Ctrl+Shift+K (`CMT-01`, `CMT-02`, Step 98): the selected lines get or lose
+    /// the language's line comment (`// `) at their common indentation; a language with only block
+    /// comments (HTML, CSS) wraps each line in them. Toggle comments unless every non-empty line is
+    /// commented already. Empty lines stay as they are.
+    pub fn comment_lines(&mut self, mode: CommentMode) -> bool {
+        let (l0, l1) = self.selected_line_span();
+        // A selection stays on the rewritten lines (another toggle works on them again).
+        let had_selection = !self.selection().primary().is_empty();
+        let (open, close) = match (&self.comment_line, &self.comment_block) {
+            (Some(lc), _) => (lc.clone(), String::new()),
+            (None, Some((o, c))) => (o.clone(), c.clone()),
+            (None, None) => {
+                self.notice = Some("This language has no comments.".into());
+                return false;
+            }
+        };
+        let lines = self.lines_of(l0, l1);
+        let is_commented = |l: &str| {
+            let t = l.trim_start();
+            t.starts_with(open.as_str())
+                && (close.is_empty() || t.trim_end().ends_with(close.as_str()))
+        };
+        let all = lines
+            .iter()
+            .filter(|l| !l.trim().is_empty())
+            .all(|l| is_commented(l));
+        let add = match mode {
+            CommentMode::Add => true,
+            CommentMode::Remove => false,
+            CommentMode::Toggle => !all,
+        };
+        let indent = lines
+            .iter()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.chars().take_while(|c| *c == ' ' || *c == '\t').count())
+            .min()
+            .unwrap_or(0);
+        let out: Vec<String> = lines
+            .iter()
+            .map(|l| {
+                if l.trim().is_empty() {
+                    return l.clone();
+                }
+                if add {
+                    let (head, rest): (String, String) = (
+                        l.chars().take(indent).collect(),
+                        l.chars().skip(indent).collect(),
+                    );
+                    if close.is_empty() {
+                        format!("{head}{open} {rest}")
+                    } else {
+                        format!("{head}{open} {rest} {close}")
+                    }
+                } else if is_commented(l) {
+                    let lead: String = l.chars().take_while(|c| c.is_whitespace()).collect();
+                    let t = &l[lead.len()..];
+                    let mut body = &t[open.len()..];
+                    body = body.strip_prefix(' ').unwrap_or(body);
+                    if !close.is_empty() {
+                        let b = body.trim_end();
+                        body = b.strip_suffix(close.as_str()).unwrap_or(b);
+                        body = body.strip_suffix(' ').unwrap_or(body);
+                    }
+                    format!("{lead}{body}")
+                } else {
+                    l.clone()
+                }
+            })
+            .collect();
+        self.put_lines(l0, l1, &out, had_selection);
+        true
+    }
+
+    /// Ctrl+Shift+Q (`CMT-03`): the selection (or the caret's line) is wrapped in the block
+    /// comment; `remove`: a selection in one is unwrapped. Languages without block comments use
+    /// their line comment on each line.
+    pub fn block_comment(&mut self, remove: bool) -> bool {
+        let Some((open, close)) = self.comment_block.clone() else {
+            return self.comment_lines(if remove {
+                CommentMode::Remove
+            } else {
+                CommentMode::Add
+            });
+        };
+        let r = self.selection().primary();
+        let (a, b) = if r.is_empty() {
+            let (l0, l1) = self.selected_line_span();
+            let t = self.text();
+            (
+                t.line_to_char(l0),
+                t.line_to_char(l1) + text::line_len(t.line(l1)),
+            )
+        } else {
+            (r.from(), r.to())
+        };
+        let s = self.text().slice(a..b).to_string();
+        let new = if remove {
+            let t = s.trim();
+            if !(t.starts_with(open.as_str())
+                && t.ends_with(close.as_str())
+                && t.len() >= open.len() + close.len())
+            {
+                self.notice = Some("The selection is not in a block comment.".into());
+                return false;
+            }
+            let lead = &s[..s.len() - s.trim_start().len()];
+            let trail = &s[s.trim_end().len()..];
+            let inner = &t[open.len()..t.len() - close.len()];
+            let inner = inner.strip_prefix(' ').unwrap_or(inner);
+            let inner = inner.strip_suffix(' ').unwrap_or(inner);
+            format!("{lead}{inner}{trail}")
+        } else {
+            format!("{open} {s} {close}")
+        };
+        let n = new.chars().count();
+        self.replace(vec![(a, b, new)], Some(a));
+        self.set_selection(&Selection::single(Range::new(a, a + n)));
+        true
+    }
+}
+
 /// A date and time for [`format_datetime`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DateTime {

@@ -355,3 +355,68 @@ fn the_custom_date_format() {
         "2026년 11월 2일 at 15시"
     );
 }
+
+#[test]
+fn comments_toggle_add_remove_block_and_markup() {
+    let src = "fn a() {\n    한글();\n\n}\n";
+    let mut d = doc(src);
+    d.comment_line = Some("//".into());
+    d.comment_block = Some(("/*".into(), "*/".into()));
+    sel(&mut d, 0, 20);
+    assert!(d.comment_lines(CommentMode::Toggle));
+    assert_eq!(
+        d.text().to_string(),
+        "// fn a() {\n//     한글();\n\n}\n",
+        "at the common indentation; the empty line stays"
+    );
+    sel(&mut d, 0, 25);
+    assert!(d.comment_lines(CommentMode::Toggle));
+    assert_eq!(
+        d.text().to_string(),
+        src,
+        "every line commented: toggle uncomments"
+    );
+    sel(&mut d, 0, 20);
+    d.comment_lines(CommentMode::Remove);
+    assert_eq!(d.text().to_string(), src, "nothing to remove");
+    sel(&mut d, 0, 8);
+    assert!(d.block_comment(false));
+    assert_eq!(d.text().to_string(), "/* fn a() { */\n    한글();\n\n}\n");
+    assert!(d.block_comment(true), "the wrapped selection is unwrapped");
+    assert_eq!(d.text().to_string(), src);
+    undo_restores(&mut d, "/* fn a() { */\n    한글();\n\n}\n");
+    // A language with only block comments (HTML) wraps each line.
+    let mut h = doc("<p>한글</p>\n<b>x</b>\n");
+    h.comment_block = Some(("<!--".into(), "-->".into()));
+    sel(&mut h, 0, 18);
+    assert!(h.comment_lines(CommentMode::Toggle));
+    assert_eq!(
+        h.text().to_string(),
+        "<!-- <p>한글</p> -->\n<!-- <b>x</b> -->\n"
+    );
+    sel(&mut h, 0, 36);
+    h.comment_lines(CommentMode::Toggle);
+    assert_eq!(h.text().to_string(), "<p>한글</p>\n<b>x</b>\n");
+    let mut n = doc("x");
+    assert!(!n.comment_lines(CommentMode::Toggle));
+    assert_eq!(
+        n.take_notice().as_deref(),
+        Some("This language has no comments.")
+    );
+}
+
+#[test]
+fn the_edit_log_says_from_where_the_text_changed() {
+    let mut d = doc("a\nb\nc\n");
+    let g0 = d.edit_gen();
+    assert_eq!(d.edits_since(g0), None);
+    d.set_selection(&Selection::point(4));
+    d.type_text("X");
+    d.set_selection(&Selection::point(2));
+    d.type_text("Y");
+    assert_eq!(d.edits_since(g0), Some(2), "the smallest position");
+    let g1 = d.edit_gen();
+    d.undo();
+    assert_eq!(d.edits_since(g1), Some(2), "undo is an edit too");
+    assert_eq!(d.edits_since(d.edit_gen()), None);
+}

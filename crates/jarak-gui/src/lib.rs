@@ -19,6 +19,7 @@ pub mod handoff;
 pub mod hashdlg;
 pub mod images;
 pub mod keys;
+pub mod languages;
 pub mod media;
 pub mod palette;
 pub mod preview;
@@ -88,6 +89,12 @@ pub struct Tab {
     pub alt: Option<Box<views::PaneState>>,
     /// Step 94: the text the search scans, for one history state.
     pub(crate) hay: Option<jarak_core::search::Haystack>,
+    /// Step 98: the language (detected, plain or chosen), its line-start states and the edit
+    /// generation and language they are for.
+    pub lang_choice: LangChoice,
+    pub(crate) hl: jarak_core::syntax::Highlighter,
+    pub(crate) hl_gen: u64,
+    pub(crate) hl_lang: String,
     pub file: FileDocument,
     pub view: ViewState,
     pub mode: Mode,
@@ -107,6 +114,10 @@ impl Tab {
             pane: views::Pane::Main,
             alt: None,
             hay: None,
+            lang_choice: LangChoice::Auto,
+            hl: jarak_core::syntax::Highlighter::default(),
+            hl_gen: 0,
+            hl_lang: String::new(),
             file,
             view: ViewState::default(),
             mode: Mode::Source,
@@ -207,6 +218,16 @@ impl Tab {
             "Plain text"
         }
     }
+}
+
+/// Step 98: a document's language — detected from its name and first line, plain text, or chosen
+/// in the Language menu (a built-in or a user-defined language, by name).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum LangChoice {
+    #[default]
+    Auto,
+    Plain,
+    Named(String),
 }
 
 /// The editing mode (`JARAK-FR-050`): Standard (the default) or Vim.
@@ -426,6 +447,9 @@ pub struct JarakApp {
     /// the hash dialog.
     pub copy_line: bool,
     pub hash_dialog: Option<hashdlg::HashDialog>,
+    /// Step 98: the user-defined languages and their folder.
+    pub user_langs: Vec<jarak_core::syntax::Lang>,
+    pub languages_dir: Option<PathBuf>,
 }
 
 /// The assets dialog's content.
@@ -460,6 +484,13 @@ impl JarakApp {
     }
 
     /// Uses `c` for Copy, Cut and Paste (the program passes the Windows clipboard).
+    /// Step 98: the folder of the user-defined languages (`*.json`), read now.
+    pub fn with_languages(mut self, dir: PathBuf) -> JarakApp {
+        self.languages_dir = Some(dir);
+        self.reload_languages();
+        self
+    }
+
     /// Step 95: where Replace in Files keeps the originals (the program passes its journal folder).
     pub fn with_journal(mut self, dir: PathBuf) -> JarakApp {
         self.journal_root = Some(dir);
@@ -644,6 +675,7 @@ impl JarakApp {
     /// IME switch and search marks.
     fn vim_frame(&mut self) {
         let i = self.active;
+        self.highlight_frame();
         // Step 96: the virtual space setting applies to every document.
         let vs = self.virtual_space;
         for t in &mut self.tabs {
@@ -791,6 +823,8 @@ impl JarakApp {
             palette::Run::Style(cmd) => self.style(cmd),
             palette::Run::Multi(k) => self.multi(k),
             palette::Run::Edit(k) => self.edit_tool(k),
+            palette::Run::Language(k) => self.set_language(k),
+            palette::Run::Udl(k) => self.udl_tool(k),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1042,6 +1076,7 @@ impl JarakApp {
                 menu: palette::Menu::File,
             });
         }
+        entries.extend(self.language_entries());
         let found = palette::filter(&entries, &st.query);
         st.selected = st.selected.min(found.len().saturating_sub(1));
         let (up, down, enter) = ctx.input(|i| {
@@ -1155,7 +1190,8 @@ impl JarakApp {
         if !self.menu_bar {
             return;
         }
-        let entries = palette::entries();
+        let mut entries = palette::entries();
+        entries.extend(self.language_entries());
         let lang = self.lang;
         let mut run = None;
         let mut show = None;
@@ -1438,6 +1474,8 @@ impl JarakApp {
             begin_select: None,
             copy_line: true,
             hash_dialog: None,
+            user_langs: Vec::new(),
+            languages_dir: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1450,7 +1488,8 @@ impl JarakApp {
     /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92), `tabs`, `views`,
     /// `side`, `documents` (Step 93), `find`, `replace`, `mark`, `incremental` (Step 94), `files`,
     /// `results`, `replace-preview` (Step 95), `multi`, `column`, `column-editor` (Step 96), `hash`,
-    /// `palette-lines` (Step 97). Only used while `KIM_UI_INSPECT` is set.
+    /// `palette-lines` (Step 97), `syntax`, `palette-language` (Step 98). Only used while
+    /// `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -1518,6 +1557,46 @@ impl JarakApp {
                 }
                 let i = self.active;
                 self.save(i);
+            }
+            // Step 98: a Rust sample (written next to the audit's copy) and the Language menu.
+            "syntax" => {
+                let dir = self
+                    .tab()
+                    .file
+                    .path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf);
+                if let Some(dir) = dir {
+                    let p = dir.join("sample.rs");
+                    let _ = std::fs::write(
+                        &p,
+                        "/// 한글 문서 주석
+use std::fmt;
+
+#[derive(Debug)]
+pub struct Point { x: f64, y: f64 }
+
+fn main() {
+    let p = Point { x: 1.5, y: -2.0 }; // 주석
+    let s = \"text \\\"quoted\\\"\";
+    if p.x > 0.0 && s.len() != 0 {
+        println!(\"{p:?} {}\", 0x1F);
+    }
+    /* block
+       comment */
+}
+",
+                    );
+                    self.open_args(&[p.display().to_string()]);
+                }
+            }
+            "palette-language" => {
+                self.palette = Some(palette::PaletteState {
+                    query: "language".into(),
+                    selected: 0,
+                    focus: true,
+                });
             }
             "palette-lines" => {
                 self.palette = Some(palette::PaletteState {
@@ -2984,15 +3063,10 @@ impl JarakApp {
             ),
             (eol_label, c.text_secondary),
             (
-                self.t(
-                    t.language(),
-                    if t.language() == "Markdown" {
-                        "Markdown"
-                    } else {
-                        "일반 텍스트"
-                    },
-                )
-                .to_string(),
+                self.lang_for(self.active).map_or_else(
+                    || self.t("Plain text", "일반 텍스트").to_string(),
+                    |l| l.name.clone(),
+                ),
                 c.text_secondary,
             ),
             (
