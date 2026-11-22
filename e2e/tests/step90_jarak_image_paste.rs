@@ -85,6 +85,10 @@ fn audited(v: &serde_json::Value) -> kim_design::inspect::Report {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step90_paste_a_screenshot_save_close_reopen_and_see_it() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step90");
     let dir = sb.path().join("journey");
     // 1. Paste, save, preview.

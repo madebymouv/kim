@@ -102,6 +102,10 @@ fn jarak(args: &[&str]) -> (i32, serde_json::Value) {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step91_pictures_in_the_preview_and_assets_through_the_cli() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step91");
     let dir = sb.path().join("notes");
     std::fs::create_dir_all(&dir).unwrap();

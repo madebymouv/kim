@@ -96,6 +96,10 @@ fn png_size(path: &std::path::Path) -> (u32, u32) {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step89_the_preview_and_split_views_pass_the_audit_and_never_write_the_markdown() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step89");
     for screen in ["preview", "split"] {
         for zoom in ["1", "1.5"] {

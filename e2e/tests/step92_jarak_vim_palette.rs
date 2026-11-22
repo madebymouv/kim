@@ -80,6 +80,10 @@ fn ids(r: &kim_design::inspect::Report) -> Vec<String> {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step92_a_vim_session_the_palette_and_the_menu_bar() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step92");
     let dir = sb.path().join("notes");
     std::fs::create_dir_all(&dir).unwrap();

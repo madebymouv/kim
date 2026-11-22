@@ -37,6 +37,79 @@ pub fn bin_debug(name: &str) -> PathBuf {
     path
 }
 
+/// Why the release `jarak-gui` cannot open a window on this machine, or `None` when it can: it is
+/// started once (per test process) on a small document and asked to close after its first frame;
+/// exit code 6 with its stderr means no window could be made (no OpenGL 2 driver, as on the
+/// Daily's GitHub runner without a GPU). The window scenarios skip there, saying why.
+#[cfg(windows)]
+pub fn jarak_window_unavailable() -> Option<String> {
+    use std::process::Stdio;
+    use std::sync::OnceLock;
+    use std::time::{Duration, Instant};
+    static WHY: OnceLock<Option<String>> = OnceLock::new();
+    WHY.get_or_init(|| {
+        let dir = TempDir::new("jarak-window-probe");
+        let doc = dir.path().join("probe.txt");
+        std::fs::write(&doc, "probe\n").ok()?;
+        let err = dir.path().join("stderr.txt");
+        let file = std::fs::File::create(&err).ok()?;
+        let mut child = Command::new(bin("jarak-gui"))
+            .args([
+                "--instance",
+                &format!("e2e-probe-{}", std::process::id()),
+                "--new-window",
+                "--no-session",
+                "--lang",
+                "en",
+            ])
+            .arg(&doc)
+            .env("APPDATA", dir.path().join("Roaming"))
+            .env("LOCALAPPDATA", dir.path().join("Local"))
+            .env("KIM_UI_INSPECT", dir.path().join("probe.json"))
+            .env("KIM_UI_EXIT", "1")
+            .env("KIM_UI_SCREEN", "editor")
+            .env("KIM_UI_POS", "40,40")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(file)
+            .spawn()
+            .ok()?;
+        let until = Instant::now() + Duration::from_secs(40);
+        let status = loop {
+            if let Ok(Some(s)) = child.try_wait() {
+                break Some(s);
+            }
+            if Instant::now() > until {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        match status {
+            Some(s) if s.code() == Some(6) => {
+                let why = std::fs::read_to_string(&err).unwrap_or_default();
+                Some(if why.trim().is_empty() {
+                    "jarak-gui exited with code 6".to_string()
+                } else {
+                    why.trim().to_string()
+                })
+            }
+            // Any other failure is not skipped (the scenarios then fail), but its reason goes to
+            // the log so a Daily run shows it.
+            Some(s) if !s.success() => {
+                eprintln!(
+                    "jarak-gui window probe: {s}: {}",
+                    std::fs::read_to_string(&err).unwrap_or_default().trim()
+                );
+                None
+            }
+            _ => None,
+        }
+    })
+    .clone()
+}
+
 /// Whether a program named `exe` (e.g. `noeul.exe`) runs on this PC: a scenario that checks
 /// what happens when a tool's own instance is *not* running cannot check it on a developer PC
 /// where the user runs that tool (the instance answers on the per-user default endpoint). Read

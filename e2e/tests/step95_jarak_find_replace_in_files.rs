@@ -120,6 +120,10 @@ fn window(dir: &Path, doc: &Path, screen: &str) -> kim_design::inspect::Report {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step95_find_and_replace_in_files_with_the_journal_and_the_results_panel() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step95");
     let dir = sb.path().join("run");
     std::fs::create_dir_all(dir.join("Roaming")).unwrap();

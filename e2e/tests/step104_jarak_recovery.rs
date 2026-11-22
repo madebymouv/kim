@@ -94,6 +94,10 @@ fn texts(r: &kim_design::inspect::Report) -> Vec<String> {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step104_recovery_offer_session_fallback_and_the_disk_question() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step104");
     // 1. A dead window's recovery folder.
     let dir = sb.path().join("offer");

@@ -113,6 +113,10 @@ fn texts(r: &kim_design::inspect::Report) -> Vec<String> {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step110_the_remaining_built_ins() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step110");
     let dir = sb.path().join("run");
     std::fs::create_dir_all(dir.join("Roaming").join("mouv").join("jarak")).unwrap();
@@ -274,6 +278,10 @@ fn step110_the_remaining_built_ins() {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step109_contrast_themes_pass_the_audit() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     require_e2e();
     let dir = TempDir::new("step109-contrast");
     let doc = dir.path().join("a.rs");

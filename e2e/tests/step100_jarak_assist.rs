@@ -77,6 +77,10 @@ fn text_of(r: &kim_design::inspect::Report, prefix: &str) -> Vec<String> {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step100_the_completion_popup_and_the_parameter_hint() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step100");
     let dir = sb.path().join("run");
     let docs = dir.join("docs");

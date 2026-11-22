@@ -67,7 +67,8 @@ fn a_fresh_machine_lists_noeul_and_ddalgak_as_planned_and_installs_nothing() {
         .iter()
         .map(|t| t["id"].as_str().unwrap())
         .collect();
-    assert_eq!(ids, ["kim", "subak", "noeul", "ddalgak"]);
+    // Step 85 (ADR 0102) added Jarak to the bundled catalog.
+    assert_eq!(ids, ["kim", "subak", "noeul", "ddalgak", "jarak"]);
     for t in list["data"]["tools"].as_array().unwrap() {
         assert_eq!(t["availability"], "planned", "{t}");
     }

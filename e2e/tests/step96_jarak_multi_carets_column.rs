@@ -82,6 +82,10 @@ fn texts(r: &kim_design::inspect::Report) -> Vec<String> {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step96_multiple_carets_column_selection_and_the_column_editor() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step96");
     let dir = sb.path().join("run");
     let docs = dir.join("docs");

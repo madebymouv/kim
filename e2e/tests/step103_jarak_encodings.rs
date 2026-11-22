@@ -106,6 +106,10 @@ fn window(dir: &Path, doc: &Path, screen: &str) -> kim_design::inspect::Report {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step103_character_sets_symbols_and_the_lossy_question() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step103");
     let dir = sb.path().join("run");
     let files = dir.join("files");

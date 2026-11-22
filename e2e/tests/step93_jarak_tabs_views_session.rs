@@ -94,6 +94,10 @@ fn bars(r: &kim_design::inspect::Report) -> Vec<(String, usize)> {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step93_tabs_two_views_and_the_session_across_a_restart() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step93");
     let dir = sb.path().join("run");
     let docs = dir.join("docs");

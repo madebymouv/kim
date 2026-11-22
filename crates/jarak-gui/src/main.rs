@@ -421,6 +421,11 @@ fn run(
     );
     match result {
         Ok(()) => ExitCode::SUCCESS,
-        Err(_) => ExitCode::from(1),
+        // No window could be made (no OpenGL 2 driver, as on a GitHub runner without a GPU):
+        // said on stderr, exit 6 (unavailable, CLI_CONTRACT §6).
+        Err(e) => {
+            eprintln!("jarak-gui: cannot open the window: {e}");
+            ExitCode::from(6)
+        }
     }
 }

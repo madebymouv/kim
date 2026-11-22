@@ -93,6 +93,10 @@ fn texts(r: &kim_design::inspect::Report) -> Vec<String> {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step105_settings_through_the_cli_and_the_settings_window() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step105");
     let dir = sb.path().join("run");
     std::fs::create_dir_all(dir.join("Roaming").join("mouv").join("jarak")).unwrap();

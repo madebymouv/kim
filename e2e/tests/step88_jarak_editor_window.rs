@@ -100,6 +100,10 @@ fn png_size(path: &std::path::Path) -> (u32, u32) {
 #[test]
 #[ignore = "e2e: run via `cargo xtask e2e` only (AGENTS.md §4)"]
 fn step88_the_editor_window_passes_the_audit_and_never_writes_the_document() {
+    if let Some(why) = kim_e2e::jarak_window_unavailable() {
+        eprintln!("skipped (no window can be opened on this machine): {why}");
+        return;
+    }
     let sb = TempDir::new("e2e-step88");
     for zoom in ["1", "1.5"] {
         let (v, shot, _) = run(&sb, "editor", zoom);
