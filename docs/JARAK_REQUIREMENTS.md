@@ -32,7 +32,10 @@ and `JARAK-FR-074` (Find and Replace in Files with the journal, the results pane
 Replace All in open documents; [JARAK_ARCHITECTURE §17](JARAK_ARCHITECTURE.md)); Step 96
 implemented `JARAK-FR-080` and `JARAK-FR-081` and the Begin/End Select of `JARAK-FR-012`
 (multiple carets, occurrences, column selections, virtual space, the Column Editor;
-[JARAK_ARCHITECTURE §18](JARAK_ARCHITECTURE.md));
+[JARAK_ARCHITECTURE §18](JARAK_ARCHITECTURE.md)); Step 97 implemented `JARAK-FR-082`…`JARAK-FR-085`,
+`JARAK-FR-087` and `JARAK-FR-088` (line operations, sorting, case, blanks, the date and time, paths,
+encodings and digests; [JARAK_ARCHITECTURE §19](JARAK_ARCHITECTURE.md); the clipboard history and
+character panel of `JARAK-FR-087` are not part of this Step's matrix rows);
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

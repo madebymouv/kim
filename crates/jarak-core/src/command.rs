@@ -5,6 +5,7 @@
 //! Step 86 registers the editing and caret commands of the text model; later Steps add theirs.
 
 use crate::document::Document;
+use crate::lineops::{Blank, Case, Codec, Rng, Sort};
 
 /// A command that needs no argument (typing text is [`Document::type_text`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -41,13 +42,69 @@ pub enum Command {
     SelectDocEnd,
     SelectPageUp,
     SelectPageDown,
+    // Step 97: line operations and text transformations (`crate::lineops`).
+    DuplicateLine,
+    DeleteLine,
+    MoveLineUp,
+    MoveLineDown,
+    JoinLines,
+    SplitLines,
+    RemoveDuplicateLines,
+    RemoveConsecutiveDuplicates,
+    RemoveEmptyLines,
+    RemoveBlankLines,
+    InsertLineAbove,
+    InsertLineBelow,
+    ReverseLines,
+    RandomizeLines,
+    SortLexAsc,
+    SortLexDesc,
+    SortNoCaseAsc,
+    SortNoCaseDesc,
+    SortLocaleAsc,
+    SortLocaleDesc,
+    SortIntAsc,
+    SortIntDesc,
+    SortDecDotAsc,
+    SortDecDotDesc,
+    SortDecCommaAsc,
+    SortDecCommaDesc,
+    SortLengthAsc,
+    SortLengthDesc,
+    UpperCase,
+    LowerCase,
+    ProperCase,
+    ProperCaseBlend,
+    SentenceCase,
+    SentenceCaseBlend,
+    InvertCase,
+    RandomCase,
+    TrimTrailing,
+    TrimLeading,
+    TrimBoth,
+    EolToSpace,
+    TrimBothEolToSpace,
+    TabToSpace,
+    SpaceToTabAll,
+    SpaceToTabLeading,
+    Base64Encode,
+    Base64EncodeNoPad,
+    Base64EncodeUrl,
+    Base64Decode,
+    UrlEncode,
+    UrlDecode,
+    QpEncode,
+    QpDecode,
+    HexEncode,
+    HexDecode,
 }
 
 /// A command's identity in the registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommandInfo {
     pub command: Command,
-    /// Stable, dotted, lowercase (`edit.undo`); used in key bindings and macros.
+    /// Stable, dotted, lowercase letters, digits and `-` (`edit.undo`, `mime.base64-encode`);
+    /// used in key bindings and macros.
     pub id: &'static str,
     pub en: &'static str,
     pub ko: &'static str,
@@ -95,6 +152,60 @@ registry! {
     SelectDocEnd, "select.doc-end", "Extend the selection to the document end", "문서 끝까지 선택";
     SelectPageUp, "select.page-up", "Extend the selection a page up", "한 화면 위까지 선택";
     SelectPageDown, "select.page-down", "Extend the selection a page down", "한 화면 아래까지 선택";
+    DuplicateLine, "line.duplicate", "Duplicate the line or the selection", "줄 또는 선택 복제";
+    DeleteLine, "line.delete", "Delete the line", "줄 지우기";
+    MoveLineUp, "line.move-up", "Move the line up", "줄을 위로 옮기기";
+    MoveLineDown, "line.move-down", "Move the line down", "줄을 아래로 옮기기";
+    JoinLines, "line.join", "Join lines", "줄 합치기";
+    SplitLines, "line.split", "Split lines at the window's width", "창 너비에서 줄 나누기";
+    RemoveDuplicateLines, "line.remove-duplicates", "Remove duplicate lines", "중복 줄 지우기";
+    RemoveConsecutiveDuplicates, "line.remove-consecutive-duplicates", "Remove consecutive duplicate lines", "연속 중복 줄 지우기";
+    RemoveEmptyLines, "line.remove-empty", "Remove empty lines", "빈 줄 지우기";
+    RemoveBlankLines, "line.remove-blank", "Remove empty lines (also with blanks only)", "빈 줄 지우기(공백만 있는 줄 포함)";
+    InsertLineAbove, "line.insert-above", "Insert a blank line above", "위에 빈 줄 넣기";
+    InsertLineBelow, "line.insert-below", "Insert a blank line below", "아래에 빈 줄 넣기";
+    ReverseLines, "line.reverse", "Reverse the line order", "줄 순서 뒤집기";
+    RandomizeLines, "line.randomize", "Randomize the line order", "줄 순서 섞기";
+    SortLexAsc, "sort.lex-asc", "Sort lines lexicographically ascending", "줄 정렬: 사전순 오름차순";
+    SortLexDesc, "sort.lex-desc", "Sort lines lexicographically descending", "줄 정렬: 사전순 내림차순";
+    SortNoCaseAsc, "sort.nocase-asc", "Sort lines ignoring case ascending", "줄 정렬: 대소문자 무시 오름차순";
+    SortNoCaseDesc, "sort.nocase-desc", "Sort lines ignoring case descending", "줄 정렬: 대소문자 무시 내림차순";
+    SortLocaleAsc, "sort.locale-asc", "Sort lines in locale order ascending", "줄 정렬: 로캘 순서 오름차순";
+    SortLocaleDesc, "sort.locale-desc", "Sort lines in locale order descending", "줄 정렬: 로캘 순서 내림차순";
+    SortIntAsc, "sort.integer-asc", "Sort lines as integers ascending", "줄 정렬: 정수 오름차순";
+    SortIntDesc, "sort.integer-desc", "Sort lines as integers descending", "줄 정렬: 정수 내림차순";
+    SortDecDotAsc, "sort.decimal-dot-asc", "Sort lines as decimals (dot) ascending", "줄 정렬: 소수(점) 오름차순";
+    SortDecDotDesc, "sort.decimal-dot-desc", "Sort lines as decimals (dot) descending", "줄 정렬: 소수(점) 내림차순";
+    SortDecCommaAsc, "sort.decimal-comma-asc", "Sort lines as decimals (comma) ascending", "줄 정렬: 소수(쉼표) 오름차순";
+    SortDecCommaDesc, "sort.decimal-comma-desc", "Sort lines as decimals (comma) descending", "줄 정렬: 소수(쉼표) 내림차순";
+    SortLengthAsc, "sort.length-asc", "Sort lines by length ascending", "줄 정렬: 길이 오름차순";
+    SortLengthDesc, "sort.length-desc", "Sort lines by length descending", "줄 정렬: 길이 내림차순";
+    UpperCase, "case.upper", "UPPERCASE", "대문자로";
+    LowerCase, "case.lower", "lowercase", "소문자로";
+    ProperCase, "case.proper", "Proper Case", "단어 첫 글자 대문자";
+    ProperCaseBlend, "case.proper-blend", "Proper Case (blend)", "단어 첫 글자 대문자(나머지 유지)";
+    SentenceCase, "case.sentence", "Sentence case", "문장 첫 글자 대문자";
+    SentenceCaseBlend, "case.sentence-blend", "Sentence case (blend)", "문장 첫 글자 대문자(나머지 유지)";
+    InvertCase, "case.invert", "iNVERT cASE", "대소문자 뒤집기";
+    RandomCase, "case.random", "ranDOm CasE", "무작위 대소문자";
+    TrimTrailing, "blank.trim-trailing", "Trim trailing space", "줄 끝 공백 지우기";
+    TrimLeading, "blank.trim-leading", "Trim leading space", "줄 앞 공백 지우기";
+    TrimBoth, "blank.trim-both", "Trim leading and trailing space", "줄 앞뒤 공백 지우기";
+    EolToSpace, "blank.eol-to-space", "EOL to space", "줄 끝을 공백으로";
+    TrimBothEolToSpace, "blank.trim-eol-to-space", "Trim both and EOL to space", "앞뒤 공백 지우고 줄 끝을 공백으로";
+    TabToSpace, "blank.tab-to-space", "TAB to space", "탭을 공백으로";
+    SpaceToTabAll, "blank.space-to-tab", "Space to TAB (all)", "공백을 탭으로(모두)";
+    SpaceToTabLeading, "blank.space-to-tab-leading", "Space to TAB (leading)", "공백을 탭으로(앞쪽만)";
+    Base64Encode, "mime.base64-encode", "Base64 encode", "Base64 인코딩";
+    Base64EncodeNoPad, "mime.base64-encode-nopad", "Base64 encode (no padding)", "Base64 인코딩(패딩 없음)";
+    Base64EncodeUrl, "mime.base64url-encode", "Base64 encode (URL-safe)", "Base64 인코딩(URL 안전)";
+    Base64Decode, "mime.base64-decode", "Base64 decode", "Base64 디코딩";
+    UrlEncode, "mime.url-encode", "URL encode", "URL 인코딩";
+    UrlDecode, "mime.url-decode", "URL decode", "URL 디코딩";
+    QpEncode, "mime.qp-encode", "Quoted-printable encode", "Quoted-printable 인코딩";
+    QpDecode, "mime.qp-decode", "Quoted-printable decode", "Quoted-printable 디코딩";
+    HexEncode, "convert.ascii-to-hex", "ASCII to hex", "ASCII를 16진으로";
+    HexDecode, "convert.hex-to-ascii", "Hex to ASCII", "16진을 ASCII로";
 }
 
 impl Command {
@@ -154,6 +265,66 @@ impl Document {
             Command::SelectDocEnd => self.doc_end(true),
             Command::SelectPageUp => self.move_lines(-page, true),
             Command::SelectPageDown => self.move_lines(page, true),
+            Command::DuplicateLine => self.duplicate(),
+            Command::DeleteLine => self.delete_lines(),
+            Command::MoveLineUp => self.move_selected_lines(false),
+            Command::MoveLineDown => self.move_selected_lines(true),
+            Command::JoinLines => self.join_lines(),
+            Command::SplitLines => self.split_lines(self.split_width),
+            Command::RemoveDuplicateLines => self.remove_duplicate_lines(false),
+            Command::RemoveConsecutiveDuplicates => self.remove_duplicate_lines(true),
+            Command::RemoveEmptyLines => self.remove_empty_lines(false),
+            Command::RemoveBlankLines => self.remove_empty_lines(true),
+            Command::InsertLineAbove => self.insert_blank_line(true),
+            Command::InsertLineBelow => self.insert_blank_line(false),
+            Command::ReverseLines => self.reverse_lines(),
+            Command::RandomizeLines => self.randomize_lines(&mut Rng::from_clock()),
+            Command::SortLexAsc => self.sort(Sort::Lex, false),
+            Command::SortLexDesc => self.sort(Sort::Lex, true),
+            Command::SortNoCaseAsc => self.sort(Sort::LexNoCase, false),
+            Command::SortNoCaseDesc => self.sort(Sort::LexNoCase, true),
+            Command::SortLocaleAsc => self.sort(Sort::Locale, false),
+            Command::SortLocaleDesc => self.sort(Sort::Locale, true),
+            Command::SortIntAsc => self.sort(Sort::Integer, false),
+            Command::SortIntDesc => self.sort(Sort::Integer, true),
+            Command::SortDecDotAsc => self.sort(Sort::DecimalDot, false),
+            Command::SortDecDotDesc => self.sort(Sort::DecimalDot, true),
+            Command::SortDecCommaAsc => self.sort(Sort::DecimalComma, false),
+            Command::SortDecCommaDesc => self.sort(Sort::DecimalComma, true),
+            Command::SortLengthAsc => self.sort(Sort::Length, false),
+            Command::SortLengthDesc => self.sort(Sort::Length, true),
+            Command::UpperCase => return self.change_case(Case::Upper, &mut Rng::from_clock()),
+            Command::LowerCase => return self.change_case(Case::Lower, &mut Rng::from_clock()),
+            Command::ProperCase => return self.change_case(Case::Proper, &mut Rng::from_clock()),
+            Command::ProperCaseBlend => {
+                return self.change_case(Case::ProperBlend, &mut Rng::from_clock());
+            }
+            Command::SentenceCase => {
+                return self.change_case(Case::Sentence, &mut Rng::from_clock());
+            }
+            Command::SentenceCaseBlend => {
+                return self.change_case(Case::SentenceBlend, &mut Rng::from_clock());
+            }
+            Command::InvertCase => return self.change_case(Case::Invert, &mut Rng::from_clock()),
+            Command::RandomCase => return self.change_case(Case::Random, &mut Rng::from_clock()),
+            Command::TrimTrailing => self.blank(Blank::TrimTrailing),
+            Command::TrimLeading => self.blank(Blank::TrimLeading),
+            Command::TrimBoth => self.blank(Blank::TrimBoth),
+            Command::EolToSpace => self.blank(Blank::EolToSpace),
+            Command::TrimBothEolToSpace => self.blank(Blank::TrimBothEolToSpace),
+            Command::TabToSpace => self.blank(Blank::TabToSpace),
+            Command::SpaceToTabAll => self.blank(Blank::SpaceToTabAll),
+            Command::SpaceToTabLeading => self.blank(Blank::SpaceToTabLeading),
+            Command::Base64Encode => return self.encode(Codec::Base64),
+            Command::Base64EncodeNoPad => return self.encode(Codec::Base64NoPad),
+            Command::Base64EncodeUrl => return self.encode(Codec::Base64Url),
+            Command::Base64Decode => return self.decode(Codec::Base64),
+            Command::UrlEncode => return self.encode(Codec::Url),
+            Command::UrlDecode => return self.decode(Codec::Url),
+            Command::QpEncode => return self.encode(Codec::QuotedPrintable),
+            Command::QpDecode => return self.decode(Codec::QuotedPrintable),
+            Command::HexEncode => return self.encode(Codec::Hex),
+            Command::HexDecode => return self.decode(Codec::Hex),
         }
         before != (self.history().state(), self.selection().clone())
     }
@@ -170,8 +341,10 @@ mod tests {
         for c in COMMANDS {
             assert!(ids.insert(c.id), "duplicate id {}", c.id);
             assert!(
-                c.id.chars()
-                    .all(|ch| ch.is_ascii_lowercase() || ch == '.' || ch == '-'),
+                c.id.chars().all(|ch| ch.is_ascii_lowercase()
+                    || ch.is_ascii_digit()
+                    || ch == '.'
+                    || ch == '-'),
                 "{}",
                 c.id
             );

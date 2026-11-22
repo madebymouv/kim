@@ -2685,3 +2685,203 @@ fn ctrl_clicks_past_line_ends_add_carets_at_the_ends() {
         "alpha one!\nbeta two!\ngamma three!\n한글 넷\n"
     );
 }
+
+// ---- Step 97: line operations and text transformations ------------------------------------------
+
+/// Runs the palette's first entry for `query`.
+fn palette_run(h: &mut Harness<'static, JarakApp>, query: &str) {
+    key(
+        h,
+        egui::Key::P,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    text(h, query);
+    key(h, egui::Key::Enter, egui::Modifiers::NONE);
+}
+
+#[test]
+fn notepad_plus_plus_keys_run_the_line_and_case_operations() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "가나다\r\nsecond line\r\nthird");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    let cs = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+    key(&mut h, egui::Key::D, egui::Modifiers::CTRL);
+    assert_eq!(
+        doc_text(&h),
+        "가나다\r\n가나다\r\nsecond line\r\nthird",
+        "Ctrl+D duplicates"
+    );
+    key(&mut h, egui::Key::L, cs);
+    assert_eq!(
+        doc_text(&h),
+        "가나다\r\nsecond line\r\nthird",
+        "Ctrl+Shift+L deletes"
+    );
+    key(&mut h, egui::Key::ArrowDown, cs);
+    assert_eq!(
+        doc_text(&h),
+        "second line\r\n가나다\r\nthird",
+        "Ctrl+Shift+Down moves"
+    );
+    key(&mut h, egui::Key::ArrowUp, cs);
+    key(&mut h, egui::Key::J, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "가나다 second line\r\nthird", "Ctrl+J joins");
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(
+        doc_text(&h),
+        "가나다\r\nsecond line\r\nthird",
+        "one undo step"
+    );
+    let ca = egui::Modifiers {
+        ctrl: true,
+        alt: true,
+        command: true,
+        ..Default::default()
+    };
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Enter, ca);
+    assert_eq!(
+        doc_text(&h),
+        "\r\n가나다\r\nsecond line\r\nthird",
+        "Ctrl+Alt+Enter: a line above"
+    );
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    // Case keys on a selection.
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(5, 16),
+        ));
+    key(&mut h, egui::Key::U, cs);
+    assert_eq!(
+        doc_text(&h),
+        "가나다\r\nSECOND LINE\r\nthird",
+        "Ctrl+Shift+U"
+    );
+    key(&mut h, egui::Key::U, egui::Modifiers::ALT);
+    assert_eq!(
+        doc_text(&h),
+        "가나다\r\nSecond Line\r\nthird",
+        "Alt+U Proper Case"
+    );
+    key(&mut h, egui::Key::U, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "가나다\r\nsecond line\r\nthird", "Ctrl+U");
+}
+
+#[test]
+fn the_palette_reaches_sorts_blanks_and_codecs_and_says_when_one_cannot_run() {
+    let (a, _) = app_with(&[], Arc::default());
+    let mut h = harness(a);
+    text(&mut h, "10\r\n9 \r\n-1\r\n9 \r\n");
+    palette_run(&mut h, "Remove duplicate lines");
+    palette_run(&mut h, "Trim trailing space");
+    palette_run(&mut h, "Sort lines as integers ascending");
+    assert_eq!(doc_text(&h), "-1\r\n9\r\n10\r\n");
+    h.state_mut().tab_mut().file.doc.select_all();
+    palette_run(&mut h, "Base64 encode");
+    assert_eq!(doc_text(&h), "LTENCjkNCjEwDQo=");
+    palette_run(&mut h, "Base64 decode");
+    assert_eq!(doc_text(&h), "-1\r\n9\r\n10\r\n");
+    h.state_mut().tab_mut().file.doc.select_all();
+    palette_run(&mut h, "Hex to ASCII");
+    assert_eq!(
+        doc_text(&h),
+        "-1\r\n9\r\n10\r\n",
+        "not hex: nothing changed"
+    );
+    assert!(
+        h.query_all_by_label_contains("hex digits").next().is_some(),
+        "and it says why"
+    );
+    // A read-only document refuses the operations.
+    h.state_mut().tab_mut().file.read_only = true;
+    key(&mut h, egui::Key::D, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "-1\r\n9\r\n10\r\n");
+}
+
+#[test]
+fn dates_paths_digests_and_the_copy_line_setting() {
+    let d = temp("edit-tools");
+    let f = d.join("노트.txt");
+    std::fs::write(&f, b"abc\n").unwrap();
+    let settings = d.join("settings.toml");
+    std::fs::write(&settings, "date_format = \"'Y'yyyy\"\n").unwrap();
+    let clip = Arc::new(jarak_gui::clipboard::MemoryClipboard::default());
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(
+        a.with_clipboard(clip.clone())
+            .with_settings(settings.clone()),
+    );
+    let got = |c: &Arc<jarak_gui::clipboard::MemoryClipboard>| {
+        jarak_gui::clipboard::Clipboard::get_text(c.as_ref()).unwrap_or_default()
+    };
+    // The custom date format from settings.toml.
+    h.state_mut().edit_tool(2);
+    let year = jarak_gui::hashdlg::now().year;
+    assert_eq!(doc_text(&h), format!("Y{year}abc\n"));
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    h.state_mut().edit_tool(0);
+    assert!(
+        doc_text(&h).len() > "abc\n".len(),
+        "the short system date and time"
+    );
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    // Paths.
+    h.state_mut().edit_tool(3);
+    assert_eq!(got(&clip), fs);
+    h.state_mut().edit_tool(4);
+    assert_eq!(got(&clip), "노트.txt");
+    h.state_mut().edit_tool(5);
+    assert_eq!(got(&clip), d.display().to_string());
+    // Digests of the selection and the dialog.
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::single(
+            jarak_core::selection::Range::new(0, 3),
+        ));
+    h.state_mut().edit_tool(10);
+    assert_eq!(
+        got(&clip),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+    h.state_mut().edit_tool(8);
+    assert_eq!(got(&clip), "900150983cd24fb0d6963f7d28e17f72");
+    h.state_mut().edit_tool(16);
+    h.run();
+    assert_eq!(
+        h.state().hash_dialog.as_ref().unwrap().text,
+        "abc",
+        "starts with the selection"
+    );
+    h.get_by_label("SHA-1").click();
+    h.run();
+    h.get_by_label("Copy").click();
+    h.run();
+    assert_eq!(got(&clip), "a9993e364706816aba3e25717850c26c9cd0d89d");
+    assert!(h.state().hash_dialog.is_none());
+    // Copy without a selection: the line, unless the setting is off (kept in settings.toml).
+    h.state_mut()
+        .tab_mut()
+        .file
+        .doc
+        .set_selection(&jarak_core::selection::Selection::point(1));
+    jarak_gui::clipboard::Clipboard::set_text(clip.as_ref(), "-");
+    key(&mut h, egui::Key::C, egui::Modifiers::CTRL);
+    assert_eq!(got(&clip), "abc\n");
+    h.state_mut().edit_tool(17);
+    jarak_gui::clipboard::Clipboard::set_text(clip.as_ref(), "-");
+    key(&mut h, egui::Key::C, egui::Modifiers::CTRL);
+    assert_eq!(got(&clip), "-", "nothing copied");
+    assert!(
+        std::fs::read_to_string(&settings)
+            .unwrap()
+            .contains("copy_line = false")
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

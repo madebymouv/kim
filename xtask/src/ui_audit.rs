@@ -148,6 +148,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "multi",
                 "column",
                 "column-editor",
+                // Step 97: the digest dialog, the palette's line commands.
+                "hash",
+                "palette-lines",
             ],
         ),
     ];

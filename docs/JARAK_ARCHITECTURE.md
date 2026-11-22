@@ -776,3 +776,56 @@ and Esc are now read before the dialog draws, also in the Replace in Files previ
 fields had no visible labels. In the first run the two Ctrl+clicks did not land (one caret went to
 the last line); three later runs and a step-by-step probe added the carets correctly and it did
 not recur.
+
+## 19. Line operations and text transformations (Step 97)
+
+`JARAK-FR-082`…`JARAK-FR-085`, `JARAK-FR-087`, `JARAK-FR-088`; matrix rows `LINE-01`…`LINE-19`,
+`CASE-01`…`CASE-06`, `BLANK-01`…`BLANK-07`, `EDIT-06`…`EDIT-09`, `TOOL-01`…`TOOL-04`,
+`PLUG-03`…`PLUG-06` (supported).
+
+- **Commands in the registry** (`jarak-core::command`, 54 new ids under `line.`, `sort.`, `case.`,
+  `blank.`, `mime.`, `convert.`; ids may now hold digits): every operation is a registry command —
+  in the palette, behind a key where Notepad++ has one, nameable by macros (Step 102) — and one undo
+  step. They are refused in read-only documents (everything but moving the caret and selecting
+  counts as editing now), and an operation that cannot run says why in the status bar
+  (`Document::take_notice`).
+- **Where they work** (`jarak-core::lineops`): line operations on the lines the selection touches
+  (a selection that ends at a line's start leaves that line out); removing, sorting, reversing,
+  shuffling and the blank operations on the whole document when nothing is selected (the empty line
+  after a final line break is not a line of it); rewritten lines are joined with the document's line
+  ending. Duplicate, delete, move, join, split (at the view's width in cells, at word boundaries,
+  Hangul two cells wide), remove duplicate / consecutive duplicate / empty / blank lines, insert a
+  blank line above or below, reverse, randomize.
+- **Sorting**: by code point, ignoring case, in the user's locale (`CompareStringEx` of Windows), as
+  integers or decimals with `.` or `,` (the number a line starts with; lines without one first),
+  by length — ascending or descending, stable; with a column selection by the text in its columns.
+- **Case** on every selected range: UPPER, lower, Proper (blend keeps the rest), Sentence (after
+  `. ! ?` and their full-width forms; blend), iNVERT, ranDOm (Unicode case mapping).
+- **Blanks**: trim trailing / leading / both, EOL to space, trim both and EOL to space, TAB to
+  spaces (tab stops, wide characters two cells), spaces to TAB (runs of two or more reaching a stop;
+  all or only the indentation).
+- **Encodings of the selection** (its UTF-8 bytes): Base64 (padded, unpadded, URL-safe; decoding
+  takes either alphabet and ignores blanks), URL percent-encoding, quoted-printable (RFC 2045, hard
+  breaks kept as CRLF, soft breaks at 76), ASCII ↔ hex. Decoding refuses text that does not decode
+  or bytes that are not UTF-8, and changes nothing.
+- **Digests**: MD5 and SHA-1 implemented in `lineops` (RFC 1321, FIPS 180-4, checked against the
+  standard test vectors; no new dependency), SHA-256 and SHA-512 from `sha2` — of the selection or of
+  a file to the clipboard, or in the *Generate a digest* dialog (type text, see the digest).
+- **The window's tools** (`hashdlg.rs`): the date and time — Windows' short and long formats of
+  the user's locale (`GetDateFormatEx`, `GetTimeFormatEx`), or a custom format (`date_format` in
+  `settings.toml`, default `yyyy-MM-dd HH:mm:ss`, Notepad++'s tokens; the settings window, Step 105,
+  will show it) — copying the full path, the file name or the folder, and the names or paths of all
+  open documents; Copy and Cut without a selection take the line unless *Copy the line when nothing
+  is selected* is off (`copy_line` in `settings.toml`); copying nothing leaves the clipboard alone.
+
+Tests: `lineops` 14 (one or more per operation, all with Hangul, accented or emoji text: duplicate,
+delete, move, join, split, the removals, blank lines, reverse, shuffle, every sort including a
+column, every case, every blank operation, every codec round trip and known values, the digest test
+vectors, the date format); window flows 3 new (the keys, the palette with a refused decode and a
+read-only document, dates/paths/digests/the dialog/the copy-line setting); palette and key tests
+check every registry command's key. UI audit views `hash`, `palette-lines` (155 runs, 0 failures).
+e2e `step97_jarak_line_operations.rs` (the release window runs commands on a CRLF file with Hangul
+and saves it; the palette and the digest dialog). Real desktop (r97, checked on disk): Ctrl+D,
+Ctrl+Shift+L, Ctrl+Shift+Down, the palette's consecutive-duplicate removal and descending sort,
+Ctrl+A Ctrl+Shift+U, Alt+U, Base64 encode and decode, Ctrl+J, Ctrl+Alt+Enter with Korean typing,
+the custom date — every step's bytes as expected, CRLF kept.

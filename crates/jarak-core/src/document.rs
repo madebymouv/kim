@@ -71,6 +71,10 @@ pub struct Document {
     /// Step 96: the occurrence commands started from the word at the caret (whole word, match
     /// case) and go on that way while they add ranges.
     occ_word: bool,
+    /// Step 97: why the last text operation did not run (the window shows and clears it).
+    pub(crate) notice: Option<String>,
+    /// Step 97: the width (display columns) Split Lines splits at — the window sets its own.
+    pub split_width: usize,
     /// Columns per tab stop (display and vertical moves).
     pub tab_width: usize,
     /// What Enter inserts.
@@ -102,6 +106,8 @@ impl Document {
             block: None,
             virtual_space: false,
             occ_word: false,
+            notice: None,
+            split_width: 80,
             tab_width: 4,
             eol,
         }

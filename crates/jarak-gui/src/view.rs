@@ -59,6 +59,8 @@ pub struct ViewState {
     /// the cell size — for [`ViewState::pos_of_char`].
     drawn: Vec<(usize, Pos2)>,
     cell: Vec2,
+    /// Step 97: how many character cells fit across the text (Split Lines' width).
+    pub cols: usize,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -96,6 +98,7 @@ impl Default for ViewState {
             bookmarks: Vec::new(),
             drawn: Vec::new(),
             cell: Vec2::ZERO,
+            cols: 80,
             drag: None,
             clicks: None,
         }
@@ -530,6 +533,9 @@ pub fn show(
     // Mouse: clicks, drags, double and triple clicks, the wheel.
     state.drawn = laid.iter().map(|l| (l.start, l.origin)).collect();
     state.cell = Vec2::new(m.char_w, m.row);
+    state.cols = ((text_rect.width() - 2.0 * pad) / m.char_w)
+        .floor()
+        .max(1.0) as usize;
     let ctrl_click = mouse(ui, &resp, &laid, doc, state, &m, text_rect);
     ViewOutput {
         focused,

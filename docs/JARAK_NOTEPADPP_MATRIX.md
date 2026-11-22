@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -87,10 +87,10 @@ palette, the headless CLI) follow in §2.
 | EDIT-03 | Select All | supported | `JARAK-FR-012` | 86 | T | Step 88: Ctrl+A (window tests; real desktop) |
 | EDIT-04 | Begin/End Select (stream) for keyboard-free range selection | supported | `JARAK-FR-012` | 96 | T | Step 96: palette *Begin/End Select*: the first run marks, the second selects to the caret (`begin_end_select_in_stream_and_column_mode`) |
 | EDIT-05 | Begin/End Select in column mode | supported | `JARAK-FR-081` | 96 | T | Step 96: *Begin/End Select in column mode* makes a column selection (`begin_end_select_in_stream_and_column_mode`) |
-| EDIT-06 | Copy the current line when nothing is selected (setting) | partial | `JARAK-FR-031` | 97 | T | Step 88: Copy and Cut without a selection take the current line (window test); always on until the setting in Step 105 |
-| EDIT-07 | Insert date and time: short, long, customised format | planned | `JARAK-FR-087` | 97 | T | — |
-| EDIT-08 | Copy to clipboard: full path, file name, directory of the document | planned | `JARAK-FR-087` | 97 | T | — |
-| EDIT-09 | Copy to clipboard: names and paths of all open documents | planned | `JARAK-FR-087` | 97 | T | — |
+| EDIT-06 | Copy the current line when nothing is selected (setting) | supported | `JARAK-FR-031` | 97 | T | Step 97: on by default; palette *Copy the line when nothing is selected* switches it (kept in settings.toml); copying nothing leaves the clipboard (`dates_paths_digests_and_the_copy_line_setting`) |
+| EDIT-07 | Insert date and time: short, long, customised format | supported | `JARAK-FR-087` | 97 | T | Step 97: short and long in the user's Windows formats, custom from `date_format` (Notepad++'s tokens) (`lineops::tests::the_custom_date_format`, `dates_paths_digests_and_the_copy_line_setting`, real desktop r97) |
+| EDIT-08 | Copy to clipboard: full path, file name, directory of the document | supported | `JARAK-FR-087` | 97 | T | Step 97: palette *Copy the full path / file name / directory* (`dates_paths_digests_and_the_copy_line_setting`) |
+| EDIT-09 | Copy to clipboard: names and paths of all open documents | supported | `JARAK-FR-087` | 97 | T | Step 97: palette *Copy the names / paths of all open documents* (window test) |
 | EDIT-10 | Increase / decrease line indent (Tab, Shift+Tab) | supported | `JARAK-FR-085` | 88 | T | Step 88: Tab/Shift+Tab indent and unindent the selected lines, Tab inserts a tab otherwise (core tests, key test) |
 | EDIT-11 | Set read-only for the document / clear the file's read-only attribute | partial | `JARAK-FR-027` | 87 | T | Step 87: read-only files refused and lossy/binary documents read-only with a reason (tests); the menu commands come with Step 88 |
 | EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | planned | `JARAK-FR-027` | 103 | T | — |
@@ -105,36 +105,36 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| CASE-01 | UPPERCASE | planned | `JARAK-FR-084` | 97 | T | — |
-| CASE-02 | lowercase | planned | `JARAK-FR-084` | 97 | T | — |
-| CASE-03 | Proper Case and Proper Case (blend) | planned | `JARAK-FR-084` | 97 | T | — |
-| CASE-04 | Sentence case and Sentence case (blend) | planned | `JARAK-FR-084` | 97 | T | — |
-| CASE-05 | iNVERT cASE | planned | `JARAK-FR-084` | 97 | T | — |
-| CASE-06 | ranDOm CasE | planned | `JARAK-FR-084` | 97 | T | — |
+| CASE-01 | UPPERCASE | supported | `JARAK-FR-084` | 97 | T | Step 97: Ctrl+Shift+U, every selected range (`lineops::tests`::every_case_conversion, window test, real desktop r97) |
+| CASE-02 | lowercase | supported | `JARAK-FR-084` | 97 | T | Step 97: Ctrl+U (`lineops::tests`::every_case_conversion, window test) |
+| CASE-03 | Proper Case and Proper Case (blend) | supported | `JARAK-FR-084` | 97 | T | Step 97: Alt+U, Alt+Shift+U for the blend (`lineops::tests`::every_case_conversion, window test, real desktop r97) |
+| CASE-04 | Sentence case and Sentence case (blend) | supported | `JARAK-FR-084` | 97 | T | Step 97: Ctrl+Alt+U, Ctrl+Alt+Shift+U for the blend; full-width `. ! ?` too (`lineops::tests`::every_case_conversion) |
+| CASE-05 | iNVERT cASE | supported | `JARAK-FR-084` | 97 | T | Step 97: palette (`lineops::tests`::every_case_conversion) |
+| CASE-06 | ranDOm CasE | supported | `JARAK-FR-084` | 97 | T | Step 97: palette (`lineops::tests`::every_case_conversion) |
 
 ### LINE — Edit → Line Operations (sources U, E)
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| LINE-01 | Duplicate current line / selection (Ctrl+D) | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-02 | Delete current line | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-03 | Remove duplicate lines | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-04 | Remove consecutive duplicate lines | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-05 | Split lines at the edge or a width | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-06 | Join lines | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-07 | Move line up / down | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-08 | Remove empty lines | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-09 | Remove empty lines (containing blank characters) | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-10 | Insert blank line above / below current | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-11 | Reverse line order | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-12 | Randomize line order | planned | `JARAK-FR-082` | 97 | T | — |
-| LINE-13 | Sort lines lexicographically ascending / descending | planned | `JARAK-FR-083` | 97 | T | — |
-| LINE-14 | Sort lines lexicographically ignoring case | planned | `JARAK-FR-083` | 97 | T | — |
-| LINE-15 | Sort lines in locale order | planned | `JARAK-FR-083` | 97 | T | — |
-| LINE-16 | Sort lines as integers ascending / descending | planned | `JARAK-FR-083` | 97 | T | — |
-| LINE-17 | Sort lines as decimals (comma / dot) ascending / descending | planned | `JARAK-FR-083` | 97 | T | — |
-| LINE-18 | Sort lines by length | planned | `JARAK-FR-083` | 97 | T | — |
-| LINE-19 | Sort only the lines or the column of the selection | planned | `JARAK-FR-083` | 97 | T | — |
+| LINE-01 | Duplicate current line / selection (Ctrl+D) | supported | `JARAK-FR-082` | 97 | T | Step 97: Ctrl+D, the line or the selection, every caret (`lineops::tests`::duplicate_a_line_or_a_selection, window test, real desktop r97) |
+| LINE-02 | Delete current line | supported | `JARAK-FR-082` | 97 | T | Step 97: Ctrl+Shift+L, every caret's lines (`lineops::tests`::delete_lines_including_the_last, window test, real desktop r97) |
+| LINE-03 | Remove duplicate lines | supported | `JARAK-FR-082` | 97 | T | Step 97: palette, the first stays, the final line break kept (`lineops::tests`::remove_duplicate_consecutive_and_empty_lines, window test) |
+| LINE-04 | Remove consecutive duplicate lines | supported | `JARAK-FR-082` | 97 | T | Step 97: palette (`lineops::tests`::remove_duplicate_consecutive_and_empty_lines, real desktop r97) |
+| LINE-05 | Split lines at the edge or a width | supported | `JARAK-FR-082` | 97 | T | Step 97: Ctrl+I at the view's width in cells, word boundaries, Hangul two cells (`lineops::tests`::join_and_split_lines) |
+| LINE-06 | Join lines | supported | `JARAK-FR-082` | 97 | T | Step 97: Ctrl+J, a space only where words would touch (`lineops::tests`::join_and_split_lines, window test, real desktop r97) |
+| LINE-07 | Move line up / down | supported | `JARAK-FR-082` | 97 | T | Step 97: Ctrl+Shift+Up / Down keeping the selection (`lineops::tests`::move_lines_up_and_down_keeping_the_selection, window test, real desktop r97) |
+| LINE-08 | Remove empty lines | supported | `JARAK-FR-082` | 97 | T | Step 97: palette (`lineops::tests`::remove_duplicate_consecutive_and_empty_lines) |
+| LINE-09 | Remove empty lines (containing blank characters) | supported | `JARAK-FR-082` | 97 | T | Step 97: palette (`lineops::tests`::remove_duplicate_consecutive_and_empty_lines) |
+| LINE-10 | Insert blank line above / below current | supported | `JARAK-FR-082` | 97 | T | Step 97: Ctrl+Alt+Enter / Ctrl+Alt+Shift+Enter, the caret on the new line (`lineops::tests`::insert_blank_lines_above_and_below, window test, real desktop r97) |
+| LINE-11 | Reverse line order | supported | `JARAK-FR-082` | 97 | T | Step 97: palette (`lineops::tests`::reverse_and_randomize_lines) |
+| LINE-12 | Randomize line order | supported | `JARAK-FR-082` | 97 | T | Step 97: palette (`lineops::tests`::reverse_and_randomize_lines) |
+| LINE-13 | Sort lines lexicographically ascending / descending | supported | `JARAK-FR-083` | 97 | T | Step 97: palette, by code point, stable (`lineops::tests`::sort_lexicographic_case_locale_numbers_and_length, real desktop r97) |
+| LINE-14 | Sort lines lexicographically ignoring case | supported | `JARAK-FR-083` | 97 | T | Step 97: palette (`lineops::tests`::sort_lexicographic_case_locale_numbers_and_length) |
+| LINE-15 | Sort lines in locale order | supported | `JARAK-FR-083` | 97 | T | Step 97: palette, Windows `CompareStringEx` in the user's locale (`lineops::tests`::sort_lexicographic_case_locale_numbers_and_length) |
+| LINE-16 | Sort lines as integers ascending / descending | supported | `JARAK-FR-083` | 97 | T | Step 97: palette, lines without a number first (`lineops::tests`::sort_lexicographic_case_locale_numbers_and_length, e2e step97, window test) |
+| LINE-17 | Sort lines as decimals (comma / dot) ascending / descending | supported | `JARAK-FR-083` | 97 | T | Step 97: palette, `.` and `,` (`lineops::tests`::sort_lexicographic_case_locale_numbers_and_length) |
+| LINE-18 | Sort lines by length | supported | `JARAK-FR-083` | 97 | T | Step 97: palette, in characters (`lineops::tests`::sort_lexicographic_case_locale_numbers_and_length) |
+| LINE-19 | Sort only the lines or the column of the selection | supported | `JARAK-FR-083` | 97 | T | Step 97: the selected lines, or with a column selection by its columns (`lineops::tests`::sort_only_the_selected_lines_or_by_a_column) |
 
 ### CMT — Edit → Comment/Uncomment (sources U, E)
 
@@ -148,13 +148,13 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| BLANK-01 | Trim trailing space | planned | `JARAK-FR-085` | 97 | T | — |
-| BLANK-02 | Trim leading space | planned | `JARAK-FR-085` | 97 | T | — |
-| BLANK-03 | Trim leading and trailing space | planned | `JARAK-FR-085` | 97 | T | — |
-| BLANK-04 | EOL to space | planned | `JARAK-FR-085` | 97 | T | — |
-| BLANK-05 | Trim both and EOL to space | planned | `JARAK-FR-085` | 97 | T | — |
-| BLANK-06 | TAB to space | planned | `JARAK-FR-085` | 97 | T | — |
-| BLANK-07 | Space to TAB (all / leading) | planned | `JARAK-FR-085` | 97 | T | — |
+| BLANK-01 | Trim trailing space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette (`lineops::tests`::every_blank_operation, window test) |
+| BLANK-02 | Trim leading space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette (`lineops::tests`::every_blank_operation) |
+| BLANK-03 | Trim leading and trailing space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette (`lineops::tests`::every_blank_operation) |
+| BLANK-04 | EOL to space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette (`lineops::tests`::every_blank_operation) |
+| BLANK-05 | Trim both and EOL to space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette (`lineops::tests`::every_blank_operation) |
+| BLANK-06 | TAB to space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette, tab stops with wide characters two cells (`lineops::tests`::every_blank_operation) |
+| BLANK-07 | Space to TAB (all / leading) | supported | `JARAK-FR-085` | 97 | T | Step 97: palette, all or leading only (`lineops::tests`::every_blank_operation) |
 | BLANK-08 | EOL conversion: Windows (CR LF), Unix (LF), Macintosh (CR) | planned | `JARAK-FR-026` | 103 | T | — |
 
 ### MULTI — Multi-editing, column mode and the Column Editor (sources E, P)
@@ -368,10 +368,10 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| TOOL-01 | MD5: generate, from files, from selection to clipboard | planned | `JARAK-FR-088` | 97 | T | — |
-| TOOL-02 | SHA-1: generate, from files, from selection | planned | `JARAK-FR-088` | 97 | T | — |
-| TOOL-03 | SHA-256: generate, from files, from selection | planned | `JARAK-FR-088` | 97 | T | — |
-| TOOL-04 | SHA-512: generate, from files, from selection | planned | `JARAK-FR-088` | 97 | T | — |
+| TOOL-01 | MD5: generate, from files, from selection to clipboard | supported | `JARAK-FR-088` | 97 | T | Step 97: of the selection or a file to the clipboard, and the *Generate a digest* dialog; RFC 1321 test vectors (`lineops::tests`::digests_match_the_standard_test_vectors, `dates_paths_digests_and_the_copy_line_setting`, UI audit `hash`) |
+| TOOL-02 | SHA-1: generate, from files, from selection | supported | `JARAK-FR-088` | 97 | T | Step 97: the same; FIPS 180 test vectors (`lineops::tests`::digests_match_the_standard_test_vectors, window test) |
+| TOOL-03 | SHA-256: generate, from files, from selection | supported | `JARAK-FR-088` | 97 | T | Step 97: the same with `sha2` (`lineops::tests`::digests_match_the_standard_test_vectors, window test, e2e step97) |
+| TOOL-04 | SHA-512: generate, from files, from selection | supported | `JARAK-FR-088` | 97 | T | Step 97: the same with `sha2` (`lineops::tests`::digests_match_the_standard_test_vectors) |
 
 ### MAC — Macro menu (sources M)
 
@@ -401,10 +401,10 @@ palette, the headless CLI) follow in §2.
 | --- | --- | --- | --- | --- | --- | --- |
 | PLUG-01 | Load third-party Notepad++ plugin DLLs | not intended | — | 108 | D | — |
 | PLUG-02 | Plugins Admin (download and update plugins from a list) | not intended | — | 108 | D | — |
-| PLUG-03 | MIME Tools: Base64 encode / decode (also with padding / URL-safe) | planned | `JARAK-FR-088` | 97 | T | — |
-| PLUG-04 | MIME Tools: URL encode / decode | planned | `JARAK-FR-088` | 97 | T | — |
-| PLUG-05 | MIME Tools: quoted-printable encode / decode | planned | `JARAK-FR-088` | 97 | T | — |
-| PLUG-06 | Converter: ASCII to hex / hex to ASCII | planned | `JARAK-FR-088` | 97 | T | — |
+| PLUG-03 | MIME Tools: Base64 encode / decode (also with padding / URL-safe) | supported | `JARAK-FR-088` | 97 | T | Step 97: Base64 encode (padded, unpadded, URL-safe) and decode of the selection, a refused decode changes nothing (`lineops::tests`::every_codec_round_trips_unicode, window test, real desktop r97) |
+| PLUG-04 | MIME Tools: URL encode / decode | supported | `JARAK-FR-088` | 97 | T | Step 97: URL encode / decode (`lineops::tests`::every_codec_round_trips_unicode) |
+| PLUG-05 | MIME Tools: quoted-printable encode / decode | supported | `JARAK-FR-088` | 97 | T | Step 97: quoted-printable encode / decode, soft breaks at 76 (`lineops::tests`::every_codec_round_trips_unicode) |
+| PLUG-06 | Converter: ASCII to hex / hex to ASCII | supported | `JARAK-FR-088` | 97 | T | Step 97: ASCII to hex / hex to ASCII, odd or non-hex input refused (`lineops::tests`::every_codec_round_trips_unicode, window test) |
 | PLUG-07 | NppExport: export to RTF / HTML, copy as RTF / HTML | planned | `JARAK-FR-141` | 106 | T | — |
 | PLUG-08 | Safe extension mechanism (Jarak's own) | planned | `JARAK-FR-160` | 108 | T | — |
 | PLUG-09 | Plugin compatibility audit document | planned | `JARAK-FR-161` | 108 | D | — |

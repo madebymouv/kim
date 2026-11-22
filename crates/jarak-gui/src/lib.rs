@@ -16,6 +16,7 @@ pub mod column;
 pub mod docops;
 pub mod find;
 pub mod handoff;
+pub mod hashdlg;
 pub mod images;
 pub mod keys;
 pub mod media;
@@ -29,7 +30,6 @@ pub mod views;
 pub mod workspace;
 
 use eframe::egui::{self, Align, Layout, Rect, RichText, Vec2};
-use jarak_core::command::Command;
 use jarak_core::file::{self, FileDocument, SaveError, TextEncoding};
 use jarak_core::target::OpenTarget;
 use keys::Action;
@@ -422,6 +422,10 @@ pub struct JarakApp {
     pub column_editor_open: bool,
     pub virtual_space: bool,
     pub begin_select: Option<(u64, usize)>,
+    /// Step 97: Copy and Cut without a selection take the line (a setting, on by default), and
+    /// the hash dialog.
+    pub copy_line: bool,
+    pub hash_dialog: Option<hashdlg::HashDialog>,
 }
 
 /// The assets dialog's content.
@@ -474,6 +478,8 @@ impl JarakApp {
         }
         // Step 96: virtual space (off unless the file says so).
         self.virtual_space = read_setting(&path, "virtual_space").is_some_and(|v| v == "true");
+        // Step 97: copying the line without a selection (on unless the file says no).
+        self.copy_line = read_setting(&path, "copy_line").is_none_or(|v| v != "false");
         self.settings = Some(path);
         self
     }
@@ -642,6 +648,8 @@ impl JarakApp {
         let vs = self.virtual_space;
         for t in &mut self.tabs {
             t.file.doc.virtual_space = vs;
+            // Step 97: Split Lines splits at the view's width.
+            t.file.doc.split_width = t.view.cols.max(1);
         }
         // Step 94: the find highlights, the styled markers and the bookmarks on screen (of
         // every view's active document).
@@ -782,6 +790,7 @@ impl JarakApp {
             },
             palette::Run::Style(cmd) => self.style(cmd),
             palette::Run::Multi(k) => self.multi(k),
+            palette::Run::Edit(k) => self.edit_tool(k),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1427,6 +1436,8 @@ impl JarakApp {
             column_editor_open: false,
             virtual_space: false,
             begin_select: None,
+            copy_line: true,
+            hash_dialog: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1438,8 +1449,8 @@ impl JarakApp {
     /// saves: the UI audit runs on a copy), `images` (sample pictures next to the copy), `vim`,
     /// `vim-insert`, `vim-command`, `palette`, `menu-bar`, `assets` (Step 92), `tabs`, `views`,
     /// `side`, `documents` (Step 93), `find`, `replace`, `mark`, `incremental` (Step 94), `files`,
-    /// `results`, `replace-preview` (Step 95), `multi`, `column`, `column-editor` (Step 96). Only
-    /// used while `KIM_UI_INSPECT` is set.
+    /// `results`, `replace-preview` (Step 95), `multi`, `column`, `column-editor` (Step 96), `hash`,
+    /// `palette-lines` (Step 97). Only used while `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
         match screen {
@@ -1486,6 +1497,35 @@ impl JarakApp {
                 });
             }
             "menu-bar" => self.menu_bar = true,
+            // Step 97: the digest dialog over a selected word; the palette's sort commands.
+            "hash" => {
+                let d = &mut self.tab_mut().file.doc;
+                d.select_word_at(2);
+                self.edit_tool(16);
+            }
+            // Step 97 (the e2e's): registry commands on the document, then saved.
+            "lineops-session" => {
+                use jarak_core::command::Command as C;
+                let page = self.tab().view.page_lines;
+                for c in [
+                    C::RemoveDuplicateLines,
+                    C::SortIntAsc,
+                    C::SelectAll,
+                    C::ProperCase,
+                    C::DocEnd,
+                ] {
+                    self.tab_mut().file.doc.execute(c, page);
+                }
+                let i = self.active;
+                self.save(i);
+            }
+            "palette-lines" => {
+                self.palette = Some(palette::PaletteState {
+                    query: "sort lines".into(),
+                    selected: 0,
+                    focus: true,
+                });
+            }
             // Step 96: every "Step" selected (the status bar counts the carets), a column block
             // over the Korean lines (display columns 4 to 12), the Column Editor with numbers.
             "multi" | "column" | "column-editor" => {
@@ -1798,16 +1838,8 @@ impl JarakApp {
                 };
             }
             Action::Cmd(c) => {
-                let edits = matches!(
-                    c,
-                    Command::DeleteBackward
-                        | Command::DeleteForward
-                        | Command::DeleteWordBackward
-                        | Command::DeleteWordForward
-                        | Command::Newline
-                        | Command::Undo
-                        | Command::Redo
-                );
+                // Everything but moving the caret and selecting edits (Step 97 adds many).
+                let edits = !(c.id().starts_with("cursor.") || c.id().starts_with("select."));
                 if edits && read_only {
                     self.refuse_read_only();
                     return;
@@ -1816,6 +1848,10 @@ impl JarakApp {
                 t.file.doc.execute(c, page);
                 t.view.preedit.clear();
                 t.view.after_edit();
+                // A text operation that could not run says why.
+                if let Some(n) = t.file.doc.take_notice() {
+                    self.message = Some(n);
+                }
             }
             Action::Indent | Action::Outdent => {
                 if read_only {
@@ -1929,13 +1965,18 @@ impl JarakApp {
                 };
                 t.set_mode(to);
             }
+            // Nothing to copy (the copy-line setting off): the clipboard stays as it is.
             Action::Copy => {
                 let s = self.copy_text();
-                self.clipboard.set_text(&s);
+                if !s.is_empty() {
+                    self.clipboard.set_text(&s);
+                }
             }
             Action::Cut => {
                 let s = self.cut();
-                self.clipboard.set_text(&s);
+                if !s.is_empty() {
+                    self.clipboard.set_text(&s);
+                }
             }
             Action::Paste => self.paste_from_clipboard(),
             Action::NextDocument => self.cycle_tab(1),
@@ -2094,6 +2135,9 @@ impl JarakApp {
     pub fn copy_text(&self) -> String {
         let d = &self.tab().file.doc;
         let s = d.selected_text();
+        if s.is_empty() && !self.copy_line {
+            return String::new();
+        }
         if s.is_empty() {
             let line = d.text().char_to_line(d.selection().primary().head);
             d.text().line(line).to_string()
@@ -2515,7 +2559,8 @@ impl JarakApp {
             || self.assets_view.is_some()
             || self.docs_dialog.is_some()
             || self.preview.is_some()
-            || self.column_editor_open;
+            || self.column_editor_open
+            || self.hash_dialog.is_some();
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2550,6 +2595,7 @@ impl JarakApp {
         self.find_ui(&ctx, &c, central);
         self.preview_ui(&ctx, &c);
         self.column_editor_ui(&ctx, &c);
+        self.hash_dialog_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self

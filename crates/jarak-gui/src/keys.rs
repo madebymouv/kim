@@ -86,6 +86,12 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         return match key {
             Key::Z if !shift => Some(A::ToggleWrap),
             Key::C if !shift => Some(A::ColumnEditor),
+            // Step 97: Alt+U Proper Case, Alt+Shift+U Proper Case (blend).
+            Key::U => Some(A::Cmd(if shift {
+                C::ProperCaseBlend
+            } else {
+                C::ProperCase
+            })),
             Key::F3 if !shift => Some(A::SelectAllOccurrences),
             Key::ArrowUp if shift => Some(A::BlockUp),
             Key::ArrowDown if shift => Some(A::BlockDown),
@@ -151,6 +157,24 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::I) if m.alt && !shift => Some(A::Incremental),
         (true, Key::F) if shift && !m.alt => Some(A::FindInFiles),
         (true, Key::D) if shift && !m.alt => Some(A::AddNextOccurrence),
+        // Step 97: Notepad++'s line and case keys.
+        (true, Key::D) if !m.alt => Some(A::Cmd(C::DuplicateLine)),
+        (true, Key::L) if shift && !m.alt => Some(A::Cmd(C::DeleteLine)),
+        (true, Key::ArrowUp) if shift && !m.alt => Some(A::Cmd(C::MoveLineUp)),
+        (true, Key::ArrowDown) if shift && !m.alt => Some(A::Cmd(C::MoveLineDown)),
+        (true, Key::J) if !shift && !m.alt => Some(A::Cmd(C::JoinLines)),
+        (true, Key::I) if !shift && !m.alt => Some(A::Cmd(C::SplitLines)),
+        (true, Key::Enter) if m.alt => Some(A::Cmd(if shift {
+            C::InsertLineBelow
+        } else {
+            C::InsertLineAbove
+        })),
+        (true, Key::U) if m.alt => Some(A::Cmd(if shift {
+            C::SentenceCaseBlend
+        } else {
+            C::SentenceCase
+        })),
+        (true, Key::U) => Some(A::Cmd(if shift { C::UpperCase } else { C::LowerCase })),
         (false, Key::Escape) if !shift => Some(A::SingleCaret),
         (true, Key::F) if !shift && !m.alt => Some(A::Find),
         (false, Key::F4) => Some(if shift {
@@ -233,6 +257,22 @@ pub fn key_label(a: Action) -> Option<&'static str> {
             C::SelectDocEnd => "Ctrl+Shift+End",
             C::SelectPageUp => "Shift+PageUp",
             C::SelectPageDown => "Shift+PageDown",
+            C::DuplicateLine => "Ctrl+D",
+            C::DeleteLine => "Ctrl+Shift+L",
+            C::MoveLineUp => "Ctrl+Shift+Up",
+            C::MoveLineDown => "Ctrl+Shift+Down",
+            C::JoinLines => "Ctrl+J",
+            C::SplitLines => "Ctrl+I",
+            C::InsertLineAbove => "Ctrl+Alt+Enter",
+            C::InsertLineBelow => "Ctrl+Alt+Shift+Enter",
+            C::UpperCase => "Ctrl+Shift+U",
+            C::LowerCase => "Ctrl+U",
+            C::ProperCase => "Alt+U",
+            C::ProperCaseBlend => "Alt+Shift+U",
+            C::SentenceCase => "Ctrl+Alt+U",
+            C::SentenceCaseBlend => "Ctrl+Alt+Shift+U",
+            // The rest are in the palette and the menus only.
+            _ => return None,
         },
         A::New => "Ctrl+N",
         A::Open => "Ctrl+O",
@@ -323,6 +363,8 @@ mod tests {
         let mut actions: Vec<Action> = jarak_core::command::COMMANDS
             .iter()
             .map(|c| Action::Cmd(c.command))
+            // Step 97: commands without default keys are in the palette only.
+            .filter(|a| key_label(*a).is_some())
             .collect();
         actions.extend([
             Action::New,

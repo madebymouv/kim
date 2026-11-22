@@ -42,6 +42,8 @@ pub enum Run {
     InFiles(u8),
     /// Step 96: the multi-selection commands (see `JarakApp::multi`).
     Multi(u8),
+    /// Step 97: dates, paths, digests and the copy-line setting (see `JarakApp::edit_tool`).
+    Edit(u8),
 }
 
 /// The menu an entry belongs to.
@@ -587,6 +589,134 @@ pub fn entries() -> Vec<Entry> {
             M::Selection,
         ),
     ]);
+    v.extend([
+        run(
+            "edit.date-short",
+            "Insert the date and time (short)",
+            "날짜와 시간 넣기(짧게)",
+            Run::Edit(0),
+            M::Edit,
+        ),
+        run(
+            "edit.date-long",
+            "Insert the date and time (long)",
+            "날짜와 시간 넣기(길게)",
+            Run::Edit(1),
+            M::Edit,
+        ),
+        run(
+            "edit.date-custom",
+            "Insert the date and time (custom format)",
+            "날짜와 시간 넣기(사용자 형식)",
+            Run::Edit(2),
+            M::Edit,
+        ),
+        run(
+            "edit.copy-full-path",
+            "Copy the full path",
+            "전체 경로 복사",
+            Run::Edit(3),
+            M::Edit,
+        ),
+        run(
+            "edit.copy-file-name",
+            "Copy the file name",
+            "파일 이름 복사",
+            Run::Edit(4),
+            M::Edit,
+        ),
+        run(
+            "edit.copy-directory",
+            "Copy the directory",
+            "폴더 경로 복사",
+            Run::Edit(5),
+            M::Edit,
+        ),
+        run(
+            "edit.copy-all-names",
+            "Copy the names of all open documents",
+            "열린 문서 모두의 이름 복사",
+            Run::Edit(6),
+            M::Edit,
+        ),
+        run(
+            "edit.copy-all-paths",
+            "Copy the paths of all open documents",
+            "열린 문서 모두의 경로 복사",
+            Run::Edit(7),
+            M::Edit,
+        ),
+        run(
+            "tools.md5-selection",
+            "MD5 of the selection to the clipboard",
+            "선택의 MD5를 클립보드로",
+            Run::Edit(8),
+            M::Edit,
+        ),
+        run(
+            "tools.sha1-selection",
+            "SHA-1 of the selection to the clipboard",
+            "선택의 SHA-1을 클립보드로",
+            Run::Edit(9),
+            M::Edit,
+        ),
+        run(
+            "tools.sha256-selection",
+            "SHA-256 of the selection to the clipboard",
+            "선택의 SHA-256을 클립보드로",
+            Run::Edit(10),
+            M::Edit,
+        ),
+        run(
+            "tools.sha512-selection",
+            "SHA-512 of the selection to the clipboard",
+            "선택의 SHA-512를 클립보드로",
+            Run::Edit(11),
+            M::Edit,
+        ),
+        run(
+            "tools.md5-file",
+            "MD5 of a file to the clipboard…",
+            "파일의 MD5를 클립보드로…",
+            Run::Edit(12),
+            M::Edit,
+        ),
+        run(
+            "tools.sha1-file",
+            "SHA-1 of a file to the clipboard…",
+            "파일의 SHA-1을 클립보드로…",
+            Run::Edit(13),
+            M::Edit,
+        ),
+        run(
+            "tools.sha256-file",
+            "SHA-256 of a file to the clipboard…",
+            "파일의 SHA-256을 클립보드로…",
+            Run::Edit(14),
+            M::Edit,
+        ),
+        run(
+            "tools.sha512-file",
+            "SHA-512 of a file to the clipboard…",
+            "파일의 SHA-512를 클립보드로…",
+            Run::Edit(15),
+            M::Edit,
+        ),
+        run(
+            "tools.hash-generate",
+            "Generate a digest (MD5, SHA-1, SHA-256, SHA-512)…",
+            "다이제스트 만들기(MD5, SHA-1, SHA-256, SHA-512)…",
+            Run::Edit(16),
+            M::Edit,
+        ),
+        run(
+            "edit.copy-line-setting",
+            "Copy the line when nothing is selected (on/off)",
+            "선택이 없을 때 줄 복사 (켬/끔)",
+            Run::Edit(17),
+            M::Edit,
+        ),
+    ]);
     use crate::find::StyleCmd as S;
     v.extend([
         act("search.find", "Find…", "찾기…", A::Find, M::Search),
@@ -967,10 +1097,15 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), ids.len(), "ids are unique");
-        // Every action entry shows a key; the others say how they are reached.
+        // Every window action shows a key; a registry command shows its key when it has one
+        // (Step 97: many are in the palette and the menus only).
         for x in &e {
-            if let Run::Act(_) = x.run {
-                assert!(x.keys.is_some(), "{}", x.id);
+            match x.run {
+                Run::Act(Action::Cmd(c)) => {
+                    assert_eq!(x.keys, key_label(Action::Cmd(c)), "{}", x.id);
+                }
+                Run::Act(_) => assert!(x.keys.is_some(), "{}", x.id),
+                _ => {}
             }
         }
         assert_eq!(

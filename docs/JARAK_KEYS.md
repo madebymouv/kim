@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
+Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96; line and case keys since Step 97) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -82,6 +82,25 @@ Marks, bookmarks of marked lines and the five token styles (*Style all occurrenc
 *Style one token*, *Clear style*, *Jump to the next / previous styled text*, *Copy the styled
 text*) are in the palette and the Search menu. A selected word highlights its other occurrences on
 screen (smart highlighting).
+
+## Lines and case
+
+| Keys | Command |
+| --- | --- |
+| Ctrl+D | Duplicate the line (or the selection) |
+| Ctrl+Shift+L | Delete the line |
+| Ctrl+Shift+Up / Down | Move the line up / down |
+| Ctrl+J | Join lines |
+| Ctrl+I | Split lines at the window's width |
+| Ctrl+Alt+Enter / Ctrl+Alt+Shift+Enter | Insert a blank line above / below |
+| Ctrl+Shift+U / Ctrl+U | UPPERCASE / lowercase |
+| Alt+U / Alt+Shift+U | Proper Case / Proper Case (blend) |
+| Ctrl+Alt+U / Ctrl+Alt+Shift+U | Sentence case / Sentence case (blend) |
+
+The palette and the Edit menu have the rest: removing duplicate, consecutive duplicate and empty
+lines, reverse, randomize, the sorts (lexicographic, ignoring case, locale, integers, decimals,
+length; ascending or descending), iNVERT and ranDOm case, the blank operations, Base64 / URL /
+quoted-printable / hex, the digests, the date and time, and copying paths.
 
 ## Carets and columns
 
