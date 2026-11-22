@@ -1,0 +1,36 @@
+{
+  "command": "export",
+  "data": {
+    "dry_run": true,
+    "files": [
+      {
+        "bytes": 4160,
+        "path": "C:\\Users\\me\\Documents\\site\\note.html"
+      },
+      {
+        "bytes": 74,
+        "path": "C:\\Users\\me\\Documents\\site\\assets\\dot.png"
+      }
+    ],
+    "format": "folder",
+    "images": [
+      {
+        "published": "assets/dot.png",
+        "reference": "assets/dot.png",
+        "use": "copied"
+      },
+      {
+        "reference": "https://example.com/r.png",
+        "use": "remote"
+      }
+    ],
+    "language": "Markdown",
+    "output": "C:\\Users\\me\\Documents\\site",
+    "rendered": true,
+    "source": "C:\\Users\\me\\Documents\\doc\\note.md",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

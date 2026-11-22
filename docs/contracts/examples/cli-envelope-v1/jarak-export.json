@@ -1,0 +1,31 @@
+{
+  "command": "export",
+  "data": {
+    "dry_run": false,
+    "files": [
+      {
+        "bytes": 4268,
+        "path": "C:\\Users\\me\\Documents\\out\\note.html"
+      }
+    ],
+    "format": "html",
+    "images": [
+      {
+        "reference": "assets/dot.png",
+        "use": "embedded"
+      },
+      {
+        "reference": "https://example.com/r.png",
+        "use": "remote"
+      }
+    ],
+    "language": "Markdown",
+    "output": "C:\\Users\\me\\Documents\\out\\note.html",
+    "rendered": true,
+    "source": "C:\\Users\\me\\Documents\\doc\\note.md",
+    "written": true
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

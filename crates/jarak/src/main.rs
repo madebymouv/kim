@@ -44,6 +44,13 @@ Commands:
                 Replace in Files: --dry-run lists every change and writes nothing; --yes
                 replaces (each file kept in its encoding and line endings, the originals in a
                 journal); the same search options as find
+  export <file> --output <path>
+                HTML, RTF or a folder, locally (nothing is uploaded or fetched): highlighted
+                text (--line-numbers), a Markdown document rendered with its images embedded
+                (--linked: referred to instead; --source: its highlighted text); --to folder
+                publishes the page and copies of its images; the format follows the output's
+                extension or --to html|rtf|folder; an existing output is replaced only with
+                --overwrite, the document never; --dry-run checks only
   journal list  The Replace in Files batches kept for undo (read-only)
   journal undo <batch>
                 Gives the files of a batch their original bytes back, unless changed since;
@@ -140,6 +147,14 @@ struct Global {
     yes: bool,
     /// Step 105: `jarak hotkeys set --replace` takes keys another binding has.
     replace: bool,
+    /// Step 106: `jarak export` options.
+    to: Option<String>,
+    output: Option<String>,
+    linked: bool,
+    line_numbers: bool,
+    source: bool,
+    overwrite: bool,
+    export_flags: bool,
 }
 
 fn main() -> ExitCode {
@@ -180,6 +195,36 @@ fn run(args: &[String]) -> ExitCode {
             "--hidden" => {
                 g.hidden = true;
                 g.folder_flags = true;
+            }
+            "--to" => match it.next() {
+                Some(v) => {
+                    g.to = Some(v.clone());
+                    g.export_flags = true;
+                }
+                None => missing_value = Some("--to"),
+            },
+            "-o" | "--output" => match it.next() {
+                Some(v) => {
+                    g.output = Some(v.clone());
+                    g.export_flags = true;
+                }
+                None => missing_value = Some("--output"),
+            },
+            "--linked" => {
+                g.linked = true;
+                g.export_flags = true;
+            }
+            "--line-numbers" => {
+                g.line_numbers = true;
+                g.export_flags = true;
+            }
+            "--source" => {
+                g.source = true;
+                g.export_flags = true;
+            }
+            "--overwrite" => {
+                g.overwrite = true;
+                g.export_flags = true;
             }
             "-y" | "--yes" => g.yes = true,
             "--replace" => g.replace = true,
@@ -244,7 +289,10 @@ fn run(args: &[String]) -> ExitCode {
         (Some("settings"), Some("set")) => "settings.set",
         (Some("settings"), Some("reset")) => "settings.reset",
         (
-            Some(c @ ("open" | "info" | "find" | "replace" | "paths" | "version" | "capabilities")),
+            Some(
+                c @ ("open" | "info" | "find" | "replace" | "export" | "paths" | "version"
+                | "capabilities"),
+            ),
             _,
         ) => c,
         _ => "jarak",
@@ -274,6 +322,10 @@ fn run(args: &[String]) -> ExitCode {
         ))
     } else if g.replace && command != "hotkeys.set" {
         Err(Fail::usage("--replace belongs to `jarak hotkeys set`"))
+    } else if g.export_flags && command != "export" {
+        Err(Fail::usage(
+            "--to, --output, --linked, --line-numbers, --source and --overwrite belong to `jarak export`",
+        ))
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
@@ -303,6 +355,7 @@ fn run(args: &[String]) -> ExitCode {
             "open"
                 | "assets.rename"
                 | "replace"
+                | "export"
                 | "journal.undo"
                 | "settings.set"
                 | "settings.reset"
@@ -312,7 +365,7 @@ fn run(args: &[String]) -> ExitCode {
         )
     {
         Err(Fail::usage(format!(
-            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak export`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
             command.replace('.', " ")
         )))
     } else {
@@ -352,6 +405,7 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "info" => info(rest, g.fallback.as_deref()),
         "find" => find(rest, g),
         "replace" => replace(rest, g),
+        "export" => export(rest, g),
         "journal.list" | "journal.undo" => journal(command, rest, g),
         "assets.list" => assets_list(rest),
         "assets.rename" => assets_rename(rest, g),
@@ -516,6 +570,191 @@ fn hotkeys_in(command: &str, rest: &[&str], g: &Global, file: &Path) -> Result<D
         }
         _ => unreachable!("checked in run"),
     }
+}
+
+/// Step 106: `jarak export <file> --output <path>` (`JARAK-FR-141`): HTML, RTF or a published
+/// folder, written locally; the document is never changed, an existing output replaced only with
+/// `--overwrite`, and nothing is fetched or uploaded.
+fn export(rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    use jarak_core::export::{self as ex, ExportError, Format, Images};
+    let [file] = rest else {
+        return Err(Fail::usage(
+            "`jarak export` needs one file (and --output <path>)",
+        ));
+    };
+    let Some(output) = g.output.as_deref() else {
+        return Err(Fail::usage(
+            "`jarak export` needs --output <path> (a file, or a folder with --to folder)",
+        ));
+    };
+    let path = absolute(Path::new(file));
+    let out = absolute(Path::new(output));
+    let format = match g.to.as_deref() {
+        Some(t) => Format::from_name(t)
+            .ok_or_else(|| Fail::usage(format!("--to takes html, rtf or folder (got `{t}`)")))?,
+        None => Format::from_extension(&out).ok_or_else(|| Fail {
+            hint: Some("name the format with --to html, rtf or folder".into()),
+            ..Fail::usage(format!(
+                "{} has no export extension (.html, .htm, .rtf)",
+                out.display()
+            ))
+        })?,
+    };
+    if format == Format::Pdf {
+        return Err(Fail::usage(
+            "PDF is printed (Microsoft Print to PDF); it comes with printing in the next part of Step 106",
+        ));
+    }
+    let markdown = jarak_core::markdown::is_markdown_path(&path);
+    let rendered = markdown && !g.source && format != Format::Rtf;
+    if g.source && !markdown {
+        return Err(Fail::usage(
+            "--source belongs to Markdown documents (other documents export their text anyway)",
+        ));
+    }
+    if g.linked && !(rendered && format == Format::Html) {
+        return Err(Fail::usage(
+            "--linked belongs to the HTML export of a rendered Markdown document",
+        ));
+    }
+    if g.line_numbers && rendered {
+        return Err(Fail::usage(
+            "--line-numbers belongs to highlighted text; a rendered Markdown document has none (add --source)",
+        ));
+    }
+    if format == Format::Folder && !rendered {
+        return Err(Fail::usage(
+            "--to folder publishes a rendered Markdown document (.md)",
+        ));
+    }
+    if format == Format::Folder && out.is_file() {
+        return Err(Fail::usage(format!(
+            "{} is a file; --to folder needs a folder",
+            out.display()
+        )));
+    }
+    let d = read_file(&path, jarak_core::file::system_encoding())?;
+    if d.binary {
+        return Err(Fail::usage(format!(
+            "{} is a binary file; Jarak exports text",
+            path.display()
+        )));
+    }
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let user_langs = Paths::from_env()
+        .map(|p| jarak_core::syntax::load_udls(&p.languages_dir()).0)
+        .unwrap_or_default();
+    let first_line = d.text.lines().next().unwrap_or("");
+    let lang = jarak_core::syntax::detect(&name, first_line, &user_langs);
+    let fail = |e: ExportError| {
+        let (code, exit) = e.code();
+        let mut f = Fail::new(code, exit, format!("{e}; nothing was written"));
+        if let ExportError::Exists(v) = &e {
+            f.hint = Some("pass --overwrite to replace them".into());
+            f.details = v.iter().map(|p| json!(p.display().to_string())).collect();
+        }
+        f
+    };
+    let (files, images) = match format {
+        Format::Folder => {
+            let p = ex::publish(&path, &d.text, &out, g.overwrite, g.dry_run).map_err(fail)?;
+            (p.files, p.images)
+        }
+        Format::Html => {
+            let (html, images) = if rendered {
+                let images = if g.linked {
+                    Images::Link
+                } else {
+                    Images::Embed
+                };
+                let p = ex::markdown_html(&d.text, Some(&path), &name, images, &out);
+                (p.html, p.images)
+            } else {
+                (
+                    ex::code_html(&d.text, lang, &name, g.line_numbers),
+                    Vec::new(),
+                )
+            };
+            let w = ex::write_output(&out, html.as_bytes(), Some(&path), g.overwrite, g.dry_run)
+                .map_err(fail)?;
+            (vec![w], images)
+        }
+        Format::Rtf | Format::Pdf => {
+            let rtf = ex::code_rtf(&d.text, lang, g.line_numbers);
+            let w = ex::write_output(&out, rtf.as_bytes(), Some(&path), g.overwrite, g.dry_run)
+                .map_err(fail)?;
+            (vec![w], Vec::new())
+        }
+    };
+    let files_json: Vec<Value> = files
+        .iter()
+        .map(|w| json!({ "path": w.path.display().to_string(), "bytes": w.bytes }))
+        .collect();
+    let images_json: Vec<Value> = images
+        .iter()
+        .map(|i| {
+            let mut v = json!({ "reference": i.reference, "use": i.used.name() });
+            match &i.used {
+                ex::ImageUse::Refused(why) => v["reason"] = json!(why),
+                ex::ImageUse::Copied(to) => v["published"] = json!(to),
+                _ => {}
+            }
+            v
+        })
+        .collect();
+    let count = |n: &str| images.iter().filter(|i| i.used.name() == n).count();
+    let mut human = vec![format!(
+        "{} {name} as {} to {} ({} file{}, {} bytes).",
+        if g.dry_run {
+            "Would export"
+        } else {
+            "Exported"
+        },
+        match format {
+            Format::Html if rendered => "rendered HTML",
+            Format::Html => "highlighted HTML",
+            Format::Rtf | Format::Pdf => "RTF",
+            Format::Folder => "a published folder",
+        },
+        out.display(),
+        files.len(),
+        if files.len() == 1 { "" } else { "s" },
+        files.iter().map(|w| w.bytes).sum::<u64>()
+    )];
+    if !images.is_empty() {
+        let parts: Vec<String> = [
+            ("embedded", "embedded"),
+            ("linked", "linked"),
+            ("copied", "copied"),
+            ("remote", "remote (not loaded)"),
+            ("missing", "missing"),
+            ("refused", "not used"),
+        ]
+        .iter()
+        .filter(|(k, _)| count(k) > 0)
+        .map(|(k, label)| format!("{} {label}", count(k)))
+        .collect();
+        human.push(format!("Images: {}.", parts.join(", ")));
+    }
+    if g.dry_run {
+        human.push("Dry run: nothing was written.".into());
+    }
+    Ok((
+        json!({
+            "source": path.display().to_string(),
+            "format": format.name(),
+            "output": out.display().to_string(),
+            "rendered": rendered,
+            "language": lang.map(|l| l.name.clone()),
+            "dry_run": g.dry_run,
+            "written": !g.dry_run,
+            "files": files_json,
+            "images": images_json,
+        }),
+        human.join("\n"),
+    ))
 }
 
 /// What values a setting takes, for the CLI's JSON.
@@ -1590,6 +1829,7 @@ mod tests {
                 "info",
                 "find",
                 "replace",
+                "export",
                 "journal.list",
                 "journal.undo",
                 "assets.list",
@@ -1706,6 +1946,90 @@ mod tests {
         hotkeys_in("hotkeys.reset", &["view.palette"], &g, &f).unwrap();
         let (data, _) = hotkeys_in("hotkeys.check", &[], &g, &f).unwrap();
         assert!(data.get("conflicts").is_some());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Step 106 (`JARAK-FR-141`): HTML, RTF and a published folder; an existing output only
+    /// with --overwrite, the document never; options that do not fit are refused.
+    #[test]
+    fn export_writes_locally_and_never_replaces_without_overwrite() {
+        let d = std::env::temp_dir().join(format!("jarak-cli-export-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let md = d.join("n.md");
+        std::fs::write(
+            &md,
+            "# N
+
+![x](missing.png)
+",
+        )
+        .unwrap();
+        let rs = d.join("a.rs");
+        std::fs::write(
+            &rs,
+            "fn main() {}
+",
+        )
+        .unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let g = |out: &Path| Global {
+            output: Some(s(out)),
+            ..Global::default()
+        };
+        let (data, _) = export(&[&s(&md)], &g(&d.join("o/n.html"))).unwrap();
+        assert_eq!(
+            (data["format"].as_str(), data["rendered"].as_bool()),
+            (Some("html"), Some(true))
+        );
+        assert_eq!(data["images"][0]["use"], "missing");
+        let e = export(&[&s(&md)], &g(&d.join("o/n.html"))).unwrap_err();
+        assert_eq!((e.code, e.exit), ("export_exists", 7));
+        let mut o = g(&d.join("o/n.html"));
+        o.overwrite = true;
+        export(&[&s(&md)], &o).unwrap();
+        let (data, _) = export(&[&s(&rs)], &g(&d.join("a.rtf"))).unwrap();
+        assert_eq!(
+            (data["format"].as_str(), data["language"].as_str()),
+            (Some("rtf"), Some("Rust"))
+        );
+        let mut o = g(&rs);
+        o.to = Some("html".into());
+        o.overwrite = true;
+        let e = export(&[&s(&rs)], &o).unwrap_err();
+        assert_eq!(e.code, "export_into_source", "never the document itself");
+        let mut o = g(&d.join("site"));
+        o.to = Some("folder".into());
+        o.dry_run = true;
+        let (data, _) = export(&[&s(&md)], &o).unwrap();
+        assert_eq!(data["written"], false);
+        assert!(!d.join("site").exists());
+        for (file, out, set) in [
+            (&rs, "x.html", "linked"),
+            (&rs, "x.html", "source"),
+            (&md, "x.html", "line_numbers"),
+            (&rs, "site", "folder"),
+            (&md, "x.txt", ""),
+        ] {
+            let mut o = g(&d.join(out));
+            match set {
+                "linked" => o.linked = true,
+                "source" => o.source = true,
+                "line_numbers" => o.line_numbers = true,
+                "folder" => o.to = Some("folder".into()),
+                _ => {}
+            }
+            assert_eq!(
+                export(&[&s(file)], &o).unwrap_err().code,
+                "usage",
+                "{set} {out}"
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(&rs).unwrap(),
+            "fn main() {}
+"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 

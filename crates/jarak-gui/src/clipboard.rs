@@ -21,6 +21,11 @@ pub trait Clipboard: Send + Sync {
     fn get_image(&self) -> Option<ClipImage> {
         None
     }
+    /// Step 106: text with an HTML fragment (`HTML Format`) or RTF beside it (Copy as HTML /
+    /// RTF); by default only the text.
+    fn set_rich(&self, text: &str, _html: Option<&str>, _rtf: Option<&str>) -> bool {
+        self.set_text(text)
+    }
 }
 
 /// An in-memory clipboard (tests, and no system clipboard).
@@ -28,6 +33,9 @@ pub trait Clipboard: Send + Sync {
 pub struct MemoryClipboard {
     pub text: std::sync::Mutex<Option<String>>,
     pub image: std::sync::Mutex<Option<ClipImage>>,
+    /// Step 106: the HTML fragment and RTF of the last Copy as HTML / RTF.
+    pub html: std::sync::Mutex<Option<String>>,
+    pub rtf: std::sync::Mutex<Option<String>>,
 }
 
 impl MemoryClipboard {
@@ -54,6 +62,15 @@ impl Clipboard for MemoryClipboard {
     }
     fn get_image(&self) -> Option<ClipImage> {
         self.image.lock().ok()?.clone()
+    }
+    fn set_rich(&self, text: &str, html: Option<&str>, rtf: Option<&str>) -> bool {
+        if let Ok(mut h) = self.html.lock() {
+            *h = html.map(str::to_string);
+        }
+        if let Ok(mut r) = self.rtf.lock() {
+            *r = rtf.map(str::to_string);
+        }
+        self.set_text(text)
     }
 }
 
@@ -310,6 +327,66 @@ mod win {
         text
     }
 
+    /// Puts `bytes` on the open clipboard as `format` (the clipboard owns the memory after).
+    unsafe fn put(format: u32, bytes: &[u8]) -> bool {
+        // SAFETY: the caller opened the clipboard; the memory is filled while locked and handed
+        // to the clipboard, which owns it after a successful SetClipboardData (freed here only
+        // when that fails).
+        unsafe {
+            let mem = GlobalAlloc(GMEM_MOVEABLE, bytes.len().max(1));
+            if mem.is_null() {
+                return false;
+            }
+            let p = GlobalLock(mem) as *mut u8;
+            if p.is_null() {
+                GlobalFree(mem);
+                return false;
+            }
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
+            GlobalUnlock(mem);
+            if SetClipboardData(format, mem as HANDLE).is_null() {
+                GlobalFree(mem);
+                false
+            } else {
+                true
+            }
+        }
+    }
+
+    /// Step 106: the text with `HTML Format` and/or `Rich Text Format` beside it.
+    pub fn set_rich(text: &str, html: Option<&str>, rtf: Option<&str>) -> bool {
+        use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
+        let name = |n: &str| -> Vec<u16> { n.encode_utf16().chain(std::iter::once(0)).collect() };
+        let wide: Vec<u8> = text
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        if !open() {
+            return false;
+        }
+        // SAFETY: the clipboard is open until `close`; the names are NUL-terminated.
+        let ok = unsafe {
+            EmptyClipboard();
+            let mut ok = put(CF_UNICODETEXT, &wide);
+            if let Some(h) = html {
+                let f = RegisterClipboardFormatW(name("HTML Format").as_ptr());
+                let mut b = jarak_core::export::cf_html(h).into_bytes();
+                b.push(0);
+                ok &= f != 0 && put(f, &b);
+            }
+            if let Some(r) = rtf {
+                let f = RegisterClipboardFormatW(name("Rich Text Format").as_ptr());
+                let mut b = r.as_bytes().to_vec();
+                b.push(0);
+                ok &= f != 0 && put(f, &b);
+            }
+            ok
+        };
+        close();
+        ok
+    }
+
     pub fn set_text(text: &str) -> bool {
         let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
         if !open() {
@@ -368,6 +445,12 @@ impl Clipboard for WinClipboard {
         #[cfg(windows)]
         {
             win::set_binary(text)
+        }
+    }
+    fn set_rich(&self, text: &str, html: Option<&str>, rtf: Option<&str>) -> bool {
+        #[cfg(windows)]
+        {
+            win::set_rich(text, html, rtf)
         }
     }
     fn get_binary(&self) -> Option<String> {

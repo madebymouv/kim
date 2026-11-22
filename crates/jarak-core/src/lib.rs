@@ -20,6 +20,7 @@ pub mod assets;
 pub mod assist;
 pub mod command;
 pub mod document;
+pub mod export;
 pub mod file;
 pub mod history;
 pub mod hotkeys;

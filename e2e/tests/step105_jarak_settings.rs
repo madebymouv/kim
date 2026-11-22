@@ -5,11 +5,11 @@
 //! 1. `jarak settings set theme light`, `set font_size 16`, `get`, a refused value (exit 2,
 //!    `setting_invalid`, nothing written), an unknown key (exit 3), `reset` — the file holds only
 //!    what was set, and lines it does not know stay.
-//! 3. `jarak hotkeys set` (a clash with the user's own binding refused, exit 7), `show`, `check`;
-//!    the Keyboard section shows the changed command (its Reset).
 //! 2. The release window with that settings file: Appearance shows the font size 16 and the window
 //!    is light (the theme comes from the file: no `KIM_UI_THEME` in this run); a document's text
 //!    is drawn at 16 points; General in Korean; the Settings window passes the audit's rules.
+//! 3. `jarak hotkeys set` (a clash with the user's own binding refused, exit 7), `show`, `check`;
+//!    the Keyboard section shows the changed command (its Reset).
 //!
 //! Machine safety: `jarak` runs without a window; the windows open for about a second each at the
 //! audit position; no input is synthesized; everything happens in a temporary folder.

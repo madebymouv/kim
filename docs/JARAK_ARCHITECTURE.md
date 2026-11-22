@@ -1299,3 +1299,46 @@ section under the audit's rules in English and Korean). UI audit views `settings
 light). e2e `step105_jarak_settings.rs`: its first run found that the line numbers, drawn at the
 user's font size, were measured against the UI type scale — they are recorded as the user's size
 now (`kim_ui::inspect::last_text_is_users_size`); then PASS.
+
+## 28. Export (Step 106)
+
+[JARAK_EXPORT](JARAK_EXPORT.md) is the user reference. Part 1: HTML, RTF, publishing, Copy as HTML /
+RTF and `jarak export`; printing and PDF are part 2.
+
+- `jarak-core::export` (no UI toolkit; kim-design for its palettes, which are plain data):
+  - `lines`, `highlight` (the Step 98 lexer line by line, its state carried; tokens cut into runs
+    of one kind, neighbours of a kind merged), `kind_name` / `kind_color` (the window's colour
+    roles, ADR 0103);
+  - `code_fragment` (classes for a page, or `Styling::Inline` colours for the clipboard),
+    `code_html`, `code_rtf` (`\uN?` for non-ASCII), `cf_html` (the clipboard's `HTML Format`
+    header with byte offsets);
+  - `markdown_html` renders the Step 89 render model (`markdown::parse`) block by block — headings
+    with GitHub anchors, tables with their alignment, task lists, fenced code highlighted through
+    `syntax::fence_lang`, footnotes at the end, raw HTML as text — and treats images by target
+    (`Embed`: `data:` URIs; `LinkFrom`: relative to the output; `Publish`: copies into `assets/`);
+    images come only from `assets::resolve` (inside the document's folder), are checked by
+    `assets::image_format` and their size (64 MiB each, 256 MiB per export), never decoded, and
+    remote ones become links;
+  - `safe_href` (only `http`, `https`, `mailto`, `#`, relative), a fixed CSP, `esc`;
+  - `write_output` (refuses the document itself and, without `overwrite`, an existing file; a
+    temporary file in the target folder, flushed and renamed) and `publish` (the page and the
+    copies planned first, every existing target reported at once, the document's own folder
+    refused);
+  - `ExportError::code` gives the CLI codes `export_exists` (7) and `export_into_source` (2).
+- `jarak export` reads the file as `jarak info` does, detects its language with the user's
+  languages, refuses options that do not fit before reading, and prints the files and image uses.
+- `jarak-gui::export_ui`: `export_tool(0…4)` from the palette and menus (`Run::Export`): the
+  export Save dialog (`Dialogs::save_export`, `GetSaveFileNameW` with the format's filter,
+  `OFN_OVERWRITEPROMPT`), the publishing folder (`Dialogs::export_folder`) with a dry run first and
+  the *Replace files?* dialog (`publish_question_ui`, audit view `publish-question`), and Copy as
+  HTML / RTF through `Clipboard::set_rich` (`HTML Format` / `Rich Text Format` registered formats
+  beside `CF_UNICODETEXT`; the memory clipboard keeps them for tests).
+
+Tests: core export 8 (lines and runs, escaping, RTF, `HTML Format` offsets, links, images embedded /
+linked / refused with the document unchanged, writing without replacing, publishing) and golden
+tests `export_golden.rs` 2 (`tests/golden/export/expected/`: code HTML with and without line
+numbers, RTF, the clipboard HTML, rendered Markdown embedded / linked / published; the outputs were
+reviewed by reading them); CLI 1 (formats, `export_exists`, `--overwrite`, `export_into_source`,
+dry run, refused options); window flows 4 (Markdown export with unsaved text, RTF and Copy as HTML
+/ RTF, publishing asks before replacing, publishing needs a saved Markdown document). e2e
+`step106_jarak_export.rs`: PASS on its first run.

@@ -1,0 +1,14 @@
+{
+  "command": "export",
+  "error": {
+    "code": "export_exists",
+    "details": [
+      "C:\\Users\\me\\Documents\\out\\note.html"
+    ],
+    "exit_code": 7,
+    "hint": "pass --overwrite to replace them",
+    "message": "C:\\Users\\me\\Documents\\out\\note.html already exists; nothing was written"
+  },
+  "ok": false,
+  "schema_version": 1
+}

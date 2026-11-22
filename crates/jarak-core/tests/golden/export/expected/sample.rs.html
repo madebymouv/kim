@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: file: 'self'">
+<meta name="generator" content="Jarak">
+<title>sample.rs</title>
+<style>
+:root { color-scheme: light dark; --bg: #ffffff; --raised: #ecebf2; --border: #d9d7e2; --text: #1c1b24; --secondary: #45425a; --muted: #55526b; --accent: #5f49c4; --t-keyword: #5f49c4; --t-type: #235bb8; --t-constant: #7d5700; --t-string: #23703e; --t-number: #7d5700; --t-comment: #55526b; --t-operator: #45425a; --t-preprocessor: #7d5700; --t-tag: #5f49c4; --t-attribute: #235bb8; --t-variable: #235bb8; --t-heading: #5f49c4; --t-emphasis: #1c1b24; --t-code: #23703e; --t-link: #5f49c4; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0e0e12; --raised: #15151b; --border: #26252f; --text: #e8e6f0; --secondary: #a9a6b8; --muted: #9592a8; --accent: #b7a6f5; --t-keyword: #b7a6f5; --t-type: #8ab4f8; --t-constant: #e8c27a; --t-string: #8bc79a; --t-number: #e8c27a; --t-comment: #9592a8; --t-operator: #a9a6b8; --t-preprocessor: #e8c27a; --t-tag: #b7a6f5; --t-attribute: #8ab4f8; --t-variable: #8ab4f8; --t-heading: #b7a6f5; --t-emphasis: #e8e6f0; --t-code: #8bc79a; --t-link: #b7a6f5; } }
+body { margin: 0 auto; max-width: 52rem; padding: 2rem 1.25rem; background: var(--bg); color: var(--text); font: 16px/1.6 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; overflow-wrap: break-word; }
+body.code-page { max-width: none; padding: 1rem 1.25rem; }
+pre, code { font-family: Consolas, "D2Coding", "Malgun Gothic", monospace; font-size: 0.875rem; }
+pre { background: var(--raised); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; overflow-x: auto; line-height: 1.45; }
+body.code-page pre { background: none; border: none; padding: 0; }
+:not(pre) > code { background: var(--raised); border-radius: 4px; padding: 0.1em 0.3em; }
+.ln { color: var(--muted); user-select: none; }
+.t-keyword { color: var(--t-keyword); }
+.t-type { color: var(--t-type); }
+.t-constant { color: var(--t-constant); }
+.t-string { color: var(--t-string); }
+.t-number { color: var(--t-number); }
+.t-comment { color: var(--t-comment); }
+.t-operator { color: var(--t-operator); }
+.t-preprocessor { color: var(--t-preprocessor); }
+.t-tag { color: var(--t-tag); }
+.t-attribute { color: var(--t-attribute); }
+.t-variable { color: var(--t-variable); }
+.t-heading { color: var(--t-heading); }
+.t-emphasis { color: var(--t-emphasis); }
+.t-code { color: var(--t-code); }
+.t-link { color: var(--t-link); }
+.t-emphasis { font-style: italic; }
+a { color: var(--accent); }
+h1, h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+blockquote { margin: 0; padding: 0 1rem; color: var(--secondary); border-left: 4px solid var(--border); }
+table { border-collapse: collapse; }
+th, td { border: 1px solid var(--border); padding: 0.3rem 0.75rem; }
+th { background: var(--raised); }
+hr { border: none; border-top: 1px solid var(--border); }
+img { max-width: 100%; }
+li.task { list-style: none; }
+li.task > input { margin: 0 0.4em 0 -1.4em; }
+.raw-html { color: var(--secondary); }
+.missing-image, .remote-image { color: var(--muted); font-style: italic; }
+.footnotes { border-top: 1px solid var(--border); margin-top: 2rem; font-size: 0.9rem; color: var(--secondary); }
+@media print { :root { --bg: #ffffff; --raised: #ecebf2; --border: #d9d7e2; --text: #1c1b24; --secondary: #45425a; --muted: #55526b; --accent: #5f49c4; --t-keyword: #5f49c4; --t-type: #235bb8; --t-constant: #7d5700; --t-string: #23703e; --t-number: #7d5700; --t-comment: #55526b; --t-operator: #45425a; --t-preprocessor: #7d5700; --t-tag: #5f49c4; --t-attribute: #235bb8; --t-variable: #235bb8; --t-heading: #5f49c4; --t-emphasis: #1c1b24; --t-code: #23703e; --t-link: #5f49c4; } body { max-width: none; padding: 0; } pre { white-space: pre-wrap; } }
+</style>
+</head>
+<body class="code-page">
+<pre class="code"><code><span class="t-comment">//! A sample for the export goldens: &lt;tags&gt; &amp; &quot;quotes&quot;.</span>
+<span class="t-keyword">use</span> std<span class="t-operator">::</span>collections<span class="t-operator">::</span>HashMap<span class="t-operator">;</span>
+
+<span class="t-comment">/// 한글 주석과 문자열.</span>
+<span class="t-keyword">fn</span> main<span class="t-operator">()</span> <span class="t-operator">{</span>
+    <span class="t-keyword">let</span> <span class="t-keyword">mut</span> m<span class="t-operator">:</span> HashMap<span class="t-operator">&lt;&amp;</span><span class="t-type">str</span><span class="t-operator">,</span> <span class="t-type">u32</span><span class="t-operator">&gt;</span> <span class="t-operator">=</span> HashMap<span class="t-operator">::</span>new<span class="t-operator">();</span>
+    m<span class="t-operator">.</span>insert<span class="t-operator">(</span><span class="t-string">&quot;한글&quot;</span><span class="t-operator">,</span> <span class="t-number">42</span><span class="t-operator">);</span>
+    <span class="t-keyword">if</span> m<span class="t-operator">.</span>len<span class="t-operator">()</span> <span class="t-operator">&gt;</span> <span class="t-number">0</span> <span class="t-operator">&amp;&amp;</span> <span class="t-constant">true</span> <span class="t-operator">{</span>
+        println<span class="t-operator">!(</span><span class="t-string">&quot;{} {{braces}} \ done&quot;</span><span class="t-operator">,</span> m<span class="t-operator">[</span><span class="t-string">&quot;한글&quot;</span><span class="t-operator">]);</span>
+    <span class="t-operator">}</span>
+<span class="t-operator">}</span></code></pre>
+</body>
+</html>

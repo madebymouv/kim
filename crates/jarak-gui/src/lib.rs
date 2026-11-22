@@ -16,6 +16,7 @@ pub mod clipboard;
 pub mod column;
 pub mod docops;
 pub mod encoding;
+pub mod export_ui;
 pub mod find;
 pub mod handoff;
 pub mod hashdlg;
@@ -62,6 +63,18 @@ pub trait Dialogs: Send + Sync {
     fn save_as(&self, suggested: &str) -> Option<PathBuf>;
     /// Step 95: a folder (Find in Files).
     fn folder(&self) -> Option<PathBuf> {
+        None
+    }
+    /// Step 106: where an export goes (the Save dialog asks before it replaces a file).
+    fn save_export(
+        &self,
+        _suggested: &str,
+        _format: jarak_core::export::Format,
+    ) -> Option<PathBuf> {
+        None
+    }
+    /// Step 106: the folder a Markdown document is published to.
+    fn export_folder(&self) -> Option<PathBuf> {
         None
     }
 }
@@ -543,6 +556,8 @@ pub struct JarakApp {
     pub reload_unmodified: bool,
     pub recovery: Option<recover::Recovery>,
     pub recovery_offer: Option<recover::Offer>,
+    /// Step 106: publishing would replace files; asked first.
+    pub publish_question: Option<export_ui::PublishQuestion>,
     /// Step 105: the settings applied to the window, the Settings window, and what was applied
     /// (the language is fixed for the run when `--lang` named it, or by a test).
     pub prefs: prefs::Prefs,
@@ -1015,6 +1030,7 @@ impl JarakApp {
             palette::Run::Symbols(k) => self.symbols_tool(k),
             palette::Run::Binary(k) => self.binary_tool(k),
             palette::Run::Disk(k) => self.disk_tool(k),
+            palette::Run::Export(k) => self.export_tool(k),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1705,6 +1721,7 @@ impl JarakApp {
             reload_unmodified: false,
             recovery: None,
             recovery_offer: None,
+            publish_question: None,
             prefs: prefs::Prefs::default(),
             settings_win: None,
             lang_fixed: true,
@@ -1811,7 +1828,7 @@ impl JarakApp {
             // the Go to dialog.
             "syntax" | "functions" | "goto" | "completion" | "hint" | "docmap" | "quick-open"
             | "summary" | "run" | "macros" | "symbols" | "encoding-question" | "disk-question"
-            | "recovery" => {
+            | "recovery" | "publish-question" => {
                 let dir = self
                     .tab()
                     .file
@@ -1873,6 +1890,14 @@ fn main() {
                         self.watch
                             .questions
                             .push_back(watch::DiskQuestion::Conflict(id));
+                    } else if screen == "publish-question" {
+                        // Step 106: publishing into a folder that holds two of its files.
+                        let id = self.tab().id;
+                        self.publish_question = Some(export_ui::PublishQuestion {
+                            tab: id,
+                            folder: dir.join("site"),
+                            existing: 2,
+                        });
                     } else if screen == "recovery" {
                         // Step 104: a crashed window's two documents offered back.
                         let entry = |id: u64, path: Option<PathBuf>, title: &str, chars| {
@@ -3129,6 +3154,7 @@ fn main() {
         self.enc_question_ui(&ctx, &c);
         self.disk_question_ui(&ctx, &c);
         self.recovery_offer_ui(&ctx, &c);
+        self.publish_question_ui(&ctx, &c);
         // Step 105: the Settings window (its audit is written by that window, ADR 0100).
         self.settings_window(&ctx);
         if kim_ui::inspect::active() && !self.audit_settings {
@@ -3924,19 +3950,26 @@ impl Dialogs for WinDialogs {
         win_dialog(false, suggested).map(PathBuf::from)
     }
     fn folder(&self) -> Option<PathBuf> {
-        win_folder_dialog().map(PathBuf::from)
+        win_folder_dialog("Find in Files: choose a folder").map(PathBuf::from)
+    }
+    fn save_export(&self, suggested: &str, format: jarak_core::export::Format) -> Option<PathBuf> {
+        win_export_dialog(suggested, format).map(PathBuf::from)
+    }
+    fn export_folder(&self) -> Option<PathBuf> {
+        win_folder_dialog("Publish to a folder (the page and an assets folder are written into it)")
+            .map(PathBuf::from)
     }
 }
 
 /// The Windows folder picker (`SHBrowseForFolderW`, new dialog style).
 #[cfg(windows)]
 #[allow(unsafe_code)]
-fn win_folder_dialog() -> Option<String> {
+fn win_folder_dialog(title: &str) -> Option<String> {
     use windows_sys::Win32::UI::Shell::{
         BIF_NEWDIALOGSTYLE, BIF_RETURNONLYFSDIRS, BROWSEINFOW, SHBrowseForFolderW,
         SHGetPathFromIDListW,
     };
-    let title: Vec<u16> = "Find in Files: choose a folder\0".encode_utf16().collect();
+    let title: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
     // SAFETY: BROWSEINFOW is plain data; all-zero is its empty state.
     let mut bi: BROWSEINFOW = unsafe { std::mem::zeroed() };
     bi.lpszTitle = title.as_ptr();
@@ -3952,6 +3985,43 @@ fn win_folder_dialog() -> Option<String> {
     // SAFETY: the PIDL came from SHBrowseForFolderW and is freed once.
     unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(pidl as *const core::ffi::c_void) };
     if ok == 0 {
+        return None;
+    }
+    let end = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
+    Some(String::from_utf16_lossy(&buf[..end]))
+}
+
+/// Step 106: the Save dialog of an export (its format's filter and extension; it asks before it
+/// replaces a file).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn win_export_dialog(suggested: &str, format: jarak_core::export::Format) -> Option<String> {
+    use jarak_core::export::Format;
+    use windows_sys::Win32::UI::Controls::Dialogs::{
+        GetSaveFileNameW, OFN_NOREADONLYRETURN, OFN_OVERWRITEPROMPT, OFN_PATHMUSTEXIST,
+        OPENFILENAMEW,
+    };
+    let (filter, ext) = match format {
+        Format::Rtf => ("Rich Text (*.rtf)\0*.rtf\0\0", "rtf\0"),
+        Format::Pdf => ("PDF (*.pdf)\0*.pdf\0\0", "pdf\0"),
+        _ => ("HTML (*.html)\0*.html;*.htm\0\0", "html\0"),
+    };
+    let filter: Vec<u16> = filter.encode_utf16().collect();
+    let ext: Vec<u16> = ext.encode_utf16().collect();
+    let mut buf = vec![0u16; 4096];
+    for (i, u) in suggested.encode_utf16().take(buf.len() - 1).enumerate() {
+        buf[i] = u;
+    }
+    // SAFETY: OPENFILENAMEW is plain data; all-zero is its documented empty state.
+    let mut ofn: OPENFILENAMEW = unsafe { std::mem::zeroed() };
+    ofn.lStructSize = size_of::<OPENFILENAMEW>() as u32;
+    ofn.lpstrFilter = filter.as_ptr();
+    ofn.lpstrDefExt = ext.as_ptr();
+    ofn.lpstrFile = buf.as_mut_ptr();
+    ofn.nMaxFile = buf.len() as u32;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_NOREADONLYRETURN;
+    // SAFETY: `ofn` points to buffers that live across the modal call.
+    if unsafe { GetSaveFileNameW(&raw mut ofn) } == 0 {
         return None;
     }
     let end = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());

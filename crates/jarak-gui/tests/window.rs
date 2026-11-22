@@ -16,6 +16,9 @@ struct Scripted {
     open: Mutex<Vec<PathBuf>>,
     save: Mutex<Vec<PathBuf>>,
     asked: Mutex<usize>,
+    /// Step 106: the export Save dialog and the publishing folder.
+    export: Mutex<Vec<PathBuf>>,
+    folder: Mutex<Vec<PathBuf>>,
 }
 
 impl Dialogs for Scripted {
@@ -26,6 +29,14 @@ impl Dialogs for Scripted {
     fn save_as(&self, _suggested: &str) -> Option<PathBuf> {
         *self.asked.lock().unwrap() += 1;
         self.save.lock().unwrap().pop()
+    }
+    fn save_export(&self, _suggested: &str, _f: jarak_core::export::Format) -> Option<PathBuf> {
+        *self.asked.lock().unwrap() += 1;
+        self.export.lock().unwrap().pop()
+    }
+    fn export_folder(&self) -> Option<PathBuf> {
+        *self.asked.lock().unwrap() += 1;
+        self.folder.lock().unwrap().pop()
     }
 }
 
@@ -5585,5 +5596,162 @@ fn a_shortcut_changed_from_the_command_line_is_applied_on_focus() {
         egui::Modifiers::CTRL | egui::Modifiers::ALT,
     );
     assert!(h.state().macro_dialog.is_some());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// A 1×1 PNG (the export reads images only by their first bytes and size).
+const DOT_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, b'I', b'H', b'D', b'R', 0, 0, 0,
+    1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1F, 0x15, 0xC4, 0x89, 0, 0, 0, 0, b'I', b'E', b'N', b'D', 0xAE,
+    0x42, 0x60, 0x82,
+];
+
+/// Step 106 (`JARAK-FR-141`, `JARAK-SEC-001`): a Markdown document exports rendered with its
+/// image embedded, unsaved text included, and the document stays as it is.
+#[test]
+fn exporting_markdown_embeds_its_images_and_keeps_the_document() {
+    let d = temp("export-md");
+    std::fs::create_dir_all(d.join("assets")).unwrap();
+    std::fs::write(d.join("assets/dot.png"), DOT_PNG).unwrap();
+    let doc = d.join("note.md");
+    std::fs::write(&doc, "# Note\n\n![dot](assets/dot.png)\n").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.export.lock().unwrap().push(d.join("out/note.html"));
+    let (a, _) = app_with(&[doc.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(a);
+    h.state_mut().tab_mut().file.doc.type_text("unsaved ");
+    h.state_mut().export_tool(0);
+    h.run();
+    let html = std::fs::read_to_string(d.join("out/note.html")).unwrap();
+    assert!(html.contains("src=\"data:image/png;base64,"), "embedded");
+    assert!(html.contains("unsaved"), "the text as it is in the window");
+    assert!(
+        html.contains("<p>unsaved # Note</p>"),
+        "rendered (the typed text starts the line)"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&doc).unwrap(),
+        "# Note\n\n![dot](assets/dot.png)\n",
+        "the document is never written by an export"
+    );
+    assert!(h.state().tab().file.doc.is_dirty(), "still unsaved");
+    let msg = h.state().message.clone().unwrap_or_default();
+    assert!(
+        msg.contains("Exported to") && msg.contains("1 embedded"),
+        "{msg}"
+    );
+    // A cancelled Save dialog writes nothing.
+    h.state_mut().export_tool(0);
+    assert_eq!(*dialogs.asked.lock().unwrap(), 2);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Code exports highlighted as RTF; Copy as HTML / RTF put the selection on the clipboard with
+/// its colours beside the plain text.
+#[test]
+fn code_exports_as_rtf_and_copies_as_html_and_rtf() {
+    let d = temp("export-code");
+    let doc = d.join("a.rs");
+    std::fs::write(&doc, "fn main() {}\nlet x = 1;\n").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    dialogs.export.lock().unwrap().push(d.join("a.rtf"));
+    let (mut h, clip) = app_clip(&[doc.to_str().unwrap()], dialogs);
+    h.state_mut().export_tool(1);
+    let rtf = std::fs::read_to_string(d.join("a.rtf")).unwrap();
+    assert!(
+        rtf.starts_with("{\\rtf1") && rtf.contains("{\\cf2 fn}"),
+        "{rtf}"
+    );
+    h.state_mut().tab_mut().file.doc.select_all();
+    h.state_mut().export_tool(3);
+    let html = clip.html.lock().unwrap().clone().unwrap();
+    assert!(
+        html.contains(">fn</span>") && html.starts_with("<pre style="),
+        "{html}"
+    );
+    assert_eq!(
+        clip.text.lock().unwrap().as_deref(),
+        Some("fn main() {}\nlet x = 1;\n"),
+        "the plain text beside it"
+    );
+    h.state_mut().export_tool(4);
+    assert!(
+        clip.rtf
+            .lock()
+            .unwrap()
+            .as_deref()
+            .is_some_and(|r| r.contains("{\\cf2 let}"))
+    );
+    assert_eq!(h.state().message.as_deref(), Some("Copied as RTF"));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Publishing writes the page and copies of its images; into a folder that holds them already it
+/// asks first: Cancel keeps the files, Replace writes them.
+#[test]
+fn publishing_asks_before_it_replaces_files() {
+    let d = temp("publish");
+    std::fs::create_dir_all(d.join("doc/assets")).unwrap();
+    std::fs::write(d.join("doc/assets/dot.png"), DOT_PNG).unwrap();
+    let doc = d.join("doc/note.md");
+    std::fs::write(&doc, "![dot](assets/dot.png)\n").unwrap();
+    let site = d.join("site");
+    let dialogs = Arc::new(Scripted::default());
+    dialogs
+        .folder
+        .lock()
+        .unwrap()
+        .extend([site.clone(), site.clone(), site.clone()]);
+    let (a, _) = app_with(&[doc.to_str().unwrap()], dialogs);
+    let mut h = harness(a);
+    h.state_mut().export_tool(2);
+    assert!(site.join("note.html").is_file());
+    assert_eq!(std::fs::read(site.join("assets/dot.png")).unwrap(), DOT_PNG);
+    std::fs::write(site.join("note.html"), "mine").unwrap();
+    h.state_mut().export_tool(2);
+    h.run();
+    assert!(h.state().publish_question.is_some(), "asked");
+    assert!(h.query_by_label_contains("Replace them?").is_some());
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert!(h.state().publish_question.is_none());
+    assert_eq!(
+        std::fs::read_to_string(site.join("note.html")).unwrap(),
+        "mine",
+        "Cancel replaces nothing"
+    );
+    h.state_mut().export_tool(2);
+    h.run();
+    h.get_by_label("Replace").click();
+    h.run();
+    assert!(
+        std::fs::read_to_string(site.join("note.html"))
+            .unwrap()
+            .contains("<img src=\"assets/dot.png\"")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&doc).unwrap(),
+        "![dot](assets/dot.png)\n"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Publishing an untitled document or a text file says why it does not.
+#[test]
+fn publishing_needs_a_saved_markdown_document() {
+    let d = temp("publish-no");
+    let doc = d.join("a.txt");
+    std::fs::write(&doc, "text").unwrap();
+    let dialogs = Arc::new(Scripted::default());
+    let (a, _) = app_with(&[doc.to_str().unwrap()], dialogs.clone());
+    let mut h = harness(a);
+    h.state_mut().export_tool(2);
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("Markdown"))
+    );
+    assert_eq!(*dialogs.asked.lock().unwrap(), 0, "no dialog");
     let _ = std::fs::remove_dir_all(&d);
 }

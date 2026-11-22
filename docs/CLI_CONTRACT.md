@@ -360,6 +360,8 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `reference_unlocated` | 7 | Step 91: a reference to the asset cannot be located exactly in the text (rename it by hand). Nothing was changed. |
 | `batch_not_found` | 3 | Step 95: `jarak journal undo` of a batch the journal does not hold (`jarak journal list`). Nothing was changed. |
 | `setting_not_found` | 3 | Step 105: `jarak settings get/set/reset` of a key that is not a setting (`jarak settings list` names them). Nothing was changed. |
+| `export_exists` | 7 | Step 106: `jarak export` would replace files that exist (`details` lists them); pass `--overwrite`. Nothing was written. |
+| `export_into_source` | 2 | Step 106: the output of `jarak export` is the document itself, or (`--to folder`) the document's own folder; never allowed, even with `--overwrite`. Nothing was written. |
 | `setting_invalid` | 2 | Step 105: `jarak settings set` with a value the setting does not take; the message and hint say what it takes. Nothing was written. |
 
 Step 94: `jarak find <file> <text>` lists the matches of a text (`--extended` escapes such as `\n`
@@ -378,6 +380,14 @@ Examples: `examples/cli-envelope-v1/jarak-assets-list.json`, `jarak-assets-renam
 `jarak-replace.json`, `jarak-replace-confirmation-required.json`, `jarak-journal-list.json`,
 `jarak-journal-undo.json`, `jarak-settings-list.json`, `jarak-settings-set.json`,
 `jarak-setting-invalid.json`.
+
+Step 106: `jarak export <file> --output <path> [--to html|rtf|folder] [--line-numbers] [--linked]
+[--source] [--overwrite]` is `write` with `--dry-run` ([JARAK_EXPORT](JARAK_EXPORT.md)): highlighted
+HTML or RTF, a Markdown document rendered with its images embedded (or linked), or published to a
+folder with copies of its images; nothing is fetched or uploaded and the document is never
+changed. An existing output is `export_exists` (exit 7) unless `--overwrite`; the document or its
+own folder as the output is `export_into_source` (exit 2). Examples: `jarak-export.json`,
+`jarak-export-exists.json`, `jarak-export-folder-dry-run.json`.
 
 Step 105: `jarak settings list [<section>] | get <key> | set <key> <value> | reset <key>` read and
 write `%APPDATA%\mouv\jarak\settings.toml` (the registry of [JARAK_SETTINGS](JARAK_SETTINGS.md),

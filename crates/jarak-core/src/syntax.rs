@@ -1194,7 +1194,8 @@ fn lex_markdown(line: &str, base: usize, st: State, out: &mut Out) -> State {
 }
 
 /// The language of a fence's info string.
-fn fence_lang(info: &str) -> Option<&'static Lang> {
+/// The language a fenced code block's info string names (`rs`, `py`, `Rust`, …).
+pub fn fence_lang(info: &str) -> Option<&'static Lang> {
     let alias = match info {
         "rs" => "rust",
         "py" | "python3" => "python",

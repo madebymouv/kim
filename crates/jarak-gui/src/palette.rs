@@ -74,6 +74,9 @@ pub enum Run {
     /// Step 104: `JarakApp::disk_tool` 0–4 (reload from disk, monitoring, detecting changes,
     /// reloading unmodified documents silently, recovery snapshots).
     Disk(u8),
+    /// Step 106: `JarakApp::export_tool` 0–4 (export as HTML, as RTF, publish to a folder, copy
+    /// as HTML, copy as RTF).
+    Export(u8),
 }
 
 /// The menu an entry belongs to.
@@ -1605,6 +1608,42 @@ pub fn entries() -> Vec<Entry> {
             "변경 없는 문서는 묻지 않고 다시 읽기: 켜기/끄기",
             Run::Disk(3),
             M::File,
+        ),
+        // Step 106: export (NppExport) and publishing.
+        run(
+            "file.export-html",
+            "Export as HTML…",
+            "HTML로 내보내기…",
+            Run::Export(0),
+            M::File,
+        ),
+        run(
+            "file.export-rtf",
+            "Export as RTF…",
+            "RTF로 내보내기…",
+            Run::Export(1),
+            M::File,
+        ),
+        run(
+            "file.publish",
+            "Publish Markdown to a folder…",
+            "Markdown을 폴더로 게시…",
+            Run::Export(2),
+            M::File,
+        ),
+        run(
+            "edit.copy-html",
+            "Copy as HTML",
+            "HTML로 복사",
+            Run::Export(3),
+            M::Edit,
+        ),
+        run(
+            "edit.copy-rtf",
+            "Copy as RTF",
+            "RTF로 복사",
+            Run::Export(4),
+            M::Edit,
         ),
         run(
             "settings.recovery",

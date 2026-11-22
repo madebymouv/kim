@@ -217,7 +217,7 @@ pub fn sha1(bytes: &[u8]) -> [u8; 20] {
 
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-fn base64_encode(bytes: &[u8], pad: bool, url: bool) -> String {
+pub(crate) fn base64_encode(bytes: &[u8], pad: bool, url: bool) -> String {
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for c in bytes.chunks(3) {
         let n = (u32::from(c[0]) << 16)
