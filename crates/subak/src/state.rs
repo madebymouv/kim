@@ -306,8 +306,12 @@ pub fn terminal_record(
 // ---------------------------------------------------------------------------------------------
 // Files.
 
-/// Where a Host keeps its state: `%LOCALAPPDATA%\mouv\subak\state` for the default endpoint.
+/// Where a Host keeps its state: `%LOCALAPPDATA%\mouv\subak\state` for the default endpoint
+/// (#98 T4, `SHELL-24`: `data\state` next to the programs in portable mode).
 pub fn default_dir() -> Option<PathBuf> {
+    if let Some(d) = crate::hotkeys::portable_data() {
+        return Some(d.join("state"));
+    }
     std::env::var_os("LOCALAPPDATA")
         .map(|d| PathBuf::from(d).join("mouv").join("subak").join("state"))
 }

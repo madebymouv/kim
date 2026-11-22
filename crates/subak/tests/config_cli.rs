@@ -619,3 +619,55 @@ fn import_merge_previews_then_merges_without_losing_the_current_file() {
     let (code, doc) = sub(&appdata, &["config", "check"]);
     assert_eq!(code, 0, "the merged file is valid: {doc}");
 }
+
+/// #98 T4 (`SHELL-24`): a copy of `subak.exe` next to a `data` folder is portable — its settings
+/// live in `data\config` (`config show` names that file, `config set` writes there), not in
+/// `%APPDATA%`; without the folder the same copy uses `%APPDATA%` again.
+#[test]
+fn a_data_folder_next_to_the_program_makes_it_portable() {
+    let root = sandbox("portable");
+    let appdata = root.join("appdata");
+    let app = root.join("app");
+    std::fs::create_dir_all(app.join("data")).unwrap();
+    std::fs::create_dir_all(&appdata).unwrap();
+    let exe = app.join("subak.exe");
+    std::fs::copy(env!("CARGO_BIN_EXE_subak"), &exe).unwrap();
+    let run = |args: &[&str]| -> (i32, Value) {
+        let out = std::process::Command::new(&exe)
+            .args(args)
+            .arg("--json")
+            .env("APPDATA", &appdata)
+            .env("SUBAK_TEST_NO_DETECT", "1")
+            .output()
+            .unwrap();
+        let doc: Value = serde_json::from_slice(&out.stdout).unwrap_or(Value::Null);
+        validate("subak-cli-v1", &doc);
+        (out.status.code().unwrap_or(-1), doc)
+    };
+    let (code, doc) = run(&["config", "set", "appearance.padding", "4"]);
+    assert_eq!(code, 0, "{doc}");
+    let file = app.join("data").join("config").join("config.toml");
+    assert_eq!(
+        doc["data"]["path"].as_str().map(PathBuf::from),
+        Some(file.clone()),
+        "{doc}"
+    );
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .contains("padding = 4")
+    );
+    assert!(
+        !cfg_dir(&appdata).exists(),
+        "nothing in %APPDATA% while portable"
+    );
+    std::fs::remove_dir_all(app.join("data")).unwrap();
+    let (code, doc) = run(&["config", "show"]);
+    assert_eq!(code, 0, "{doc}");
+    assert_eq!(
+        doc["data"]["path"].as_str().map(PathBuf::from),
+        Some(cfg_dir(&appdata).join("config.toml")),
+        "without `data` the copy is an ordinary one: {doc}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

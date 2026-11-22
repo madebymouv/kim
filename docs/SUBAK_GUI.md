@@ -1581,3 +1581,14 @@ schemes (MIT; their notice is in `THIRD-PARTY-NOTICES.txt`) and reads yours from
   again then. An unknown name keeps Kim's colours and says so once; `subak config set` warns too
   and lists the names there are.
 
+## Portable mode (#98 T4, `SHELL-24`)
+
+A folder named `data` next to `subak.exe` (and `subak-gui.exe`) makes that copy portable, as
+Tabby's portable app: its settings, hotkeys, colour schemes and window state live in
+`data\config`, and its Host's saved state in `data\state`, instead of `%APPDATA%\mouv\subak`
+and `%LOCALAPPDATA%\mouv\subak`. It is decided by where the program is (not by the
+environment), so the Host — started with a fresh logon environment — and its clients agree.
+Subak writes no registry value in either mode. The Host's pipe stays per user (SUBAK-SEC-010): a
+portable copy and an installed one reach the same Host while it runs. A copy installed by Kim has
+no `data` folder and is an ordinary one; `subak config show` names the file in use.
+

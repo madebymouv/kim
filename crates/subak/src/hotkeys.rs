@@ -181,8 +181,30 @@ pub fn roaming_root() -> Option<PathBuf> {
 
 /// `%APPDATA%\mouv\subak` (Linux, M4: `$XDG_CONFIG_HOME/mouv/subak`), from the environment, so a
 /// test can point it at a sandbox. `None` when the variable is not set (nothing is persisted).
+/// #98 T4 (`SHELL-24`): in portable mode, `data\config` next to the programs.
 pub fn config_dir() -> Option<PathBuf> {
+    if let Some(d) = portable_data() {
+        return Some(d.join("config"));
+    }
     roaming_root().map(|r| r.join(TOOL))
+}
+
+/// #98 T4 (`SHELL-24`, Tabby's portable app): a folder named `data` next to `subak.exe` makes this
+/// copy portable — its settings (`data\config`) and its Host's state (`data\state`) live there
+/// instead of `%APPDATA%` / `%LOCALAPPDATA%`; Subak writes no registry value in either mode.
+/// The Host's pipe stays per user (SUBAK-SEC-010): a portable copy and an installed one share it.
+/// Decided by where the program is, not by the environment, so the Host (started with a fresh
+/// logon environment) and its clients always agree.
+pub fn portable_data() -> Option<PathBuf> {
+    static DATA: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| {
+        std::env::current_exe()
+            .ok()?
+            .parent()
+            .map(|d| d.join("data"))
+            .filter(|d| d.is_dir())
+    })
+    .clone()
 }
 
 /// Kim's per-user tool installs (`%LOCALAPPDATA%\Programs\mouv`; ADR 0006), read by
