@@ -151,6 +151,7 @@ only, whole word only, match case and whole word) for *next* and *all*, *skip th
 | Alt+Z | Word wrap |
 | Ctrl+Plus, Ctrl+Minus, Ctrl+0 | Zoom in, zoom out, reset |
 | Ctrl+Shift+P | Command palette |
+| Ctrl+, | Settings (a window of its own; Step 105) |
 | Alt (alone) | Show / hide the menu bar |
 
 In the preview: Up / Down a block, PageUp / PageDown (Space) five blocks, Home / End, Esc back to

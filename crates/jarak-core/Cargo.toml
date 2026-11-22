@@ -1,6 +1,6 @@
 [package]
 name = "jarak-core"
-version = "0.0.24"
+version = "0.0.25"
 description = "Jarak's document model and editing engine: no GUI toolkit, no windowing, no clipboard (ADR 0102)"
 edition.workspace = true
 rust-version.workspace = true

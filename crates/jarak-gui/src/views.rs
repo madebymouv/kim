@@ -607,7 +607,7 @@ impl JarakApp {
                     "second"
                 };
                 let focused = pane == self.focused_pane();
-                for e in tabs::bar(ui, bar, &items, id, self.lang, focused) {
+                for e in tabs::bar(ui, bar, &items, id, self.lang, focused, self.prefs.tabs) {
                     events.push((pane, e));
                 }
             }

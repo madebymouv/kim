@@ -1,0 +1,298 @@
+{
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/jarak-settings-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "%APPDATA%\\mouv\\jarak\\settings.toml read as a JSON object (Step 105, JARAK-FR-130): every key is optional (a missing one is its default), and keys Jarak does not know are allowed and kept. Built from jarak_core::settings::SETTINGS; see docs/JARAK_SETTINGS.md.",
+  "properties": {
+    "auto_close": {
+      "default": false,
+      "description": "Close brackets and quotes (Editor).",
+      "type": "boolean"
+    },
+    "brace_highlight": {
+      "default": true,
+      "description": "Highlight matching brackets (Editor).",
+      "type": "boolean"
+    },
+    "caret_blink": {
+      "default": false,
+      "description": "Blinking caret (Editor).",
+      "type": "boolean"
+    },
+    "close_tags": {
+      "default": false,
+      "description": "Close HTML/XML tags (Editor).",
+      "type": "boolean"
+    },
+    "complete_auto": {
+      "default": true,
+      "description": "Completion while typing (Editor).",
+      "type": "boolean"
+    },
+    "complete_enter": {
+      "default": "chosen",
+      "description": "Enter accepts a completion (Editor).",
+      "enum": [
+        "never",
+        "chosen",
+        "always"
+      ]
+    },
+    "complete_min": {
+      "default": 2,
+      "description": "From how many characters (Editor).",
+      "maximum": 9,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "complete_tab": {
+      "default": "chosen",
+      "description": "Tab accepts a completion (Editor).",
+      "enum": [
+        "never",
+        "chosen",
+        "always"
+      ]
+    },
+    "copy_line": {
+      "default": true,
+      "description": "Copy the line without a selection (Editor).",
+      "type": "boolean"
+    },
+    "date_format": {
+      "default": "yyyy-MM-dd HH:mm:ss",
+      "description": "Custom date format (Advanced).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
+    },
+    "detect_changes": {
+      "default": true,
+      "description": "Detect files changed by other programs (Files).",
+      "type": "boolean"
+    },
+    "edge_columns": {
+      "default": "",
+      "description": "Edge lines at columns (Appearance).",
+      "pattern": "^([0-9]{1,4}(,[0-9]{1,4})*)?$",
+      "type": "string"
+    },
+    "editing_mode": {
+      "default": "standard",
+      "description": "Editing (Vim).",
+      "enum": [
+        "standard",
+        "vim"
+      ]
+    },
+    "font_family": {
+      "default": "default",
+      "description": "Editor font (Appearance).",
+      "enum": [
+        "default",
+        "consolas",
+        "cascadia-mono",
+        "d2coding",
+        "courier-new"
+      ]
+    },
+    "font_size": {
+      "default": 13,
+      "description": "Editor font size (Appearance).",
+      "maximum": 40,
+      "minimum": 8,
+      "type": "integer"
+    },
+    "highlight_current_line": {
+      "default": true,
+      "description": "Highlight the current line (Editor).",
+      "type": "boolean"
+    },
+    "image_folder": {
+      "default": "assets",
+      "description": "Folder for pasted images (Images).",
+      "pattern": "^[^\"\\r\\n]*$",
+      "type": "string"
+    },
+    "indent": {
+      "default": "smart",
+      "description": "Indentation on Enter (Editor).",
+      "enum": [
+        "off",
+        "keep",
+        "smart"
+      ]
+    },
+    "language": {
+      "default": "system",
+      "description": "Language (General).",
+      "enum": [
+        "system",
+        "en",
+        "ko"
+      ]
+    },
+    "line_numbers": {
+      "default": true,
+      "description": "Line numbers (Appearance).",
+      "type": "boolean"
+    },
+    "markdown_open_as": {
+      "default": "source",
+      "description": "Markdown files open as (Markdown).",
+      "enum": [
+        "source",
+        "split",
+        "preview"
+      ]
+    },
+    "menu_bar": {
+      "default": "alt",
+      "description": "Menu bar (General).",
+      "enum": [
+        "alt",
+        "always"
+      ]
+    },
+    "multi_editing": {
+      "default": true,
+      "description": "Ctrl+click adds a caret (Editor).",
+      "type": "boolean"
+    },
+    "new_encoding": {
+      "default": "utf-8",
+      "description": "Encoding (Files).",
+      "enum": [
+        "utf-8",
+        "utf-8-bom",
+        "ansi"
+      ]
+    },
+    "new_eol": {
+      "default": "crlf",
+      "description": "Line endings (Files).",
+      "enum": [
+        "crlf",
+        "lf",
+        "cr"
+      ]
+    },
+    "param_hints": {
+      "default": true,
+      "description": "Parameter hints (Editor).",
+      "type": "boolean"
+    },
+    "recent_max": {
+      "default": 20,
+      "description": "Recent files kept (Files).",
+      "maximum": 50,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "recovery_interval": {
+      "default": 10,
+      "description": "Keep unsaved documents every (seconds) (Files).",
+      "maximum": 3600,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "reload_unmodified_silently": {
+      "default": false,
+      "description": "Reload unmodified documents silently (Files).",
+      "type": "boolean"
+    },
+    "restore_session": {
+      "default": true,
+      "description": "Restore the session at start (General).",
+      "type": "boolean"
+    },
+    "search_engine": {
+      "default": "https://duckduckgo.com/?q=$(QUERY)",
+      "description": "Search engine (Advanced).",
+      "pattern": "^[^\"\\r\\n]*\\$\\(QUERY\\)[^\"\\r\\n]*$",
+      "type": "string"
+    },
+    "show_controls": {
+      "default": false,
+      "description": "Show control characters (Appearance).",
+      "type": "boolean"
+    },
+    "show_eol": {
+      "default": false,
+      "description": "Show the line endings (Appearance).",
+      "type": "boolean"
+    },
+    "show_indent_guides": {
+      "default": false,
+      "description": "Show the indent guides (Appearance).",
+      "type": "boolean"
+    },
+    "show_spaces": {
+      "default": false,
+      "description": "Show spaces and tabs (Appearance).",
+      "type": "boolean"
+    },
+    "show_wrap_symbol": {
+      "default": false,
+      "description": "Show the wrap symbol (Appearance).",
+      "type": "boolean"
+    },
+    "single_window": {
+      "default": true,
+      "description": "One window (General).",
+      "type": "boolean"
+    },
+    "snippets": {
+      "default": true,
+      "description": "Snippets in the completion list (Editor).",
+      "type": "boolean"
+    },
+    "status_bar": {
+      "default": true,
+      "description": "Status bar (General).",
+      "type": "boolean"
+    },
+    "tab_close_buttons": {
+      "default": true,
+      "description": "Close buttons on tabs (General).",
+      "type": "boolean"
+    },
+    "tab_double_click_close": {
+      "default": false,
+      "description": "Double-click closes a tab (General).",
+      "type": "boolean"
+    },
+    "tab_width": {
+      "default": 4,
+      "description": "Tab width (Editor).",
+      "maximum": 16,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "theme": {
+      "default": "system",
+      "description": "Theme (General).",
+      "enum": [
+        "system",
+        "dark",
+        "light"
+      ]
+    },
+    "use_spaces": {
+      "default": false,
+      "description": "Tab inserts spaces (Editor).",
+      "type": "boolean"
+    },
+    "virtual_space": {
+      "default": false,
+      "description": "Virtual space (Editor).",
+      "type": "boolean"
+    },
+    "word_wrap": {
+      "default": false,
+      "description": "Word wrap (Editor).",
+      "type": "boolean"
+    }
+  },
+  "title": "Jarak settings, version 1",
+  "type": "object"
+}

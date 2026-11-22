@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported; Step 104 `REL-02`…`REL-05`, `JRK-16`, `VIEW-17` supported, `SET-14` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12` supported; Step 104 `REL-02`…`REL-05`, `JRK-16`, `VIEW-17` supported, `SET-14` partial; Step 105 `SET-01`, `SET-04`, `SET-08`, `SET-15`, `SET-16`, `SET-20`, `SET-26` supported, `SET-02`, `SET-03`, `SET-05`, `SET-06`, `SET-10`, `SET-21`…`SET-23` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -337,32 +337,32 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| SET-01 | Preferences: General (localization, status bar, menu) | planned | `JARAK-FR-130` | 105 | T, M | — |
-| SET-02 | Preferences: Tab bar options (close button, double-click to close, multi-line) | planned | `JARAK-FR-130` | 105 | T | — |
-| SET-03 | Preferences: Editing (caret, current line, line wrap, multi-editing, scrolling beyond last line) | planned | `JARAK-FR-130` | 105 | T | — |
-| SET-04 | Preferences: Dark mode | planned | `JARAK-FR-132` | 105 | T, M | — |
-| SET-05 | Preferences: Margins, border, edge (line numbers, bookmark margin, edge column) | planned | `JARAK-FR-130` | 105 | T | — |
-| SET-06 | Preferences: New document (format, encoding, default language) | planned | `JARAK-FR-130` | 105 | T | — |
+| SET-01 | Preferences: General (localization, status bar, menu) | supported | `JARAK-FR-130` | 105 | T, M | Step 105: Settings → General: language (System / English / 한국어), the status bar, the menu bar (with Alt / always) (`a_changed_setting_is_written_and_applied_at_once`, `multi_editing_and_the_menu_bar_follow_the_settings`) |
+| SET-02 | Preferences: Tab bar options (close button, double-click to close, multi-line) | partial | `JARAK-FR-130` | 105 | T | Step 105: close buttons on every tab or only the active / hovered one, double-click closes a tab; multi-line tab bars are not implemented |
+| SET-03 | Preferences: Editing (caret, current line, line wrap, multi-editing, scrolling beyond last line) | partial | `JARAK-FR-130` | 105 | T | Step 105: current-line highlight, a blinking caret (off by default), word wrap, multi-editing (Ctrl+click), virtual space; scrolling beyond the last line is not implemented |
+| SET-04 | Preferences: Dark mode | supported | `JARAK-FR-132` | 105 | T, M | Step 105: theme System / Dark / Light from `kim-design`, live (`a_changed_setting_is_written_and_applied_at_once`; ui-audit dark and light) |
+| SET-05 | Preferences: Margins, border, edge (line numbers, bookmark margin, edge column) | partial | `JARAK-FR-130` | 105 | T | Step 105: line numbers on/off, edge lines at columns; the bookmark margin cannot be hidden |
+| SET-06 | Preferences: New document (format, encoding, default language) | partial | `JARAK-FR-130` | 105 | T | Step 105: new documents' encoding and line ending (`tab_width_spaces_and_new_documents_follow_the_settings`); a default language is not implemented |
 | SET-07 | Preferences: Default directory | planned | `JARAK-FR-130` | 105 | T | — |
-| SET-08 | Preferences: Recent files history size | planned | `JARAK-FR-130` | 105 | T | — |
+| SET-08 | Preferences: Recent files history size | supported | `JARAK-FR-130` | 105 | T | Step 105: *Recent files kept* (0–50) |
 | SET-09 | Preferences: File association (explicit, reversible) | planned | `JARAK-FR-130` | 111 | M | — |
-| SET-10 | Preferences: Language (tab size per language, replace by space) | planned | `JARAK-FR-130` | 105 | T | — |
+| SET-10 | Preferences: Language (tab size per language, replace by space) | partial | `JARAK-FR-130` | 105 | T | Step 105: tab width and *Tab inserts spaces* for every document (`tab_inserts_spaces_to_the_next_stop_when_set`); per-language tab sizes are not implemented |
 | SET-11 | Preferences: Highlighting (smart highlight, mark-all options) | planned | `JARAK-FR-130` | 105 | T | — |
 | SET-12 | Preferences: Print (margins, header, footer, colour mode) | planned | `JARAK-FR-140` | 106 | T | — |
 | SET-13 | Preferences: Searching (minimum size, fill find field, confirm replace all) | planned | `JARAK-FR-130` | 105 | T | — |
 | SET-14 | Preferences: Backup (session snapshot, periodic backup, backup on save) | partial | `JARAK-FR-121` | 104 | T | Step 104: the session (Step 93) and periodic recovery snapshots, on/off and the interval (`recovery_interval`); *backup on save* (a copy of the previous file) is not implemented |
-| SET-15 | Preferences: Auto-completion | planned | `JARAK-FR-094` | 105 | T | — |
-| SET-16 | Preferences: Multi-instance and date format | planned | `JARAK-FR-002` | 105 | T | — |
+| SET-15 | Preferences: Auto-completion | supported | `JARAK-FR-094` | 105 | T | Step 105: the completion and typing-aid settings of Step 100 in Settings → Editor |
+| SET-16 | Preferences: Multi-instance and date format | supported | `JARAK-FR-002` | 105 | T | Step 105: *One window* (off: every start opens its own window) and the custom date format |
 | SET-17 | Preferences: Delimiter (word characters, double-click delimiters) | planned | `JARAK-FR-130` | 105 | T | — |
 | SET-18 | Preferences: Performance (large file restriction) | planned | `JARAK-NFR-004` | 109 | T | — |
 | SET-19 | Preferences: Cloud settings path | not intended | — | 105 | D | — |
-| SET-20 | Preferences: Search engine for 'search on internet' | planned | `JARAK-FR-111` | 105 | T | — |
-| SET-21 | Preferences: MISC (file status auto-detection, document peeker, smooth font, clickable links) | planned | `JARAK-FR-120` | 105 | T | — |
-| SET-22 | Style Configurator (themes, per-language token colours, global font) | planned | `JARAK-FR-132` | 105 | T, M | — |
-| SET-23 | Shortcut Mapper (main menu, macros, run commands, editor commands; conflicts) | planned | `JARAK-FR-112` | 105 | T, M | — |
+| SET-20 | Preferences: Search engine for 'search on internet' | supported | `JARAK-FR-111` | 105 | T | Step 105: the search engine address, checked to hold `$(QUERY)` |
+| SET-21 | Preferences: MISC (file status auto-detection, document peeker, smooth font, clickable links) | partial | `JARAK-FR-120` | 105 | T | Step 105: file status auto-detection (Step 104) in Settings → Files; document peeker, smooth font and clickable-link options are not implemented |
+| SET-22 | Style Configurator (themes, per-language token colours, global font) | partial | `JARAK-FR-132` | 105 | T, M | Step 105: themes and the editor font family and size (Windows' fonts when present); per-language token colours are not implemented |
+| SET-23 | Shortcut Mapper (main menu, macros, run commands, editor commands; conflicts) | partial | `JARAK-FR-112` | 105 | T, M | Step 105: Settings → Keyboard lists every command with its keys (searchable); changing them follows in the next part of Step 105 |
 | SET-24 | Import style themes | planned | `JARAK-FR-132` | 105 | T | — |
 | SET-25 | Edit the context menu | planned | `JARAK-FR-130` | 110 | T | — |
-| SET-26 | Localization (Korean, English) | planned | `JARAK-FR-131` | 105 | T, M | — |
+| SET-26 | Localization (Korean, English) | supported | `JARAK-FR-131` | 105 | T, M | Step 105: English and Korean for every string, following Windows unless set (ui-audit `ko` runs of every Settings section) |
 
 ### TOOL — Tools menu (sources U)
 

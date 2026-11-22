@@ -1236,3 +1236,53 @@ next start offered both and Restore gave back the exact text (`# 자락␍␊저
 `untitled 메모`), which its own snapshot and the saved file hold; another program's change noticed
 in 0.7 s (1.1 s with unsaved changes), Reload then Ctrl+Z and Save gave back the original, Compare
 opened `a.txt (on disk)` beside it, Keep mine saved mine, a deleted file was written again by Save.
+
+## 27. Settings (Step 105)
+
+Requirements `JARAK-FR-130`, `JARAK-FR-131`, `JARAK-FR-132`; the reference is
+[JARAK_SETTINGS](JARAK_SETTINGS.md).
+
+- **`jarak-core::settings`**: the registry `SETTINGS` — each setting's key, section (General,
+  Editor, Appearance, Markdown, Images, Vim, Keyboard, Files, Advanced), group, English and Korean
+  name and help, kind (bool, a whole number in a range, a choice, text with a required part,
+  columns) and default. `validate` normalises a value or refuses it with what the setting takes;
+  `Settings::{get, set, reset, list}` work on `settings.toml` (`key = value` lines; other lines and
+  comments kept; `write_line` writes through `file::save_atomic`). `schema()` and `defaults_json()`
+  build `jarak-settings-v1` and its example (a test keeps the files in `docs/contracts` equal; another
+  keeps every key in JARAK_SETTINGS.md).
+- **`jarak settings list | get | set | reset`** (`jarak` CLI) on the same file; codes
+  `setting_not_found` (3), `setting_invalid` (2); `set` / `reset` are `write` with `--dry-run`.
+- **`jarak-gui::prefs`**: `Prefs` (the window's settings, read from the file) and
+  `JarakApp::apply_settings` (re-reads the file: the parts' own settings through
+  `read_settings_file`, then tab width / spaces / look for every document, word wrap when it
+  changed, the language unless `--lang` fixed it, the recovery interval, the recent files).
+  `prefs_frame`: the theme (`kim_ui::set_theme`; System read again on focus), the editor font
+  (installed as the family `jarak-editor` from the Windows or the user's fonts folder, the built-in
+  monospace chain behind it), each new document's word wrap and Markdown mode (`Tab::fresh`; a
+  restored session's documents keep their mode), and `settings_changed_outside` on focus (the
+  file's modification time). The theme and font apply only with a settings file (the program
+  always has one; window tests opt in).
+- **`jarak-gui::settings_ui`**: the window (an immediate viewport *Jarak Settings*, embedded under
+  the headless backend), a rail of `kim_ui::nav_item`s, rows from the registry (`Switch`,
+  `dropdown` — it carries the row's name for screen readers —, `number_field`, `text_field` saved on
+  losing the focus), `change_setting` (write, then `apply_settings`; a refusal shown under the row),
+  Advanced's *Show in Explorer* and *Reset every setting* (twice). `prepare_audit("settings-<id>")`
+  opens a section and lets that window write the audit (ADR 0100).
+- **Behaviour behind the settings**: `view::Look` (font size and family, line numbers,
+  current-line highlight, a caret blinking at most twice a second while focused, Ctrl+click carets),
+  `tabs::BarOptions` (close buttons, double-click), `Document::use_spaces` (Tab and indentation
+  insert spaces to the next stop), `assets::write_new_in` (the pasted-image folder), the menu and
+  status bars, new documents' line ending, `single_window` in `main.rs`, Ctrl+, (`Action::Settings`).
+- **Keyboard**: `jarak-gui::shortcuts` lists the commands with their keys (named for screen readers);
+  remapping follows in the next part of Step 105.
+
+Tests: core settings 6 (the registry, values checked, the file kept, schema and example, the
+reference), document 1 (spaces), assets 1 (folder); CLI 1 (list, get, set, dry run, reset, codes);
+window flows 10 (the gear, every section listed, live apply of the status bar, line numbers, word
+wrap, theme and language, a refused value, tab width and spaces, new documents and the image
+folder, multi-editing and the menu bar, Markdown's mode, a change from the CLI, reset twice, every
+section under the audit's rules in English and Korean). UI audit views `settings-general` …
+`settings-advanced` (275 runs in all, 0 failures; screenshots reviewed in English dark and Korean
+light). e2e `step105_jarak_settings.rs`: its first run found that the line numbers, drawn at the
+user's font size, were measured against the UI type scale — they are recorded as the user's size
+now (`kim_ui::inspect::last_text_is_users_size`); then PASS.

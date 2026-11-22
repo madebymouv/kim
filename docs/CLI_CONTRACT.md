@@ -359,6 +359,8 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `document_read_only` | 7 | Step 91: the document opens read-only in Jarak (binary, or an encoding that cannot reproduce every byte), so its references are not rewritten. Nothing was changed. |
 | `reference_unlocated` | 7 | Step 91: a reference to the asset cannot be located exactly in the text (rename it by hand). Nothing was changed. |
 | `batch_not_found` | 3 | Step 95: `jarak journal undo` of a batch the journal does not hold (`jarak journal list`). Nothing was changed. |
+| `setting_not_found` | 3 | Step 105: `jarak settings get/set/reset` of a key that is not a setting (`jarak settings list` names them). Nothing was changed. |
+| `setting_invalid` | 2 | Step 105: `jarak settings set` with a value the setting does not take; the message and hint say what it takes. Nothing was written. |
 
 Step 94: `jarak find <file> <text>` lists the matches of a text (`--extended` escapes such as `\n`
 and `\xNN`, or `--regex`) with their line and column; a pattern that does not compile is `usage`
@@ -374,7 +376,14 @@ plan, its original bytes are journaled, and it is saved in its own encoding and 
 Examples: `examples/cli-envelope-v1/jarak-assets-list.json`, `jarak-assets-rename-dry-run.json`,
 `jarak-asset-exists.json`, `jarak-find.json`, `jarak-find-folder.json`, `jarak-replace-dry-run.json`,
 `jarak-replace.json`, `jarak-replace-confirmation-required.json`, `jarak-journal-list.json`,
-`jarak-journal-undo.json`.
+`jarak-journal-undo.json`, `jarak-settings-list.json`, `jarak-settings-set.json`,
+`jarak-setting-invalid.json`.
+
+Step 105: `jarak settings list [<section>] | get <key> | set <key> <value> | reset <key>` read and
+write `%APPDATA%\mouv\jarak\settings.toml` (the registry of [JARAK_SETTINGS](JARAK_SETTINGS.md),
+schema `jarak-settings-v1`). `set` checks the value before anything is written and writes the file
+atomically, keeping its other lines; `set` and `reset` are `write` with `--dry-run`. A running
+window applies a change when it next gets the focus.
 
 ## 7. Output streams and the `--json` envelope
 

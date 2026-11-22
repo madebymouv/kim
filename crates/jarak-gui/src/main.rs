@@ -180,6 +180,11 @@ fn run(
         Some(t) => paths.handoff_dir().join(t),
         None => paths.handoff_dir(),
     };
+    // Step 105 (SET-16): with *One window* off, each start opens a window of its own.
+    let single_window = jarak_core::settings::Settings::new(&paths.settings_file())
+        .get("single_window")
+        .is_none_or(|v| v == "true");
+    let new_window = new_window || !single_window;
     let owner = if new_window {
         None
     } else {
@@ -198,6 +203,8 @@ fn run(
     if owner.is_some() {
         handoff::clear(&dir);
     }
+    // Step 105: without --lang the window follows the `language` setting.
+    let lang_given = lang.is_some();
     let lang = lang.unwrap_or_else(kim_design::Lang::system);
     let zoom = kim_design::scale::startup_zoom();
     let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
@@ -263,6 +270,9 @@ fn run(
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
             if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());
+                if !lang_given {
+                    app = app.with_lang_from_settings();
+                }
                 // Step 98: the user-defined languages.
                 app = app.with_languages(p.languages_dir());
                 // Step 100: the snippets file and Notepad++ API files.

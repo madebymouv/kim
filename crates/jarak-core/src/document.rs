@@ -99,6 +99,8 @@ pub struct Document {
     snippet_at: usize,
     /// Columns per tab stop (display and vertical moves).
     pub tab_width: usize,
+    /// Step 105: Tab and indentation insert spaces (up to the next tab stop) instead of a tab.
+    pub use_spaces: bool,
     /// What Enter inserts.
     pub eol: Eol,
 }
@@ -141,6 +143,7 @@ impl Document {
             snippet: Vec::new(),
             snippet_at: 0,
             tab_width: 4,
+            use_spaces: false,
             eol,
         }
     }
@@ -747,17 +750,34 @@ impl Document {
         let multi = self.sel.ranges().iter().any(|r| {
             !r.is_empty() && self.text.char_to_line(r.from()) != self.text.char_to_line(r.to())
         });
+        let tab = self.tab_width.max(1);
         if !multi {
-            self.insert_kind("\t", Kind::Other);
+            // Step 105: with spaces, as many as reach the next tab stop from the caret.
+            let unit = if self.use_spaces {
+                let col = if self.sel.len() == 1 {
+                    self.line_col_display(self.sel.primary().from()).1
+                } else {
+                    0
+                };
+                " ".repeat(tab - col % tab)
+            } else {
+                "\t".to_string()
+            };
+            self.insert_kind(&unit, Kind::Other);
             return;
         }
+        let unit = if self.use_spaces {
+            " ".repeat(tab)
+        } else {
+            "\t".to_string()
+        };
         let before = self.sel.clone();
         let lines = self.selected_lines();
         let parts: Vec<(usize, usize, String)> = lines
             .iter()
             .map(|l| {
                 let at = self.text.line_to_char(*l);
-                (at, at, "\t".to_string())
+                (at, at, unit.clone())
             })
             .collect();
         self.change_keep_selection(&parts, before, &lines, 1);

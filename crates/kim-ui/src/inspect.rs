@@ -155,6 +155,20 @@ pub fn record(
     });
 }
 
+/// The text of the component recorded last is drawn at the user's own text size (an editor's
+/// or a terminal's font setting), not on the UI type scale: the audit's type-scale rule skips it,
+/// as it does for a terminal (role `terminal`).
+pub fn last_text_is_users_size() {
+    if !active() {
+        return;
+    }
+    ITEMS.with(|i| {
+        if let Some(t) = i.borrow_mut().last_mut().and_then(|c| c.text.as_mut()) {
+            t.role = "terminal".into();
+        }
+    });
+}
+
 /// A report of what was recorded this frame (the window's size and scales from `ctx`).
 pub fn report(ctx: &egui::Context, application: &str, screen: &str) -> Report {
     let ppp = ctx.pixels_per_point();

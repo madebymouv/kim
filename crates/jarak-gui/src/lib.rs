@@ -27,10 +27,13 @@ pub mod media;
 pub mod navmap;
 pub mod outline;
 pub mod palette;
+pub mod prefs;
 pub mod preview;
 pub mod recover;
 pub mod results;
 pub mod sessions;
+pub mod settings_ui;
+pub mod shortcuts;
 pub mod tabs;
 pub mod view;
 pub mod views;
@@ -124,6 +127,9 @@ pub struct Tab {
     pub(crate) read_only_before_monitor: bool,
     /// Step 104: another program deleted or moved its file (the text stays, unsaved).
     pub missing: bool,
+    /// Step 105: the settings for new documents (word wrap, how Markdown opens) are still to
+    /// be applied (a restored session's documents keep their own).
+    pub(crate) fresh: bool,
 }
 
 impl Tab {
@@ -151,6 +157,7 @@ impl Tab {
             monitor: false,
             read_only_before_monitor: false,
             missing: false,
+            fresh: true,
         }
     }
 
@@ -418,8 +425,6 @@ pub struct JarakApp {
     pub tabs: Vec<Tab>,
     pub active: usize,
     pub incoming: Incoming,
-    /// The note under the gear is open.
-    pub settings_note: bool,
     /// The unsaved-changes question on screen.
     pub pending: Option<Pending>,
     /// A message in the status bar (an error, a saved file).
@@ -538,6 +543,17 @@ pub struct JarakApp {
     pub reload_unmodified: bool,
     pub recovery: Option<recover::Recovery>,
     pub recovery_offer: Option<recover::Offer>,
+    /// Step 105: the settings applied to the window, the Settings window, and what was applied
+    /// (the language is fixed for the run when `--lang` named it, or by a test).
+    pub prefs: prefs::Prefs,
+    pub settings_win: Option<settings_ui::SettingsWin>,
+    pub(crate) lang_fixed: bool,
+    pub(crate) theme_now: Option<kim_design::Theme>,
+    pub(crate) applied_theme: Option<kim_design::Theme>,
+    pub(crate) applied_font: Option<String>,
+    pub(crate) settings_stamp: Option<std::time::SystemTime>,
+    pub(crate) prefs_focused: bool,
+    pub(crate) audit_settings: bool,
 }
 
 /// Step 102: the web search's address unless the settings name another (`$(QUERY)`: the words).
@@ -593,8 +609,25 @@ impl JarakApp {
         self
     }
 
-    /// Reads and keeps the editing mode in `path` (the program passes the settings file).
+    /// Keeps the settings file `path` (the program passes `%APPDATA%\mouv\jarak\settings.toml`)
+    /// and applies every setting in it (Step 105: live from then on).
     pub fn with_settings(mut self, path: PathBuf) -> JarakApp {
+        self.settings = Some(path);
+        self.apply_settings();
+        self
+    }
+
+    /// Step 105: the window's language follows the `language` setting (no `--lang` given).
+    pub fn with_lang_from_settings(mut self) -> JarakApp {
+        self.lang_fixed = false;
+        self.apply_settings();
+        self
+    }
+
+    /// Reads the settings the window's parts keep themselves (editing mode, assistance, Show
+    /// Symbol, the new documents' encoding, …) from `path`.
+    pub(crate) fn read_settings_file(&mut self, path: &Path) {
+        let path = path.to_path_buf();
         if let Some(e) = read_editing(&path) {
             self.editing = e;
         }
@@ -626,8 +659,6 @@ impl JarakApp {
         self.detect_changes = read_setting(&path, "detect_changes").is_none_or(|v| v != "false");
         self.reload_unmodified =
             read_setting(&path, "reload_unmodified_silently").is_some_and(|v| v == "true");
-        self.settings = Some(path);
-        self
     }
 
     /// A document's notice in the window's language (the core says them in English).
@@ -1346,7 +1377,8 @@ impl JarakApp {
 
     /// The menu bar (hidden by default; Alt or the palette shows it).
     fn menu_bar_ui(&mut self, ui: &mut egui::Ui, c: &Colors) {
-        if !self.menu_bar {
+        // Step 105: the menu bar always, or only while Alt is pressed (the setting).
+        if !self.menu_bar && !self.prefs.menu_always {
             return;
         }
         let mut entries = palette::entries();
@@ -1589,7 +1621,6 @@ impl JarakApp {
             tabs: vec![Tab::new(FileDocument::untitled())],
             active: 0,
             incoming,
-            settings_note: false,
             pending: None,
             message: None,
             fallback,
@@ -1672,6 +1703,15 @@ impl JarakApp {
             reload_unmodified: false,
             recovery: None,
             recovery_offer: None,
+            prefs: prefs::Prefs::default(),
+            settings_win: None,
+            lang_fixed: true,
+            theme_now: None,
+            applied_theme: None,
+            applied_font: None,
+            settings_stamp: None,
+            prefs_focused: false,
+            audit_settings: false,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1688,6 +1728,15 @@ impl JarakApp {
     /// `KIM_UI_INSPECT` is set.
     pub fn prepare_audit(&mut self, screen: &str) {
         self.audit_screen = screen.to_string();
+        // Step 105: `settings-<section>` photographs the Settings window at that section.
+        if let Some(sec) = screen
+            .strip_prefix("settings-")
+            .and_then(jarak_core::settings::Section::from_id)
+        {
+            self.open_settings(Some(sec));
+            self.audit_settings = true;
+            return;
+        }
         match screen {
             "editor-selection" => {
                 let d = &mut self.tab_mut().file.doc;
@@ -2286,8 +2335,10 @@ fn main() {
             }
             Action::New => {
                 let mut t = Tab::new(FileDocument::untitled());
-                // Step 103: new documents in the encoding of the settings.
+                // Step 103: new documents in the encoding of the settings; Step 105: and its
+                // line ending.
                 t.file.format = self.new_format;
+                t.file.doc.eol = self.prefs.new_eol;
                 if self.second_focused() {
                     t.pane = views::Pane::Second;
                     if let Some(s) = self.second.as_mut() {
@@ -2331,6 +2382,7 @@ fn main() {
             Action::Macro(0) => self.toggle_recording(),
             Action::Macro(_) => self.play_recorded(),
             Action::RunDialog => self.open_run(),
+            Action::Settings => self.open_settings(None),
             Action::QuickOpen => self.open_quick(),
             Action::Complete(k) => match k {
                 0 => self.open_completion(assist::Trigger::All),
@@ -2506,7 +2558,13 @@ fn main() {
         let mut refs = Vec::new();
         let mut names = Vec::new();
         for (ext, bytes) in &list {
-            match jarak_core::assets::write_new(&doc_path, ext, date, bytes) {
+            match jarak_core::assets::write_new_in(
+                &doc_path,
+                &self.prefs.image_folder,
+                ext,
+                date,
+                bytes,
+            ) {
                 Ok(a) => {
                     refs.push(a.markdown("image"));
                     names.push(a.reference);
@@ -2905,6 +2963,10 @@ fn main() {
                 column: None,
             });
         }
+        // Step 105: the settings (theme, editor font, new documents, the file changed outside).
+        if self.settings.is_some() {
+            self.prefs_frame(&ctx);
+        }
         // Step 104: files changed by other programs, and the recovery snapshots (not in a UI
         // audit, unless it keeps a session as the program does: `KIM_UI_SESSION=1`).
         if !kim_ui::inspect::active() || self.session.is_some() {
@@ -2947,7 +3009,9 @@ fn main() {
         self.outline_frame(&ctx);
         self.nav_frame();
         self.menu_bar_ui(ui, &c);
-        self.status_bar(ui, &c);
+        if self.prefs.status_bar {
+            self.status_bar(ui, &c);
+        }
         self.poll_job(&ctx);
         self.results_ui(ui, &c);
         self.incremental_ui(ui, &c);
@@ -3062,7 +3126,9 @@ fn main() {
         self.enc_question_ui(&ctx, &c);
         self.disk_question_ui(&ctx, &c);
         self.recovery_offer_ui(&ctx, &c);
-        if kim_ui::inspect::active() {
+        // Step 105: the Settings window (its audit is written by that window, ADR 0100).
+        self.settings_window(&ctx);
+        if kim_ui::inspect::active() && !self.audit_settings {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
                 .tab()
@@ -3549,8 +3615,8 @@ fn main() {
                     Vec2::splat(size::GEAR),
                 );
                 let label = self.t("Settings", "설정").to_string();
-                if kim_ui::gear_at(ui, gear, &label, self.settings_note).clicked() {
-                    self.settings_note = !self.settings_note;
+                if kim_ui::gear_at(ui, gear, &label, self.settings_win.is_some()).clicked() {
+                    self.open_settings(None);
                 }
                 let text_area =
                     Rect::from_min_max(bar.min, egui::pos2(gear.left() - space::S, bar.max.y));
@@ -3565,13 +3631,20 @@ fn main() {
                             let r = ui
                                 .add(
                                     egui::Label::new(
-                                        RichText::new(l).size(font::CAPTION).strong().color(c.accent),
+                                        RichText::new(l)
+                                            .size(font::CAPTION)
+                                            .strong()
+                                            .color(c.accent),
                                     )
                                     .sense(egui::Sense::click()),
                                 )
                                 .on_hover_text(tip);
                             r.widget_info(|| {
-                                egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Vim mode {l}"))
+                                egui::WidgetInfo::labeled(
+                                    egui::Role::Button,
+                                    true,
+                                    format!("Vim mode {l}"),
+                                )
                             });
                             if r.clicked() {
                                 leave_vim = true;
@@ -3632,22 +3705,6 @@ fn main() {
                         selected: 0,
                         focus: true,
                     });
-                }
-                if self.settings_note {
-                    let note = self.t(
-                        "Settings open in a window of their own once Step 105 (#124) is done; nothing to set yet.",
-                        "설정은 Step 105(#124)가 끝나면 별도 창으로 열립니다. 아직 바꿀 설정이 없습니다.",
-                    );
-                    egui::Area::new(egui::Id::unique("jarak-settings-note"))
-                        .order(egui::Order::Foreground)
-                        .pivot(egui::Align2::RIGHT_BOTTOM)
-                        .fixed_pos(egui::pos2(bar.right(), bar.top() - space::XS))
-                        .show(&ctx, |ui| {
-                            kim_ui::popover_frame(&ctx).show(ui, |ui| {
-                                ui.set_max_width(size::POPOVER_WIDTH);
-                                ui.label(RichText::new(note).size(font::BODY).color(c.text_primary));
-                            });
-                        });
                 }
             });
     }

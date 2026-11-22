@@ -73,6 +73,8 @@ pub struct ViewState {
     pub changes: Vec<(usize, jarak_core::document::navigate::Change)>,
     /// Step 103: Show Symbol.
     pub symbols: crate::encoding::Symbols,
+    /// Step 105: the editor's look from the settings (font, line numbers, current line, caret).
+    pub look: Look,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -116,11 +118,43 @@ impl Default for ViewState {
             braces: Vec::new(),
             changes: Vec::new(),
             symbols: crate::encoding::Symbols::default(),
+            look: Look::default(),
             drag: None,
             clicks: None,
         }
     }
 }
+
+/// Step 105 (`JARAK-FR-132`, SET-03, SET-05): how the text is drawn, from the settings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Look {
+    /// The text's size at 100 % zoom (points).
+    pub font_size: f32,
+    /// The editor font is the settings' family (`EDITOR_FONT`), not the built-in monospace one.
+    pub custom_font: bool,
+    pub line_numbers: bool,
+    pub highlight_line: bool,
+    /// The caret blinks (at most two repaints a second, only while the view has the focus).
+    pub caret_blink: bool,
+    /// Ctrl+click adds a caret (off: it only places the caret; links and images still open).
+    pub multi_editing: bool,
+}
+
+impl Default for Look {
+    fn default() -> Self {
+        Look {
+            font_size: font::TERMINAL,
+            custom_font: false,
+            line_numbers: true,
+            highlight_line: true,
+            caret_blink: false,
+            multi_editing: true,
+        }
+    }
+}
+
+/// The font family the settings' editor font is installed as.
+pub const EDITOR_FONT: &str = "jarak-editor";
 
 /// Font metrics of the view.
 #[derive(Debug, Clone, Copy)]
@@ -128,22 +162,47 @@ pub struct Metrics {
     pub font_size: f32,
     pub row: f32,
     pub char_w: f32,
+    /// Step 105: the settings' editor font family instead of the built-in monospace one.
+    pub custom: bool,
 }
 
 impl Metrics {
     pub fn new(ui: &egui::Ui, zoom: f32) -> Metrics {
-        let font_size = (font::TERMINAL * zoom).clamp(6.0, 72.0);
-        let fid = FontId::monospace(font_size);
+        Metrics::with_look(ui, zoom, &Look::default())
+    }
+
+    /// The metrics for the settings' look (font size and family) at `zoom`.
+    pub fn with_look(ui: &egui::Ui, zoom: f32, look: &Look) -> Metrics {
+        let font_size = (look.font_size * zoom).clamp(6.0, 72.0);
+        // The family is used once the fonts have it (they take effect a frame after setting).
+        let custom = look.custom_font
+            && ui.fonts(|f| {
+                f.definitions()
+                    .families
+                    .contains_key(&egui::FontFamily::Name(EDITOR_FONT.into()))
+            });
+        let probe = Metrics {
+            font_size,
+            row: 0.0,
+            char_w: 0.0,
+            custom,
+        };
+        let fid = probe.font();
         let char_w = ui.fonts_mut(|f| f.glyph_width(&fid, 'M')).max(1.0);
         Metrics {
             font_size,
             row: (font_size * font::LINE_HEIGHT_TERMINAL * 1.05).round(),
             char_w,
+            custom,
         }
     }
 
     fn font(&self) -> FontId {
-        FontId::monospace(self.font_size)
+        if self.custom {
+            FontId::new(self.font_size, egui::FontFamily::Name(EDITOR_FONT.into()))
+        } else {
+            FontId::monospace(self.font_size)
+        }
     }
 }
 
@@ -332,7 +391,7 @@ pub fn show(
     read_only: bool,
 ) -> ViewOutput {
     let c = Colors::get(ui.ctx());
-    let m = Metrics::new(ui, state.zoom);
+    let m = Metrics::with_look(ui, state.zoom, &state.look);
     let id = view_id_for(state.salt);
     let resp = ui.interact(rect, id, Sense::click_and_drag());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::MultilineTextInput, true, "Text"));
@@ -356,7 +415,12 @@ pub fn show(
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, CornerRadius::ZERO, c.bg_base);
     let lines = doc.text().len_lines();
-    let digits = lines.to_string().len().max(3) as f32;
+    // Step 105: without line numbers the margin keeps the bookmarks, changes and folds only.
+    let digits = if state.look.line_numbers {
+        lines.to_string().len().max(3) as f32
+    } else {
+        0.0
+    };
     // Step 99: one more cell for the fold margin (between the numbers and the text).
     let gutter = (digits + 3.0) * m.char_w;
     let bar_w = size::PROGRESS * 2.0;
@@ -494,7 +558,11 @@ pub fn show(
             egui::pos2(rect.left(), l.origin.y),
             Vec2::new(rect.width(), l.height),
         );
-        if l.line == caret_line && sel.len() == 1 && sel.primary().is_empty() {
+        if state.look.highlight_line
+            && l.line == caret_line
+            && sel.len() == 1
+            && sel.primary().is_empty()
+        {
             painter.rect_filled(row_rect, CornerRadius::ZERO, c.bg_raised);
         }
         for (a, b, col) in &state.styled {
@@ -631,6 +699,9 @@ pub fn show(
                 );
             }
         }
+        if !state.look.line_numbers {
+            continue;
+        }
         let n = (l.line + 1).to_string();
         let col = if l.line == caret_line {
             c.text_secondary
@@ -663,9 +734,26 @@ pub fn show(
                 Some(col),
                 None,
             );
+            // Step 105: the numbers are in the editor font's size (a setting), not the UI scale.
+            kim_ui::inspect::last_text_is_users_size();
         }
     }
     // Carets (every range's head; the primary is the one the IME follows).
+    // Step 105: a blinking caret (a setting, off by default) is shown for half of each second and
+    // wakes the window at most twice a second, only while the view has the focus (JARAK-NFR-003).
+    let caret_shown = if state.look.caret_blink && focused {
+        let phase = ui.input(|i| i.time).rem_euclid(1.0);
+        let next = if phase < 0.5 {
+            0.5 - phase
+        } else {
+            1.0 - phase
+        };
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f64(next.max(0.01)));
+        phase < 0.5
+    } else {
+        true
+    };
     let mut ime_rect = None;
     for (i, r) in sel.ranges().iter().enumerate() {
         if let Some(l) = laid.iter().find(|l| {
@@ -698,7 +786,7 @@ pub fn show(
             };
             let caret_rect =
                 Rect::from_min_size(egui::pos2(x, l.origin.y + p.top()), Vec2::new(w, m.row));
-            if text_rect.intersects(caret_rect) {
+            if caret_shown && text_rect.intersects(caret_rect) {
                 let col = if focused { c.accent } else { c.text_muted };
                 if state.block_caret {
                     painter.rect_filled(caret_rect, CornerRadius::ZERO, col.gamma_multiply(0.55));
@@ -1203,9 +1291,20 @@ fn mouse(
                 state.preedit.clear();
                 return None;
             }
-            1 if ctrl && !shift => {
+            1 if ctrl && !shift && state.look.multi_editing => {
                 doc.add_caret(pos);
                 state.drag = Some(Drag::Add { anchor: pos });
+                state.preedit.clear();
+                return Some(pos);
+            }
+            // Step 105: without multi-editing a Ctrl+click places the caret (a link or an image
+            // under it still opens).
+            1 if ctrl && !shift => {
+                doc.set_selection(&Selection::point(pos));
+                state.drag = Some(Drag::Text {
+                    anchor: pos,
+                    unit: 1,
+                });
                 state.preedit.clear();
                 return Some(pos);
             }

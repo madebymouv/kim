@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "ddalgak"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "kim-hotkeys",
  "kim-winres",
@@ -806,7 +806,7 @@ dependencies = [
 
 [[package]]
 name = "ddalgak-editor"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "ddalgak",
  "eframe",
@@ -1597,7 +1597,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jarak"
-version = "0.0.24"
+version = "0.0.25"
 dependencies = [
  "jarak-core",
  "kim-winres",
@@ -1606,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "jarak-core"
-version = "0.0.24"
+version = "0.0.25"
 dependencies = [
  "encoding_rs",
  "pulldown-cmark",
@@ -1622,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "jarak-gui"
-version = "0.0.24"
+version = "0.0.25"
 dependencies = [
  "eframe",
  "egui_kittest",
@@ -1724,7 +1724,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kim"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "clap",
  "ctrlc",
@@ -1783,7 +1783,7 @@ dependencies = [
 
 [[package]]
 name = "kim-manager"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "eframe",
  "egui_kittest",
@@ -1801,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "kim-setup"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "kim",
  "kim-winres",
@@ -1813,7 +1813,7 @@ dependencies = [
 
 [[package]]
 name = "kim-ui"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "egui",
  "egui_kittest",
@@ -2037,7 +2037,7 @@ dependencies = [
 
 [[package]]
 name = "noeul"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "clap",
  "image",
@@ -2056,7 +2056,7 @@ dependencies = [
 
 [[package]]
 name = "noeul-settings"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "eframe",
  "egui_kittest",

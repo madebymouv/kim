@@ -88,6 +88,8 @@ pub enum Action {
     /// Notepad++'s Ctrl+Shift+P is Jarak's command palette); F5 the Run dialog.
     Macro(u8),
     RunDialog,
+    /// Step 105: Ctrl+, the Settings window.
+    Settings,
     GoTo,
     MatchBrace,
     SelectBraces,
@@ -186,6 +188,7 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::R) if shift && !m.alt => Some(A::Macro(0)),
         (false, Key::F9) if !shift => Some(A::Macro(1)),
         (false, Key::F5) if !shift => Some(A::RunDialog),
+        (true, Key::Comma) if !shift && !m.alt => Some(A::Settings),
         (true, Key::F2) if !shift => Some(A::Cmd(C::ToggleBookmark)),
         (false, Key::F2) => Some(A::Cmd(if shift {
             C::PreviousBookmark
@@ -424,6 +427,7 @@ pub fn key_label(a: Action) -> Option<&'static str> {
         A::Macro(0) => "Ctrl+Shift+R",
         A::Macro(_) => "F9",
         A::RunDialog => "F5",
+        A::Settings => "Ctrl+,",
         A::Complete(0) => "Ctrl+Space",
         A::Complete(1) => "Ctrl+Enter",
         A::Complete(2) => "Ctrl+Alt+Space",
@@ -536,6 +540,7 @@ mod tests {
             Action::Macro(0),
             Action::Macro(1),
             Action::RunDialog,
+            Action::Settings,
             Action::Complete(0),
             Action::Complete(1),
             Action::Complete(2),

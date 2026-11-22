@@ -1449,6 +1449,7 @@ pub fn entries() -> Vec<Entry> {
             M::Edit,
         ),
         act("run.dialog", "Run…", "실행…", A::RunDialog, M::Edit),
+        act("settings.open", "Settings…", "설정…", A::Settings, M::File),
         run(
             "edit.search-web",
             "Search the selection on the internet",

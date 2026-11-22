@@ -31,6 +31,7 @@ pub mod recovery;
 pub mod search;
 pub mod selection;
 pub mod session;
+pub mod settings;
 pub mod structure;
 
 /// The text type of a document (Step 99: the window hands a copy to a worker thread).

@@ -66,6 +66,24 @@ pub fn portable_stem(stem: &str) -> String {
 /// Writes `bytes` as a new asset of the document at `doc` (`ext` without the dot, `date` as
 /// year, month, day). Refuses a document without a folder; never overwrites a file.
 pub fn write_new(doc: &Path, ext: &str, date: (i32, u32, u32), bytes: &[u8]) -> io::Result<Asset> {
+    write_new_in(doc, ASSET_DIR, ext, date, bytes)
+}
+
+/// Step 105: [`write_new`] into the folder `dir` next to the document (the `image_folder` setting;
+/// a plain folder name — anything with a path in it is refused).
+pub fn write_new_in(
+    doc: &Path,
+    dir: &str,
+    ext: &str,
+    date: (i32, u32, u32),
+    bytes: &[u8],
+) -> io::Result<Asset> {
+    if dir.is_empty() || dir.contains(['/', '\\', ':']) || dir.starts_with('.') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("not a plain folder name: {dir}"),
+        ));
+    }
     let folder = doc
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -86,7 +104,8 @@ pub fn write_new(doc: &Path, ext: &str, date: (i32, u32, u32), bytes: &[u8]) -> 
     } else {
         ext
     };
-    let dir = folder.join(ASSET_DIR);
+    let sub = dir;
+    let dir = folder.join(sub);
     std::fs::create_dir_all(&dir)?;
     let (y, m, d) = date;
     for n in 1..=MAX_PER_DAY {
@@ -110,7 +129,7 @@ pub fn write_new(doc: &Path, ext: &str, date: (i32, u32, u32), bytes: &[u8]) -> 
         }
         return Ok(Asset {
             path,
-            reference: format!("{ASSET_DIR}/{name}"),
+            reference: format!("{sub}/{name}"),
         });
     }
     Err(io::Error::new(
@@ -636,6 +655,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// Step 105: the `image_folder` setting puts pasted images in another folder next to the
+    /// document; a name with a path in it is refused.
+    #[test]
+    fn pasted_images_go_to_the_chosen_folder() {
+        let d = temp("folder");
+        let doc = d.join("notes.md");
+        let a = write_new_in(&doc, "img", "png", (2026, 11, 22), b"x").unwrap();
+        assert_eq!(a.reference, "img/notes-20261122-001.png");
+        assert!(d.join("img").join("notes-20261122-001.png").is_file());
+        for bad in ["", "..", r"..\up", "a/b", "C:"] {
+            assert!(
+                write_new_in(&doc, bad, "png", (2026, 11, 22), b"x").is_err(),
+                "{bad}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

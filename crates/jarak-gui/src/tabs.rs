@@ -127,6 +127,24 @@ pub enum Event {
     Reorder(usize, usize),
 }
 
+/// Step 105 (SET-02): the tab bar's settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BarOptions {
+    /// Every tab shows its close button (else only the active one and the one under the pointer).
+    pub close_all: bool,
+    /// A double click on a tab closes it.
+    pub double_click_close: bool,
+}
+
+impl Default for BarOptions {
+    fn default() -> Self {
+        BarOptions {
+            close_all: true,
+            double_click_close: false,
+        }
+    }
+}
+
 /// The width of each of `n` tabs in a bar `w` wide (the same width for all).
 pub fn tab_width(w: f32, n: usize) -> f32 {
     if n == 0 {
@@ -144,6 +162,7 @@ pub fn bar(
     id: &str,
     lang: Lang,
     focused: bool,
+    opts: BarOptions,
 ) -> Vec<Event> {
     let c = Colors::get(ui.ctx());
     let mut events = Vec::new();
@@ -236,10 +255,17 @@ pub fn bar(
                 Pos2::new(tr.right() - size::TAB_CLOSE / 2.0 - 2.0, tr.center().y),
                 Vec2::splat(size::TAB_CLOSE.min(h)),
             );
+            // Step 105: with the close buttons only where they are needed, a hidden one is not a
+            // button (a click there activates the tab).
+            let shows_close = opts.close_all || t.active || resp.hovered();
             let close_resp = ui.interact(
                 close,
                 egui::Id::unique(("jarak-tab-close", id, i)),
-                Sense::click(),
+                if shows_close {
+                    Sense::click()
+                } else {
+                    Sense::hover()
+                },
             );
             let close_label = format!("{} {}", lang.pick("Close", "닫기"), t.title);
             close_resp
@@ -275,7 +301,7 @@ pub fn bar(
             };
             if t.dirty && !close_resp.hovered() {
                 painter.circle_filled(close.center(), 3.5, c.accent);
-            } else {
+            } else if shows_close {
                 let k = size::TAB_CLOSE_ICON / 2.0;
                 let cc = close.center();
                 if close_resp.hovered() {
@@ -320,7 +346,10 @@ pub fn bar(
             if let Some(p) = &t.path {
                 resp.clone().on_hover_text_at_pointer(p);
             }
-            if close_resp.clicked() || resp.middle_clicked() {
+            if close_resp.clicked()
+                || resp.middle_clicked()
+                || (opts.double_click_close && resp.double_clicked())
+            {
                 events.push(Event::Close(i));
             } else if resp.clicked() {
                 events.push(Event::Activate(i));

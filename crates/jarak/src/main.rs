@@ -48,6 +48,16 @@ Commands:
   journal undo <batch>
                 Gives the files of a batch their original bytes back, unless changed since;
                 --dry-run checks, --yes restores
+  settings list [<section>]
+                Every setting (or a section's: general, editor, appearance, markdown, images,
+                vim, files, advanced) with its value and whether it is the default (read-only)
+  settings get <key>
+                One setting's value (read-only)
+  settings set <key> <value>
+                Checks the value and writes it into settings.toml (its other lines kept);
+                --dry-run checks only; a running window applies it when it gets the focus
+  settings reset <key>
+                The setting goes back to its default; --dry-run checks only
   paths         Where Jarak keeps its settings, session and recovery files (read-only)
   version       Jarak's version and the contract and schema versions it speaks (read-only)
   capabilities  Jarak's capabilities document: its commands and what each may change (read-only)
@@ -208,6 +218,10 @@ fn run(args: &[String]) -> ExitCode {
         (Some("assets"), Some("rename")) => "assets.rename",
         (Some("journal"), Some("list")) => "journal.list",
         (Some("journal"), Some("undo")) => "journal.undo",
+        (Some("settings"), Some("list")) => "settings.list",
+        (Some("settings"), Some("get")) => "settings.get",
+        (Some("settings"), Some("set")) => "settings.set",
+        (Some("settings"), Some("reset")) => "settings.reset",
         (
             Some(c @ ("open" | "info" | "find" | "replace" | "paths" | "version" | "capabilities")),
             _,
@@ -245,6 +259,10 @@ fn run(args: &[String]) -> ExitCode {
             (Some(&"assets"), None) => "`jarak assets` needs list or rename".into(),
             (Some(&"journal"), Some(w)) => format!("unknown command `journal {w}` (list, undo)"),
             (Some(&"journal"), None) => "`jarak journal` needs list or undo".into(),
+            (Some(&"settings"), Some(w)) => {
+                format!("unknown command `settings {w}` (list, get, set, reset)")
+            }
+            (Some(&"settings"), None) => "`jarak settings` needs list, get, set or reset".into(),
             (Some(w), _) => format!("unknown command `{w}`"),
             (None, _) => "no command given".into(),
         }))
@@ -253,11 +271,16 @@ fn run(args: &[String]) -> ExitCode {
     } else if g.dry_run
         && !matches!(
             command,
-            "open" | "assets.rename" | "replace" | "journal.undo"
+            "open"
+                | "assets.rename"
+                | "replace"
+                | "journal.undo"
+                | "settings.set"
+                | "settings.reset"
         )
     {
         Err(Fail::usage(format!(
-            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace` and `jarak journal undo`",
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak journal undo`, `jarak settings set` and `jarak settings reset`",
             command.replace('.', " ")
         )))
     } else {
@@ -300,6 +323,155 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "journal.list" | "journal.undo" => journal(command, rest, g),
         "assets.list" => assets_list(rest),
         "assets.rename" => assets_rename(rest, g),
+        "settings.list" | "settings.get" | "settings.set" | "settings.reset" => {
+            settings(command, rest, g)
+        }
+        _ => unreachable!("checked in run"),
+    }
+}
+
+/// What values a setting takes, for the CLI's JSON.
+fn kind_json(k: jarak_core::settings::Kind) -> Value {
+    use jarak_core::settings::Kind;
+    match k {
+        Kind::Bool => json!({ "type": "bool" }),
+        Kind::Int { min, max } => json!({ "type": "int", "min": min, "max": max }),
+        Kind::Choice(list) => {
+            json!({ "type": "choice", "values": list.iter().map(|(v, _, _)| *v).collect::<Vec<_>>() })
+        }
+        Kind::Text { must: "" } => json!({ "type": "text" }),
+        Kind::Text { must } => json!({ "type": "text", "must_contain": must }),
+        Kind::Columns => json!({ "type": "columns" }),
+    }
+}
+
+/// Step 105 (`JARAK-FR-130`): `jarak settings list | get | set | reset` on `settings.toml`
+/// (headless; the window re-reads the file when it gets the focus).
+fn settings(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
+    let p = Paths::from_env()
+        .ok_or_else(|| Fail::new("io", 1, "APPDATA or LOCALAPPDATA is not set"))?;
+    settings_in(command, rest, g, &p.settings_file())
+}
+
+/// The settings commands on the settings file `file`.
+fn settings_in(command: &str, rest: &[&str], g: &Global, file: &Path) -> Result<Done, Fail> {
+    use jarak_core::settings::{self as st, Refused, Section, SetError, Settings};
+    let store = Settings::new(file);
+    let not_found = |k: &str| Fail {
+        hint: Some("`jarak settings list` names every setting".into()),
+        ..Fail::new(
+            "setting_not_found",
+            3,
+            format!("there is no setting `{k}`; nothing was changed"),
+        )
+    };
+    let refused = |r: Refused| match r {
+        Refused::UnknownSetting(k) => not_found(&k),
+        Refused::InvalidValue { key, why } => Fail {
+            hint: Some(format!("`{key}` takes {why}")),
+            ..Fail::new(
+                "setting_invalid",
+                2,
+                format!("`{key}` does not take that value ({why}); nothing was changed"),
+            )
+        },
+    };
+    let io = |e: SetError| match e {
+        SetError::Refused(r) => refused(r),
+        SetError::Io(e) => Fail::new("io", 1, format!("{}: {e}", file.display())),
+    };
+    match command {
+        "settings.list" => {
+            let section = match rest {
+                [] => None,
+                [s] => Some(Section::from_id(s).ok_or_else(|| {
+                    Fail::usage(format!(
+                        "unknown section `{s}` (general, editor, appearance, markdown, images, vim, files, advanced)"
+                    ))
+                })?),
+                _ => return Err(Fail::usage("`jarak settings list` takes at most a section")),
+            };
+            let list: Vec<_> = store
+                .list()
+                .into_iter()
+                .filter(|(s, _, _)| section.is_none_or(|x| s.section == x))
+                .collect();
+            let width = list.iter().map(|(s, _, _)| s.key.len()).max().unwrap_or(0);
+            let human = list
+                .iter()
+                .map(|(s, v, d)| {
+                    let shown = if v.is_empty() { "(none)" } else { v.as_str() };
+                    let mark = if *d { "" } else { "  (changed)" };
+                    format!("{:width$}  {shown}{mark}", s.key)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let items: Vec<Value> = list
+                .iter()
+                .map(|(s, v, d)| {
+                    json!({
+                        "key": s.key,
+                        "section": s.section.id(),
+                        "title": s.en,
+                        "value": v,
+                        "default": s.default,
+                        "is_default": d,
+                        "kind": kind_json(s.kind),
+                    })
+                })
+                .collect();
+            Ok((json!({ "file": file, "settings": items }), human))
+        }
+        "settings.get" => {
+            let [key] = rest else {
+                return Err(Fail::usage("`jarak settings get` needs one setting"));
+            };
+            let s = st::find(key).ok_or_else(|| not_found(key))?;
+            let v = store.get(key).unwrap_or_default();
+            let is_default = v == s.default;
+            Ok((
+                json!({ "key": key, "value": v, "default": s.default, "is_default": is_default }),
+                v,
+            ))
+        }
+        "settings.set" => {
+            let (key, value) = match rest {
+                [key, value @ ..] if !value.is_empty() => (*key, value.join(" ")),
+                _ => {
+                    return Err(Fail::usage(
+                        "`jarak settings set` needs a setting and a value",
+                    ));
+                }
+            };
+            let s = st::find(key).ok_or_else(|| not_found(key))?;
+            let v = st::validate(s, &value).map_err(refused)?;
+            let previous = store.get(key).unwrap_or_default();
+            let changed = previous != v;
+            if !g.dry_run && changed {
+                store.set(key, &v).map_err(io)?;
+            }
+            let verb = if g.dry_run { "would be" } else { "is" };
+            Ok((
+                json!({ "key": key, "value": v, "previous": previous, "changed": changed, "dry_run": g.dry_run, "file": file }),
+                format!("{key} {verb} {v}"),
+            ))
+        }
+        "settings.reset" => {
+            let [key] = rest else {
+                return Err(Fail::usage("`jarak settings reset` needs one setting"));
+            };
+            let s = st::find(key).ok_or_else(|| not_found(key))?;
+            let previous = store.get(key).unwrap_or_default();
+            let written = store.raw(key).is_some();
+            if !g.dry_run && written {
+                store.reset(key).map_err(io)?;
+            }
+            let verb = if g.dry_run { "would be" } else { "is" };
+            Ok((
+                json!({ "key": key, "value": s.default, "previous": previous, "changed": written, "dry_run": g.dry_run, "file": file }),
+                format!("{key} {verb} back to its default ({})", s.default),
+            ))
+        }
         _ => unreachable!("checked in run"),
     }
 }
@@ -1233,7 +1405,11 @@ mod tests {
                 "journal.list",
                 "journal.undo",
                 "assets.list",
-                "assets.rename"
+                "assets.rename",
+                "settings.list",
+                "settings.get",
+                "settings.set",
+                "settings.reset"
             ]
         );
         // Only `open` may open a window; the commands that change something have a dry run
@@ -1245,6 +1421,64 @@ mod tests {
             // Step 95: what changes the user's files needs --yes (it never asks).
             assert_eq!(c["requires_yes"], c["effect"] == "destructive", "{c}");
         }
+    }
+
+    /// Step 105: `jarak settings` lists, reads, checks before writing, dry-runs and resets.
+    #[test]
+    fn settings_are_listed_checked_written_and_reset() {
+        let d = std::env::temp_dir().join(format!("jarak-cli-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let f = d.join("settings.toml");
+        let mut g = Global::default();
+        let (data, _) = settings_in("settings.list", &["vim"], &g, &f).unwrap();
+        assert_eq!(data["settings"][0]["key"], "editing_mode");
+        assert_eq!(data["settings"][0]["is_default"], true);
+        assert_eq!(
+            settings_in("settings.list", &["nope"], &g, &f)
+                .unwrap_err()
+                .code,
+            "usage"
+        );
+        let (data, _) = settings_in("settings.set", &["theme", "Dark"], &g, &f).unwrap();
+        assert_eq!(data["value"], "dark");
+        assert_eq!(data["changed"], true);
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            "theme = \"dark\"
+"
+        );
+        let e = settings_in("settings.set", &["tab_width", "0"], &g, &f).unwrap_err();
+        assert_eq!((e.code, e.exit), ("setting_invalid", 2));
+        let e = settings_in("settings.get", &["colour"], &g, &f).unwrap_err();
+        assert_eq!((e.code, e.exit), ("setting_not_found", 3));
+        g.dry_run = true;
+        let (data, text) = settings_in("settings.set", &["tab_width", "8"], &g, &f).unwrap();
+        assert_eq!(data["dry_run"], true);
+        assert!(text.contains("would be"));
+        let (data, _) = settings_in("settings.reset", &["theme"], &g, &f).unwrap();
+        assert_eq!(data["changed"], true);
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            "theme = \"dark\"
+",
+            "a dry run writes nothing"
+        );
+        g.dry_run = false;
+        settings_in("settings.reset", &["theme"], &g, &f).unwrap();
+        let (data, _) = settings_in("settings.get", &["theme"], &g, &f).unwrap();
+        assert_eq!(data["value"], "system");
+        let (data, _) = settings_in(
+            "settings.set",
+            &["search_engine", "https://x.org/?q=$(QUERY)", "&a=1"],
+            &g,
+            &f,
+        )
+        .unwrap();
+        assert_eq!(
+            data["value"], "https://x.org/?q=$(QUERY) &a=1",
+            "the value's words are joined"
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

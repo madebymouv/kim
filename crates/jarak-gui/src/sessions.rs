@@ -292,6 +292,9 @@ impl JarakApp {
                     lc: crate::views::to_lc(&t.file.doc, t.file.doc.selection()),
                 }));
             }
+            // Step 105: a restored document keeps its own mode; word wrap is the setting's.
+            t.fresh = false;
+            t.view.wrap = self.prefs.word_wrap;
             ids.push(Some(t.id));
             self.tabs.push(t);
         }

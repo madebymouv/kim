@@ -494,3 +494,35 @@ fn setting_the_text_changes_only_what_differs() {
     assert_eq!(d.text().to_string(), "x");
     assert!(d.selection().primary().head <= 1);
 }
+
+/// Step 105: with *Tab inserts spaces*, Tab adds spaces up to the next tab stop, and indenting
+/// several lines adds a tab width of spaces to each.
+#[test]
+fn tab_inserts_spaces_to_the_next_stop_when_set() {
+    let mut d = doc("ab\ncd\n");
+    d.use_spaces = true;
+    d.tab_width = 4;
+    at(&mut d, 2);
+    d.indent();
+    assert_eq!(
+        d.text().to_string(),
+        "ab  \ncd\n",
+        "two spaces reach column 4"
+    );
+    d.indent();
+    assert_eq!(
+        d.text().to_string(),
+        "ab      \ncd\n",
+        "four more reach column 8"
+    );
+    let mut d = doc("one\ntwo\n");
+    d.use_spaces = true;
+    d.tab_width = 2;
+    d.select_all();
+    d.indent();
+    assert_eq!(d.text().to_string(), "  one\n  two\n");
+    let mut d = doc("x");
+    at(&mut d, 0);
+    d.indent();
+    assert_eq!(d.text().to_string(), "\tx", "a tab by default");
+}

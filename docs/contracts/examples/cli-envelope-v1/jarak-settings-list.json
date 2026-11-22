@@ -1,0 +1,26 @@
+{
+  "command": "settings.list",
+  "data": {
+    "file": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\settings.toml",
+    "settings": [
+      {
+        "default": "standard",
+        "is_default": true,
+        "key": "editing_mode",
+        "kind": {
+          "type": "choice",
+          "values": [
+            "standard",
+            "vim"
+          ]
+        },
+        "section": "vim",
+        "title": "Editing",
+        "value": "standard"
+      }
+    ]
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

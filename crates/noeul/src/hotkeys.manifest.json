@@ -3,7 +3,7 @@
   "schema_version": 1,
   "hotkey_contract": 1,
   "tool": "noeul",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "backend": "register",
   "contexts": [
     { "id": "capture-overlay", "title": "Region capture overlay" },

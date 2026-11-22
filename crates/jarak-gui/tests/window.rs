@@ -1933,14 +1933,18 @@ fn the_find_history_walks_with_the_arrows_and_lives_in_the_session() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// Step 105: the gear opens the Settings window (a click again brings it forward).
 #[test]
-fn the_gear_says_honestly_that_settings_come_later() {
+fn the_gear_opens_the_settings_window() {
     let (a, _) = app_with(&[], Arc::default());
     let mut h = harness(a);
     h.get_by_label("Settings").click();
     h.run();
-    assert!(h.state().settings_note);
-    assert!(h.query_by_label_contains("Step 105").is_some());
+    assert!(h.state().settings_win.is_some());
+    assert!(
+        h.query_by_label("Appearance").is_some(),
+        "the sections are listed"
+    );
 }
 
 #[test]
@@ -5188,4 +5192,246 @@ fn the_disk_question_and_the_recovery_offer_pass_the_ui_audit_rules() {
         h.state_mut().recovery_offer = None;
     }
     let _ = std::fs::remove_dir_all(&d);
+}
+
+// ---- Step 105: the Settings window, live settings ----------------------------------------------
+
+fn settings_app(name: &str, files: &[&str]) -> (Harness<'static, JarakApp>, PathBuf) {
+    let d = temp(name);
+    let mut args = Vec::new();
+    for f in files {
+        let p = d.join(f);
+        std::fs::write(&p, "one\ntwo\n").unwrap();
+        args.push(p.display().to_string());
+    }
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let (a, _) = app_with(&refs, Arc::default());
+    let h = harness(a.with_settings(d.join("settings.toml")));
+    (h, d)
+}
+
+fn settings_file(d: &std::path::Path) -> String {
+    std::fs::read_to_string(d.join("settings.toml")).unwrap_or_default()
+}
+
+/// JARAK-FR-130: Ctrl+, opens the Settings window at General; every section lists its settings
+/// from the registry; Esc closes it.
+#[test]
+fn the_settings_window_lists_every_section() {
+    let (mut h, d) = settings_app("settings-open", &["a.txt"]);
+    key(&mut h, egui::Key::Comma, egui::Modifiers::CTRL);
+    assert!(h.state().settings_win.is_some());
+    assert!(h.query_by_label("Theme").is_some(), "General first");
+    for sec in jarak_core::settings::Section::ALL {
+        h.state_mut().open_settings(Some(sec));
+        h.run();
+        for s in jarak_core::settings::of(sec) {
+            assert!(
+                h.query_all_by_label_contains(s.en).next().is_some(),
+                "{}: {}",
+                sec.id(),
+                s.en
+            );
+        }
+    }
+    h.state_mut()
+        .open_settings(Some(jarak_core::settings::Section::Keyboard));
+    h.run();
+    assert!(
+        h.query_all_by_label_contains("Save: Ctrl+S")
+            .next()
+            .is_some(),
+        "commands with their keys"
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state().settings_win.is_none(), "Esc closes it");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// JARAK-FR-130: a switch writes `settings.toml` atomically and applies at once — the status bar
+/// goes, line numbers go, the theme and the language change, word wrap reaches open documents.
+#[test]
+fn a_changed_setting_is_written_and_applied_at_once() {
+    let (mut h, d) = settings_app("settings-live", &["a.txt"]);
+    assert!(
+        h.query_by_label("Settings").is_some(),
+        "the gear in the status bar"
+    );
+    assert!(h.state_mut().change_setting("status_bar", "false"));
+    h.run();
+    assert!(settings_file(&d).contains("status_bar = false"));
+    assert!(
+        h.query_by_label("Settings").is_none(),
+        "no status bar, no gear"
+    );
+    assert!(h.state_mut().change_setting("line_numbers", "off"));
+    h.run();
+    assert!(!h.state().tab().view.look.line_numbers);
+    assert!(h.state_mut().change_setting("word_wrap", "true"));
+    h.run();
+    assert!(
+        h.state().tab().view.wrap,
+        "word wrap reaches the open document"
+    );
+    assert!(h.state_mut().change_setting("theme", "light"));
+    h.run();
+    assert_eq!(h.ctx.theme(), egui::Theme::Light);
+    assert!(h.state_mut().change_setting("theme", "dark"));
+    h.run();
+    assert_eq!(h.ctx.theme(), egui::Theme::Dark);
+    // The language follows the setting once the program lets it (no --lang).
+    h.state_mut().lang = Lang::En;
+    let (a, _) = app_with(&[], Arc::default());
+    let mut k = harness(
+        a.with_settings(d.join("settings.toml"))
+            .with_lang_from_settings(),
+    );
+    k.state_mut().change_setting("language", "ko");
+    k.run();
+    assert_eq!(k.state().lang, Lang::Ko);
+    assert!(
+        k.query_by_label("설정").is_none(),
+        "no status bar here either"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// A value the setting does not take is said beside it, and nothing is written.
+#[test]
+fn a_refused_value_is_said_and_nothing_is_written() {
+    let (mut h, d) = settings_app("settings-refused", &["a.txt"]);
+    h.state_mut()
+        .open_settings(Some(jarak_core::settings::Section::Advanced));
+    h.run();
+    assert!(
+        !h.state_mut()
+            .change_setting("search_engine", "https://example.org/?q=")
+    );
+    h.run();
+    assert!(
+        h.query_by_label_contains("it has to contain $(QUERY)")
+            .is_some()
+    );
+    assert!(!settings_file(&d).contains("search_engine"));
+    assert!(!h.state_mut().change_setting("tab_width", "40"));
+    assert!(h.state_mut().change_setting("tab_width", "8"));
+    assert_eq!(h.state().tab().file.doc.tab_width, 8);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// SET-10, SET-06: Tab inserts spaces to the next stop when set; new documents take the line
+/// ending of the settings; pasted images go to the settings' folder.
+#[test]
+fn tab_width_spaces_and_new_documents_follow_the_settings() {
+    let (mut h, d) = settings_app("settings-editor", &["a.txt"]);
+    h.state_mut().change_setting("use_spaces", "true");
+    h.state_mut().change_setting("tab_width", "2");
+    h.run();
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Tab, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "  one\ntwo\n");
+    h.state_mut().change_setting("new_eol", "lf");
+    key(&mut h, egui::Key::N, egui::Modifiers::CTRL);
+    assert_eq!(h.state().tab().file.doc.eol, jarak_core::document::Eol::Lf);
+    h.state_mut().change_setting("image_folder", "img");
+    assert_eq!(h.state().prefs.image_folder, "img");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// SET-02, SET-03: Ctrl+click adds a caret unless multi-editing is off; the menu bar can stay.
+#[test]
+fn multi_editing_and_the_menu_bar_follow_the_settings() {
+    let (mut h, d) = settings_app("settings-multi", &["a.txt"]);
+    assert!(h.state().tab().view.look.multi_editing);
+    h.state_mut().change_setting("multi_editing", "false");
+    h.run();
+    assert!(!h.state().tab().view.look.multi_editing);
+    assert!(
+        h.query_by_label("File").is_none(),
+        "the menu bar waits for Alt"
+    );
+    h.state_mut().change_setting("menu_bar", "always");
+    h.run();
+    assert!(h.query_by_label("File").is_some(), "the menu bar stays");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Markdown files open as the setting says (a session's documents keep their own mode).
+#[test]
+fn markdown_files_open_as_the_setting_says() {
+    let d = temp("settings-md");
+    std::fs::write(d.join("settings.toml"), "markdown_open_as = \"split\"\n").unwrap();
+    let f = d.join("n.md");
+    std::fs::write(&f, "# t\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a.with_settings(d.join("settings.toml")));
+    h.run();
+    assert_eq!(h.state().tab().mode, jarak_gui::Mode::Split);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// `jarak settings set` while the window runs: the window applies it when it gets the focus.
+#[test]
+fn a_change_from_the_command_line_is_applied_on_focus() {
+    let (mut h, d) = settings_app("settings-cli", &["a.txt"]);
+    let st = jarak_core::settings::Settings::new(&d.join("settings.toml"));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    st.set("tab_width", "3").unwrap();
+    // What the window does when it gets the focus.
+    assert!(h.state_mut().settings_changed_outside());
+    h.run();
+    assert_eq!(h.state().tab().file.doc.tab_width, 3);
+    assert!(!h.state_mut().settings_changed_outside(), "read once");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Advanced: Reset every setting asks twice, then every setting is its default again (lines
+/// Jarak does not know stay).
+#[test]
+fn every_setting_resets_after_a_second_press() {
+    let (mut h, d) = settings_app("settings-reset", &["a.txt"]);
+    std::fs::write(d.join("settings.toml"), "mine = 1\n").unwrap();
+    h.state_mut().change_setting("tab_width", "8");
+    h.state_mut()
+        .open_settings(Some(jarak_core::settings::Section::Advanced));
+    h.run();
+    h.get_by_label("Reset…").click();
+    h.run();
+    assert!(
+        settings_file(&d).contains("tab_width"),
+        "the first press only asks"
+    );
+    h.get_by_label("Reset for good").click();
+    h.run();
+    assert_eq!(settings_file(&d), "mine = 1\n");
+    assert_eq!(h.state().tab().file.doc.tab_width, 4);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Every Settings section under the UI audit's rules (the embedded window of the headless
+/// backend), in English and Korean.
+#[test]
+fn every_settings_section_passes_the_ui_audit_rules() {
+    for lang in [Lang::En, Lang::Ko] {
+        let (mut h, d) = settings_app("settings-audit", &["a.txt"]);
+        h.state_mut().lang = lang;
+        for sec in jarak_core::settings::Section::ALL {
+            h.state_mut().open_settings(Some(sec));
+            h.run();
+            kim_ui::inspect::force(true);
+            h.run();
+            let screen = format!("settings-{}", sec.id());
+            let r = kim_ui::inspect::report(&h.ctx, "jarak", &screen);
+            kim_ui::inspect::force(false);
+            let fails = kim_design::audit::audit(&r);
+            assert_eq!(
+                kim_design::audit::counts(&fails).2,
+                0,
+                "{screen} {lang:?}: {}",
+                kim_design::audit::render(&r, &fails, false)
+            );
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

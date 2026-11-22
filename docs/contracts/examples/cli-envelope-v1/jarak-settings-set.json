@@ -1,0 +1,14 @@
+{
+  "command": "settings.set",
+  "data": {
+    "changed": true,
+    "dry_run": false,
+    "file": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\settings.toml",
+    "key": "theme",
+    "previous": "system",
+    "value": "dark"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

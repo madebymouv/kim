@@ -1,0 +1,12 @@
+{
+  "command": "settings.set",
+  "error": {
+    "code": "setting_invalid",
+    "details": [],
+    "exit_code": 2,
+    "hint": "`tab_width` takes a whole number from 1 to 16",
+    "message": "`tab_width` does not take that value (a whole number from 1 to 16); nothing was changed"
+  },
+  "ok": false,
+  "schema_version": 1
+}
