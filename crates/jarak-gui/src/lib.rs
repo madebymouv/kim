@@ -554,6 +554,8 @@ pub struct JarakApp {
     pub(crate) settings_stamp: Option<std::time::SystemTime>,
     pub(crate) prefs_focused: bool,
     pub(crate) audit_settings: bool,
+    /// Step 105: the user's shortcuts (`hotkeys.json`).
+    pub bindings: shortcuts::Bindings,
 }
 
 /// Step 102: the web search's address unless the settings name another (`$(QUERY)`: the words).
@@ -1712,6 +1714,7 @@ impl JarakApp {
             settings_stamp: None,
             prefs_focused: false,
             audit_settings: false,
+            bindings: shortcuts::Bindings::default(),
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -3247,7 +3250,7 @@ fn main() {
                 modifiers,
                 ..
             } = e
-                && let Some(a) = keys::action_for(key, modifiers)
+                && let Some(a) = self.action_of(key, modifiers)
                 && matches!(
                     a,
                     Action::New
@@ -3324,7 +3327,7 @@ fn main() {
                     if self.user_shortcut(key, modifiers) {
                         continue;
                     }
-                    if let Some(a) = keys::action_for(key, modifiers) {
+                    if let Some(a) = self.action_of(key, modifiers) {
                         self.act(a);
                         if matches!(
                             a,
@@ -3381,7 +3384,7 @@ fn main() {
                     ..
                 } => {
                     let taken = vim_key(key, modifiers).is_some_and(|k| self.vim_input(Ok(k)));
-                    if !taken && let Some(a) = keys::action_for(key, modifiers) {
+                    if !taken && let Some(a) = self.action_of(key, modifiers) {
                         // Plain editing keys belong to Vim's modes; the rest are the window's.
                         let plain_edit = matches!(
                             a,
@@ -3447,7 +3450,7 @@ fn main() {
                         (egui::Key::End, _) => step(p, blocks as isize),
                         (egui::Key::Escape, _) => self.tab_mut().set_mode(Mode::Source),
                         _ => {
-                            if let Some(a) = keys::action_for(*key, *modifiers)
+                            if let Some(a) = self.action_of(*key, *modifiers)
                                 && matches!(
                                     a,
                                     Action::TogglePreview

@@ -424,7 +424,7 @@ impl JarakApp {
             return Some(format!("{} ({})", self.t("Reserved", "예약된 키"), r.name));
         }
         if let Some((k, m)) = crate::keys::parse_label(keys) {
-            if let Some(a) = crate::keys::action_for(k, m) {
+            if let Some(a) = self.action_of(k, m) {
                 let name = crate::palette::entries()
                     .into_iter()
                     .find(|e| e.run == crate::palette::Run::Act(a))

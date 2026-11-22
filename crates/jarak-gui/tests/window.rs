@@ -5206,7 +5206,10 @@ fn settings_app(name: &str, files: &[&str]) -> (Harness<'static, JarakApp>, Path
     }
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let (a, _) = app_with(&refs, Arc::default());
-    let h = harness(a.with_settings(d.join("settings.toml")));
+    let h = harness(
+        a.with_settings(d.join("settings.toml"))
+            .with_hotkeys(&d.join("hotkeys.json")),
+    );
     (h, d)
 }
 
@@ -5243,6 +5246,7 @@ fn the_settings_window_lists_every_section() {
             .is_some(),
         "commands with their keys"
     );
+    assert!(h.query_all_by_label("Change").next().is_some());
     key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
     assert!(h.state().settings_win.is_none(), "Esc closes it");
     let _ = std::fs::remove_dir_all(&d);
@@ -5434,4 +5438,152 @@ fn every_settings_section_passes_the_ui_audit_rules() {
         }
         let _ = std::fs::remove_dir_all(&d);
     }
+}
+
+/// SET-23: a command given other keys runs from them, and its default does nothing; Off leaves
+/// it without keys; Reset gives the default back.
+#[test]
+fn a_remapped_command_runs_from_its_new_keys() {
+    use jarak_core::hotkeys::Change;
+    let (mut h, d) = settings_app("keys-remap", &["a.txt"]);
+    assert!(h.state_mut().change_shortcut(
+        &Change::Set {
+            action: "run.dialog".into(),
+            keys: vec!["Ctrl+Alt+R".into()],
+        },
+        false
+    ));
+    key(&mut h, egui::Key::F5, egui::Modifiers::NONE);
+    assert!(h.state().macro_dialog.is_none(), "F5 is free now");
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    assert!(h.state().macro_dialog.is_some(), "Ctrl+Alt+R opens Run");
+    h.state_mut().macro_dialog = None;
+    assert!(
+        h.state_mut()
+            .change_shortcut(&Change::Disable("run.dialog".into()), false)
+    );
+    key(
+        &mut h,
+        egui::Key::R,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    assert!(h.state().macro_dialog.is_none(), "off");
+    assert!(
+        h.state_mut()
+            .change_shortcut(&Change::Reset("run.dialog".into()), false)
+    );
+    key(&mut h, egui::Key::F5, egui::Modifiers::NONE);
+    assert!(h.state().macro_dialog.is_some(), "the default again");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The Keyboard section records keys (Esc cancels), refuses keys another of the user's own
+/// bindings has and moves them with Take it; Reset all asks twice.
+#[test]
+fn the_keyboard_section_records_refuses_and_resets() {
+    use jarak_core::hotkeys::Change;
+    let (mut h, d) = settings_app("keys-mapper", &["a.txt"]);
+    h.state_mut()
+        .open_settings(Some(jarak_core::settings::Section::Keyboard));
+    h.run();
+    // Recording: Esc cancels, a chord is taken.
+    if let Some(w) = h.state_mut().settings_win.as_mut() {
+        w.keys.capture = Some("run.dialog".into());
+    }
+    h.run();
+    assert!(h.query_by_label_contains("Press keys").is_some());
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(
+        h.state()
+            .settings_win
+            .as_ref()
+            .is_none_or(|w| w.keys.capture.is_none()),
+        "Esc cancels"
+    );
+    h.state_mut()
+        .open_settings(Some(jarak_core::settings::Section::Keyboard));
+    if let Some(w) = h.state_mut().settings_win.as_mut() {
+        w.keys.capture = Some("run.dialog".into());
+    }
+    h.run();
+    key(
+        &mut h,
+        egui::Key::K,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    let file = std::fs::read_to_string(d.join("hotkeys.json")).unwrap();
+    assert!(file.contains("Ctrl+Alt+K"), "{file}");
+    h.run();
+    assert!(
+        h.query_all_by_label_contains("Run…: Ctrl+Alt+K")
+            .next()
+            .is_some()
+    );
+    // The palette asks for the same keys: refused and named, then taken.
+    assert!(!h.state_mut().change_shortcut(
+        &Change::Set {
+            action: "view.palette".into(),
+            keys: vec!["Ctrl+Alt+K".into()],
+        },
+        false
+    ));
+    if let Some(w) = h.state_mut().settings_win.as_mut() {
+        w.keys.filter = "command palette".into();
+    }
+    h.run();
+    h.get_by_label("Take it").click();
+    h.run();
+    let file = std::fs::read_to_string(d.join("hotkeys.json")).unwrap();
+    assert!(file.contains("view.palette"), "{file}");
+    // Reset all (below the list: the search narrows it): the first press only asks.
+    if let Some(w) = h.state_mut().settings_win.as_mut() {
+        w.keys.filter = "no such command".into();
+    }
+    h.run();
+    h.get_by_label("Reset all…").click();
+    h.run();
+    assert!(
+        std::fs::read_to_string(d.join("hotkeys.json"))
+            .unwrap()
+            .contains("view.palette")
+    );
+    h.get_by_label("Reset for good").click();
+    h.run();
+    let (tool, _) = jarak_core::hotkeys::load(&d.join("hotkeys.json"));
+    assert!(!jarak_core::hotkeys::keys_of(&tool, "view.palette").1);
+    assert!(
+        d.join("hotkeys.json.bak").is_file(),
+        "the previous file is kept"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// `jarak hotkeys set` while the window runs: applied when it gets the focus.
+#[test]
+fn a_shortcut_changed_from_the_command_line_is_applied_on_focus() {
+    use jarak_core::hotkeys::{Change, change};
+    let (mut h, d) = settings_app("keys-cli", &["a.txt"]);
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    change(
+        &d.join("hotkeys.json"),
+        &Change::Set {
+            action: "run.dialog".into(),
+            keys: vec!["Ctrl+Alt+J".into()],
+        },
+        false,
+        false,
+    )
+    .unwrap();
+    assert!(h.state_mut().hotkeys_changed_outside());
+    key(
+        &mut h,
+        egui::Key::J,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    assert!(h.state().macro_dialog.is_some());
+    let _ = std::fs::remove_dir_all(&d);
 }

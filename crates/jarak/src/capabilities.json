@@ -2,7 +2,7 @@
   "schema": "kim.capabilities",
   "schema_version": 1,
   "tool": "jarak",
-  "version": "0.0.25",
+  "version": "0.0.26",
   "cli_contract": 1,
   "json_schema_version": 1,
   "implementation": "placeholder",
@@ -22,6 +22,12 @@
     { "name": "settings.list", "usage": "jarak settings list [<section>] [--json]", "summary": "Every setting of settings.toml (or one section's) with its value, its default and what values it takes; changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
     { "name": "settings.get", "usage": "jarak settings get <key> [--json]", "summary": "One setting's value (the default when the file does not set it, or sets a value it does not take); changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
     { "name": "settings.set", "usage": "jarak settings set <key> <value> [--dry-run] [--json]", "summary": "Checks the value against the setting and writes it into settings.toml atomically, keeping the file's other lines; a running window applies it when it gets the focus", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
-    { "name": "settings.reset", "usage": "jarak settings reset <key> [--dry-run] [--json]", "summary": "Removes the setting's line from settings.toml, so its default applies", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false }
+    { "name": "settings.reset", "usage": "jarak settings reset <key> [--dry-run] [--json]", "summary": "Removes the setting's line from settings.toml, so its default applies", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
+    { "name": "hotkeys.list", "usage": "jarak hotkeys list [--json]", "summary": "Every remappable command with its keys (the user's or the defaults), where they come from and conflicts (the shared hotkey contract); changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
+    { "name": "hotkeys.show", "usage": "jarak hotkeys show <action> [--json]", "summary": "One command's keys and conflicts; changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false },
+    { "name": "hotkeys.set", "usage": "jarak hotkeys set <action> <keys>... [--replace] [--dry-run] [--json]", "summary": "Gives a command these keys in hotkeys.json (checked by the hotkey contract: syntax, reserved keys, conflicts — another of the user's bindings only with --replace); written atomically", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
+    { "name": "hotkeys.disable", "usage": "jarak hotkeys disable <action> [--dry-run] [--json]", "summary": "The command gets no keys (hotkeys.json)", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
+    { "name": "hotkeys.reset", "usage": "jarak hotkeys reset <action> [--dry-run] [--json]", "summary": "The command's default keys again (its override leaves hotkeys.json)", "effect": "write", "network": false, "dry_run": true, "requires_yes": false, "opens_window": false },
+    { "name": "hotkeys.check", "usage": "jarak hotkeys check [--json]", "summary": "Conflicts of Jarak's shortcuts with each other and with keys Windows, Kim and the input method reserve; changes nothing", "effect": "read", "network": false, "dry_run": false, "requires_yes": false, "opens_window": false }
   ]
 }

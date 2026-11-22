@@ -270,6 +270,8 @@ fn run(
             // Step 92: the editing mode (Standard or Vim) lives in the settings file.
             if let Some(p) = paths {
                 app = app.with_settings(p.settings_file());
+                // Step 105: the user's shortcuts.
+                app = app.with_hotkeys(&p.hotkeys_file());
                 if !lang_given {
                     app = app.with_lang_from_settings();
                 }

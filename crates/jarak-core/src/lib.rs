@@ -22,6 +22,7 @@ pub mod command;
 pub mod document;
 pub mod file;
 pub mod history;
+pub mod hotkeys;
 pub mod infiles;
 pub mod lineops;
 pub mod macros;

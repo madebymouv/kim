@@ -58,6 +58,18 @@ Commands:
                 --dry-run checks only; a running window applies it when it gets the focus
   settings reset <key>
                 The setting goes back to its default; --dry-run checks only
+  hotkeys list  Every remappable command with its keys (the user's or the defaults) and
+                conflicts (read-only; the shared hotkey contract)
+  hotkeys show <action>
+                One command's keys and conflicts (read-only)
+  hotkeys set <action> <keys>...
+                Gives the command these keys (Ctrl+Shift+R, F5); keys another of your own
+                bindings has are refused unless --replace; --dry-run checks only
+  hotkeys disable <action>
+                The command gets no keys; --dry-run checks only
+  hotkeys reset <action>
+                The command's default keys again; --dry-run checks only
+  hotkeys check Conflicts of Jarak's shortcuts (read-only)
   paths         Where Jarak keeps its settings, session and recovery files (read-only)
   version       Jarak's version and the contract and schema versions it speaks (read-only)
   capabilities  Jarak's capabilities document: its commands and what each may change (read-only)
@@ -126,6 +138,8 @@ struct Global {
     hidden: bool,
     folder_flags: bool,
     yes: bool,
+    /// Step 105: `jarak hotkeys set --replace` takes keys another binding has.
+    replace: bool,
 }
 
 fn main() -> ExitCode {
@@ -168,6 +182,7 @@ fn run(args: &[String]) -> ExitCode {
                 g.folder_flags = true;
             }
             "-y" | "--yes" => g.yes = true,
+            "--replace" => g.replace = true,
             "--" => rest_are_files = true,
             "--json" => g.json = true,
             "--dry-run" => g.dry_run = true,
@@ -218,6 +233,12 @@ fn run(args: &[String]) -> ExitCode {
         (Some("assets"), Some("rename")) => "assets.rename",
         (Some("journal"), Some("list")) => "journal.list",
         (Some("journal"), Some("undo")) => "journal.undo",
+        (Some("hotkeys"), Some("list")) => "hotkeys.list",
+        (Some("hotkeys"), Some("show")) => "hotkeys.show",
+        (Some("hotkeys"), Some("set")) => "hotkeys.set",
+        (Some("hotkeys"), Some("disable")) => "hotkeys.disable",
+        (Some("hotkeys"), Some("reset")) => "hotkeys.reset",
+        (Some("hotkeys"), Some("check")) => "hotkeys.check",
         (Some("settings"), Some("list")) => "settings.list",
         (Some("settings"), Some("get")) => "settings.get",
         (Some("settings"), Some("set")) => "settings.set",
@@ -251,6 +272,8 @@ fn run(args: &[String]) -> ExitCode {
         Err(Fail::usage(
             "--yes belongs to `jarak replace` and `jarak journal undo`",
         ))
+    } else if g.replace && command != "hotkeys.set" {
+        Err(Fail::usage("--replace belongs to `jarak hotkeys set`"))
     } else if g.quiet && g.verbose {
         Err(Fail::usage("--quiet and --verbose conflict"))
     } else if command == "jarak" {
@@ -263,6 +286,12 @@ fn run(args: &[String]) -> ExitCode {
                 format!("unknown command `settings {w}` (list, get, set, reset)")
             }
             (Some(&"settings"), None) => "`jarak settings` needs list, get, set or reset".into(),
+            (Some(&"hotkeys"), Some(w)) => {
+                format!("unknown command `hotkeys {w}` (list, show, set, disable, reset, check)")
+            }
+            (Some(&"hotkeys"), None) => {
+                "`jarak hotkeys` needs list, show, set, disable, reset or check".into()
+            }
             (Some(w), _) => format!("unknown command `{w}`"),
             (None, _) => "no command given".into(),
         }))
@@ -277,10 +306,13 @@ fn run(args: &[String]) -> ExitCode {
                 | "journal.undo"
                 | "settings.set"
                 | "settings.reset"
+                | "hotkeys.set"
+                | "hotkeys.disable"
+                | "hotkeys.reset"
         )
     {
         Err(Fail::usage(format!(
-            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak journal undo`, `jarak settings set` and `jarak settings reset`",
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
             command.replace('.', " ")
         )))
     } else {
@@ -325,6 +357,162 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
         "assets.rename" => assets_rename(rest, g),
         "settings.list" | "settings.get" | "settings.set" | "settings.reset" => {
             settings(command, rest, g)
+        }
+        c if c.starts_with("hotkeys.") => {
+            let p = Paths::from_env()
+                .ok_or_else(|| Fail::new("io", 1, "APPDATA or LOCALAPPDATA is not set"))?;
+            hotkeys_in(command, rest, g, &p.hotkeys_file())
+        }
+        _ => unreachable!("checked in run"),
+    }
+}
+
+/// Step 105: `jarak hotkeys …` on the user layer `file` (the shared hotkey contract; headless —
+/// the window reads the file again when it gets the focus).
+fn hotkeys_in(command: &str, rest: &[&str], g: &Global, file: &Path) -> Result<Done, Fail> {
+    use jarak_core::hotkeys::{self as jh, Change};
+    use kim_hotkeys::check::Conflict;
+    let registration = |_: &str, _: &str| "not_applicable";
+    let refused = |e: jh::Refused| {
+        let (code, exit) = e.code();
+        let mut f = Fail::new(code, exit, format!("{e}; nothing was changed"));
+        if let jh::Refused::Edit(r) = &e {
+            f.hint.clone_from(&r.hint);
+            f.details = r.conflicts.iter().map(Conflict::to_json).collect();
+        } else if code == "hotkey_invalid" {
+            f.hint = Some("keys look like Ctrl+Shift+R or F5 (docs/HOTKEY_CONTRACT.md §5)".into());
+        }
+        f
+    };
+    let (tool, loaded) = jh::load(file);
+    let path = loaded.path.display().to_string();
+    match command {
+        "hotkeys.list" | "hotkeys.check" if !rest.is_empty() => Err(Fail::usage(format!(
+            "`jarak {}` takes no arguments",
+            command.replace('.', " ")
+        ))),
+        "hotkeys.list" => {
+            let a = jh::analysis(&tool);
+            let data = kim_hotkeys::view::list_data(&tool, &a, &path, loaded.state, &registration);
+            let human = tool
+                .manifest
+                .actions
+                .iter()
+                .map(|act| {
+                    let (keys, changed) = jh::keys_of(&tool, &act.id);
+                    let shown = if keys.is_empty() {
+                        "(off)".to_string()
+                    } else {
+                        keys.join(" ")
+                    };
+                    format!(
+                        "{:32} {shown}{}",
+                        act.id,
+                        if changed { "  (changed)" } else { "" }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            Ok((data, human))
+        }
+        "hotkeys.show" => {
+            let [action] = rest else {
+                return Err(Fail::usage("`jarak hotkeys show` needs one action"));
+            };
+            let a = jh::analysis(&tool);
+            let data = kim_hotkeys::view::show_data(&tool, &a, action, &registration).ok_or_else(
+                || Fail {
+                    hint: Some("`jarak hotkeys list` names every action".into()),
+                    ..Fail::new(
+                        "action_not_found",
+                        3,
+                        format!("jarak has no action `{action}`"),
+                    )
+                },
+            )?;
+            let (keys, _) = jh::keys_of(&tool, action);
+            Ok((data, format!("{action}: {}", keys.join(" "))))
+        }
+        "hotkeys.set" | "hotkeys.disable" | "hotkeys.reset" => {
+            let c = match (command, rest) {
+                ("hotkeys.set", [action, keys @ ..]) if !keys.is_empty() => Change::Set {
+                    action: (*action).to_string(),
+                    keys: keys.iter().map(|k| (*k).to_string()).collect(),
+                },
+                ("hotkeys.disable", [action]) => Change::Disable((*action).to_string()),
+                ("hotkeys.reset", [action]) => Change::Reset((*action).to_string()),
+                _ => {
+                    return Err(Fail::usage(format!(
+                        "`jarak {}` needs an action{}",
+                        command.replace('.', " "),
+                        if command == "hotkeys.set" {
+                            " and keys"
+                        } else {
+                            ""
+                        }
+                    )));
+                }
+            };
+            let o = jh::change(file, &c, g.replace, g.dry_run).map_err(refused)?;
+            let changes: Vec<Value> = o
+                .applied
+                .changes
+                .iter()
+                .map(kim_hotkeys::edit::Change::to_json)
+                .collect();
+            let conflicts: Vec<Value> = o.applied.conflicts.iter().map(Conflict::to_json).collect();
+            let mut human: Vec<String> = o
+                .applied
+                .changes
+                .iter()
+                .filter(|c| c.before != c.after)
+                .map(|c| {
+                    format!(
+                        "{}: {} -> {}",
+                        c.action,
+                        c.before.bindings.join(", "),
+                        c.after.bindings.join(", ")
+                    )
+                })
+                .collect();
+            human.extend(o.applied.conflicts.iter().map(|c| c.message.clone()));
+            if !o.applied.changed {
+                human.push("Nothing to change.".into());
+            } else if g.dry_run {
+                human.push("Dry run: nothing was written.".into());
+            } else {
+                human.push(format!(
+                    "Saved to {path}. An open Jarak window applies it when it gets the focus."
+                ));
+            }
+            Ok((
+                json!({
+                    "tool": jh::TOOL, "dry_run": g.dry_run, "written": o.written, "path": path,
+                    "changes": changes, "conflicts": conflicts,
+                }),
+                human.join("\n"),
+            ))
+        }
+        "hotkeys.check" => {
+            let a = jh::analysis(&tool);
+            let entries = vec![kim_hotkeys::check::ToolEntry {
+                tool: jh::TOOL.into(),
+                version: Some(jarak_core::VERSION.into()),
+                source: "self",
+                enabled: tool.enabled(),
+            }];
+            let data =
+                kim_hotkeys::check::report_json(&entries, &a, kim_hotkeys::check::Severity::Info);
+            let human = if a.conflicts.is_empty() {
+                "No conflicts.".to_string()
+            } else {
+                a.conflicts
+                    .iter()
+                    .map(|c| format!("{}: {}", c.severity().as_str(), c.message))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            Ok((data, human))
         }
         _ => unreachable!("checked in run"),
     }
@@ -1409,7 +1597,13 @@ mod tests {
                 "settings.list",
                 "settings.get",
                 "settings.set",
-                "settings.reset"
+                "settings.reset",
+                "hotkeys.list",
+                "hotkeys.show",
+                "hotkeys.set",
+                "hotkeys.disable",
+                "hotkeys.reset",
+                "hotkeys.check"
             ]
         );
         // Only `open` may open a window; the commands that change something have a dry run
@@ -1478,6 +1672,40 @@ mod tests {
             data["value"], "https://x.org/?q=$(QUERY) &a=1",
             "the value's words are joined"
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Step 105: `jarak hotkeys` lists, shows, sets (refusing a clash with the user's own binding
+    /// unless --replace), disables, resets and checks, on the shared contract.
+    #[test]
+    fn hotkeys_are_listed_changed_and_checked() {
+        let d = std::env::temp_dir().join(format!("jarak-cli-hotkeys-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let f = d.join("hotkeys.json");
+        let mut g = Global::default();
+        let (data, _) = hotkeys_in("hotkeys.list", &[], &g, &f).unwrap();
+        assert_eq!(data["tool"], "jarak");
+        assert!(data["actions"].as_array().unwrap().len() > 100);
+        let (data, _) = hotkeys_in("hotkeys.show", &["run.dialog"], &g, &f).unwrap();
+        assert_eq!(data["action"]["id"], "run.dialog");
+        let e = hotkeys_in("hotkeys.show", &["nope.nope"], &g, &f).unwrap_err();
+        assert_eq!((e.code, e.exit), ("action_not_found", 3));
+        let (data, _) = hotkeys_in("hotkeys.set", &["run.dialog", "Ctrl+Alt+R"], &g, &f).unwrap();
+        assert_eq!(data["written"], true);
+        let e = hotkeys_in("hotkeys.set", &["view.palette", "Ctrl+Alt+R"], &g, &f).unwrap_err();
+        assert_eq!((e.code, e.exit), ("hotkey_conflict", 7));
+        let e = hotkeys_in("hotkeys.set", &["run.dialog", "Ctrl+Nope"], &g, &f).unwrap_err();
+        assert_eq!((e.code, e.exit), ("hotkey_invalid", 2));
+        g.replace = true;
+        hotkeys_in("hotkeys.set", &["view.palette", "Ctrl+Alt+R"], &g, &f).unwrap();
+        g.replace = false;
+        g.dry_run = true;
+        let (data, _) = hotkeys_in("hotkeys.disable", &["view.palette"], &g, &f).unwrap();
+        assert_eq!(data["written"], false);
+        g.dry_run = false;
+        hotkeys_in("hotkeys.reset", &["view.palette"], &g, &f).unwrap();
+        let (data, _) = hotkeys_in("hotkeys.check", &[], &g, &f).unwrap();
+        assert!(data.get("conflicts").is_some());
         let _ = std::fs::remove_dir_all(&d);
     }
 

@@ -1,0 +1,1130 @@
+{
+  "actions": [
+    {
+      "defaults": [
+        "Ctrl+N"
+      ],
+      "id": "file.new",
+      "scopes": [
+        "app"
+      ],
+      "title": "New document"
+    },
+    {
+      "defaults": [
+        "Ctrl+O"
+      ],
+      "id": "file.open",
+      "scopes": [
+        "app"
+      ],
+      "title": "Open…"
+    },
+    {
+      "defaults": [
+        "Ctrl+S"
+      ],
+      "id": "file.save",
+      "scopes": [
+        "app"
+      ],
+      "title": "Save"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+S"
+      ],
+      "id": "file.save-as",
+      "scopes": [
+        "app"
+      ],
+      "title": "Save as…"
+    },
+    {
+      "defaults": [
+        "Ctrl+W"
+      ],
+      "id": "file.close",
+      "scopes": [
+        "app"
+      ],
+      "title": "Close the document"
+    },
+    {
+      "defaults": [
+        "Ctrl+Tab"
+      ],
+      "id": "file.next",
+      "scopes": [
+        "app"
+      ],
+      "title": "Next document"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Tab"
+      ],
+      "id": "file.previous",
+      "scopes": [
+        "app"
+      ],
+      "title": "Previous document"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+T"
+      ],
+      "id": "file.reopen",
+      "scopes": [
+        "app"
+      ],
+      "title": "Reopen the closed document"
+    },
+    {
+      "defaults": [
+        "Ctrl+X"
+      ],
+      "id": "edit.cut",
+      "scopes": [
+        "app"
+      ],
+      "title": "Cut"
+    },
+    {
+      "defaults": [
+        "Ctrl+C"
+      ],
+      "id": "edit.copy",
+      "scopes": [
+        "app"
+      ],
+      "title": "Copy"
+    },
+    {
+      "defaults": [
+        "Ctrl+V"
+      ],
+      "id": "edit.paste",
+      "scopes": [
+        "app"
+      ],
+      "title": "Paste (text or an image)"
+    },
+    {
+      "defaults": [
+        "Alt+Z"
+      ],
+      "id": "view.wrap",
+      "scopes": [
+        "app"
+      ],
+      "title": "Word wrap"
+    },
+    {
+      "defaults": [
+        "Ctrl+Plus"
+      ],
+      "id": "view.zoom-in",
+      "scopes": [
+        "app"
+      ],
+      "title": "Zoom in"
+    },
+    {
+      "defaults": [
+        "Ctrl+Minus"
+      ],
+      "id": "view.zoom-out",
+      "scopes": [
+        "app"
+      ],
+      "title": "Zoom out"
+    },
+    {
+      "defaults": [
+        "Ctrl+0"
+      ],
+      "id": "view.zoom-reset",
+      "scopes": [
+        "app"
+      ],
+      "title": "Reset the zoom"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+P"
+      ],
+      "id": "view.palette",
+      "scopes": [
+        "app"
+      ],
+      "title": "Command palette"
+    },
+    {
+      "defaults": [
+        "F8"
+      ],
+      "id": "window.focus-other",
+      "scopes": [
+        "app"
+      ],
+      "title": "Focus the other view"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+PageUp"
+      ],
+      "id": "window.tab-left",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move the tab left"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+PageDown"
+      ],
+      "id": "window.tab-right",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move the tab right"
+    },
+    {
+      "defaults": [
+        "Ctrl+1"
+      ],
+      "id": "window.tab-first",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go to the first tab"
+    },
+    {
+      "defaults": [
+        "Ctrl+9"
+      ],
+      "id": "window.tab-last",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go to the last tab"
+    },
+    {
+      "defaults": [
+        "Ctrl+E"
+      ],
+      "id": "markdown.preview",
+      "scopes": [
+        "app"
+      ],
+      "title": "Source / preview"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+E"
+      ],
+      "id": "markdown.split",
+      "scopes": [
+        "app"
+      ],
+      "title": "Source and preview side by side"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+D"
+      ],
+      "id": "edit.add-next-occurrence",
+      "scopes": [
+        "app"
+      ],
+      "title": "Multi-select: add the next occurrence"
+    },
+    {
+      "defaults": [
+        "Alt+F3"
+      ],
+      "id": "edit.select-all-occurrences",
+      "scopes": [
+        "app"
+      ],
+      "title": "Multi-select: all occurrences"
+    },
+    {
+      "defaults": [
+        "Alt+C"
+      ],
+      "id": "edit.column-editor",
+      "scopes": [
+        "app"
+      ],
+      "title": "Column Editor…"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+Up"
+      ],
+      "id": "edit.block-up",
+      "scopes": [
+        "app"
+      ],
+      "title": "Column selection: up"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+Down"
+      ],
+      "id": "edit.block-down",
+      "scopes": [
+        "app"
+      ],
+      "title": "Column selection: down"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+Left"
+      ],
+      "id": "edit.block-left",
+      "scopes": [
+        "app"
+      ],
+      "title": "Column selection: left"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+Right"
+      ],
+      "id": "edit.block-right",
+      "scopes": [
+        "app"
+      ],
+      "title": "Column selection: right"
+    },
+    {
+      "defaults": [
+        "Alt+0"
+      ],
+      "id": "view.fold-all",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold all"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+0"
+      ],
+      "id": "view.unfold-all",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold all"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+F"
+      ],
+      "id": "view.fold-current",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold the current level"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+Shift+F"
+      ],
+      "id": "view.unfold-current",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold the current level"
+    },
+    {
+      "defaults": [
+        "Alt+1"
+      ],
+      "id": "view.fold-level-1",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 1"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+1"
+      ],
+      "id": "view.unfold-level-1",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 1"
+    },
+    {
+      "defaults": [
+        "Alt+2"
+      ],
+      "id": "view.fold-level-2",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 2"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+2"
+      ],
+      "id": "view.unfold-level-2",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 2"
+    },
+    {
+      "defaults": [
+        "Alt+3"
+      ],
+      "id": "view.fold-level-3",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 3"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+3"
+      ],
+      "id": "view.unfold-level-3",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 3"
+    },
+    {
+      "defaults": [
+        "Alt+4"
+      ],
+      "id": "view.fold-level-4",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 4"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+4"
+      ],
+      "id": "view.unfold-level-4",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 4"
+    },
+    {
+      "defaults": [
+        "Alt+5"
+      ],
+      "id": "view.fold-level-5",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 5"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+5"
+      ],
+      "id": "view.unfold-level-5",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 5"
+    },
+    {
+      "defaults": [
+        "Alt+6"
+      ],
+      "id": "view.fold-level-6",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 6"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+6"
+      ],
+      "id": "view.unfold-level-6",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 6"
+    },
+    {
+      "defaults": [
+        "Alt+7"
+      ],
+      "id": "view.fold-level-7",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 7"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+7"
+      ],
+      "id": "view.unfold-level-7",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 7"
+    },
+    {
+      "defaults": [
+        "Alt+8"
+      ],
+      "id": "view.fold-level-8",
+      "scopes": [
+        "app"
+      ],
+      "title": "Fold level 8"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+8"
+      ],
+      "id": "view.unfold-level-8",
+      "scopes": [
+        "app"
+      ],
+      "title": "Unfold level 8"
+    },
+    {
+      "defaults": [
+        "Ctrl+G"
+      ],
+      "id": "go.line",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go to line…"
+    },
+    {
+      "defaults": [
+        "Ctrl+B"
+      ],
+      "id": "go.matching-brace",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go to the matching bracket"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+B"
+      ],
+      "id": "edit.select-braces",
+      "scopes": [
+        "app"
+      ],
+      "title": "Select everything between the matching brackets"
+    },
+    {
+      "defaults": [
+        "Ctrl+Space"
+      ],
+      "id": "edit.complete",
+      "scopes": [
+        "app"
+      ],
+      "title": "Complete the word"
+    },
+    {
+      "defaults": [
+        "Ctrl+Enter"
+      ],
+      "id": "edit.complete-words",
+      "scopes": [
+        "app"
+      ],
+      "title": "Complete from the document's words"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+Space"
+      ],
+      "id": "edit.complete-path",
+      "scopes": [
+        "app"
+      ],
+      "title": "Complete a path"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Space"
+      ],
+      "id": "edit.parameter-hint",
+      "scopes": [
+        "app"
+      ],
+      "title": "Parameter hint"
+    },
+    {
+      "defaults": [
+        "Ctrl+F"
+      ],
+      "id": "search.find",
+      "scopes": [
+        "app"
+      ],
+      "title": "Find…"
+    },
+    {
+      "defaults": [
+        "Ctrl+H"
+      ],
+      "id": "search.replace",
+      "scopes": [
+        "app"
+      ],
+      "title": "Replace…"
+    },
+    {
+      "defaults": [
+        "F3"
+      ],
+      "id": "search.next",
+      "scopes": [
+        "app"
+      ],
+      "title": "Find next"
+    },
+    {
+      "defaults": [
+        "Shift+F3"
+      ],
+      "id": "search.previous",
+      "scopes": [
+        "app"
+      ],
+      "title": "Find previous"
+    },
+    {
+      "defaults": [
+        "Ctrl+F3"
+      ],
+      "id": "search.select-next",
+      "scopes": [
+        "app"
+      ],
+      "title": "Select and find next"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+F3"
+      ],
+      "id": "search.select-previous",
+      "scopes": [
+        "app"
+      ],
+      "title": "Select and find previous"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+F3"
+      ],
+      "id": "search.word-next",
+      "scopes": [
+        "app"
+      ],
+      "title": "Find the word under the caret (next)"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+Shift+F3"
+      ],
+      "id": "search.word-previous",
+      "scopes": [
+        "app"
+      ],
+      "title": "Find the word under the caret (previous)"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+I"
+      ],
+      "id": "search.incremental",
+      "scopes": [
+        "app"
+      ],
+      "title": "Incremental search"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+F"
+      ],
+      "id": "search.in-files",
+      "scopes": [
+        "app"
+      ],
+      "title": "Find in files…"
+    },
+    {
+      "defaults": [
+        "F4"
+      ],
+      "id": "search.next-result",
+      "scopes": [
+        "app"
+      ],
+      "title": "Next search result"
+    },
+    {
+      "defaults": [
+        "Shift+F4"
+      ],
+      "id": "search.previous-result",
+      "scopes": [
+        "app"
+      ],
+      "title": "Previous search result"
+    },
+    {
+      "defaults": [
+        "F7"
+      ],
+      "id": "search.results",
+      "scopes": [
+        "app"
+      ],
+      "title": "Search results panel"
+    },
+    {
+      "defaults": [
+        "Alt+Left"
+      ],
+      "id": "go.back",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go back (navigation history)"
+    },
+    {
+      "defaults": [
+        "Alt+Right"
+      ],
+      "id": "go.forward",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go forward (navigation history)"
+    },
+    {
+      "defaults": [
+        "Ctrl+P"
+      ],
+      "id": "go.quick-open",
+      "scopes": [
+        "app"
+      ],
+      "title": "Go to file…"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+R"
+      ],
+      "id": "macro.record",
+      "scopes": [
+        "app"
+      ],
+      "title": "Start / stop recording a macro"
+    },
+    {
+      "defaults": [
+        "F9"
+      ],
+      "id": "macro.play",
+      "scopes": [
+        "app"
+      ],
+      "title": "Play back the recorded macro"
+    },
+    {
+      "defaults": [
+        "F5"
+      ],
+      "id": "run.dialog",
+      "scopes": [
+        "app"
+      ],
+      "title": "Run…"
+    },
+    {
+      "defaults": [
+        "Ctrl+Comma"
+      ],
+      "id": "settings.open",
+      "scopes": [
+        "app"
+      ],
+      "title": "Settings…"
+    },
+    {
+      "defaults": [
+        "Ctrl+Z"
+      ],
+      "id": "edit.undo",
+      "scopes": [
+        "app"
+      ],
+      "title": "Undo"
+    },
+    {
+      "defaults": [
+        "Ctrl+Y"
+      ],
+      "id": "edit.redo",
+      "scopes": [
+        "app"
+      ],
+      "title": "Redo"
+    },
+    {
+      "defaults": [
+        "Ctrl+Backspace"
+      ],
+      "id": "edit.delete-word-backward",
+      "scopes": [
+        "app"
+      ],
+      "title": "Delete to the start of the word"
+    },
+    {
+      "defaults": [
+        "Ctrl+Delete"
+      ],
+      "id": "edit.delete-word-forward",
+      "scopes": [
+        "app"
+      ],
+      "title": "Delete to the start of the next word"
+    },
+    {
+      "defaults": [
+        "Ctrl+A"
+      ],
+      "id": "select.all",
+      "scopes": [
+        "app"
+      ],
+      "title": "Select all"
+    },
+    {
+      "defaults": [
+        "Ctrl+Left"
+      ],
+      "id": "cursor.word-left",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move to the previous word"
+    },
+    {
+      "defaults": [
+        "Ctrl+Right"
+      ],
+      "id": "cursor.word-right",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move to the next word"
+    },
+    {
+      "defaults": [
+        "Ctrl+Home"
+      ],
+      "id": "cursor.doc-start",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move to the document start"
+    },
+    {
+      "defaults": [
+        "Ctrl+End"
+      ],
+      "id": "cursor.doc-end",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move to the document end"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Left"
+      ],
+      "id": "select.word-left",
+      "scopes": [
+        "app"
+      ],
+      "title": "Extend the selection to the previous word"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Right"
+      ],
+      "id": "select.word-right",
+      "scopes": [
+        "app"
+      ],
+      "title": "Extend the selection to the next word"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Home"
+      ],
+      "id": "select.doc-start",
+      "scopes": [
+        "app"
+      ],
+      "title": "Extend the selection to the document start"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+End"
+      ],
+      "id": "select.doc-end",
+      "scopes": [
+        "app"
+      ],
+      "title": "Extend the selection to the document end"
+    },
+    {
+      "defaults": [
+        "Ctrl+D"
+      ],
+      "id": "line.duplicate",
+      "scopes": [
+        "app"
+      ],
+      "title": "Duplicate the line or the selection"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+L"
+      ],
+      "id": "line.delete",
+      "scopes": [
+        "app"
+      ],
+      "title": "Delete the line"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Up"
+      ],
+      "id": "line.move-up",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move the line up"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Down"
+      ],
+      "id": "line.move-down",
+      "scopes": [
+        "app"
+      ],
+      "title": "Move the line down"
+    },
+    {
+      "defaults": [
+        "Ctrl+J"
+      ],
+      "id": "line.join",
+      "scopes": [
+        "app"
+      ],
+      "title": "Join lines"
+    },
+    {
+      "defaults": [
+        "Ctrl+I"
+      ],
+      "id": "line.split",
+      "scopes": [
+        "app"
+      ],
+      "title": "Split lines at the window's width"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+Enter"
+      ],
+      "id": "line.insert-above",
+      "scopes": [
+        "app"
+      ],
+      "title": "Insert a blank line above"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+Shift+Enter"
+      ],
+      "id": "line.insert-below",
+      "scopes": [
+        "app"
+      ],
+      "title": "Insert a blank line below"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+U"
+      ],
+      "id": "case.upper",
+      "scopes": [
+        "app"
+      ],
+      "title": "UPPERCASE"
+    },
+    {
+      "defaults": [
+        "Ctrl+U"
+      ],
+      "id": "case.lower",
+      "scopes": [
+        "app"
+      ],
+      "title": "lowercase"
+    },
+    {
+      "defaults": [
+        "Alt+U"
+      ],
+      "id": "case.proper",
+      "scopes": [
+        "app"
+      ],
+      "title": "Proper Case"
+    },
+    {
+      "defaults": [
+        "Alt+Shift+U"
+      ],
+      "id": "case.proper-blend",
+      "scopes": [
+        "app"
+      ],
+      "title": "Proper Case (blend)"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+U"
+      ],
+      "id": "case.sentence",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sentence case"
+    },
+    {
+      "defaults": [
+        "Ctrl+Alt+Shift+U"
+      ],
+      "id": "case.sentence-blend",
+      "scopes": [
+        "app"
+      ],
+      "title": "Sentence case (blend)"
+    },
+    {
+      "defaults": [
+        "Ctrl+Q"
+      ],
+      "id": "comment.toggle",
+      "scopes": [
+        "app"
+      ],
+      "title": "Toggle the line comment"
+    },
+    {
+      "defaults": [
+        "Ctrl+K"
+      ],
+      "id": "comment.line",
+      "scopes": [
+        "app"
+      ],
+      "title": "Comment the lines"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+K"
+      ],
+      "id": "comment.line-remove",
+      "scopes": [
+        "app"
+      ],
+      "title": "Uncomment the lines"
+    },
+    {
+      "defaults": [
+        "Ctrl+Shift+Q"
+      ],
+      "id": "comment.block",
+      "scopes": [
+        "app"
+      ],
+      "title": "Block comment"
+    },
+    {
+      "defaults": [
+        "Ctrl+F2"
+      ],
+      "id": "bookmark.toggle",
+      "scopes": [
+        "app"
+      ],
+      "title": "Toggle the bookmark"
+    },
+    {
+      "defaults": [
+        "F2"
+      ],
+      "id": "bookmark.next",
+      "scopes": [
+        "app"
+      ],
+      "title": "Next bookmark"
+    },
+    {
+      "defaults": [
+        "Shift+F2"
+      ],
+      "id": "bookmark.previous",
+      "scopes": [
+        "app"
+      ],
+      "title": "Previous bookmark"
+    },
+    {
+      "defaults": [
+        "Alt+H"
+      ],
+      "id": "view.hide-lines",
+      "scopes": [
+        "app"
+      ],
+      "title": "Hide lines"
+    }
+  ],
+  "backend": "focus",
+  "hotkey_contract": 1,
+  "schema": "kim.hotkey-manifest",
+  "schema_version": 1,
+  "tool": "jarak",
+  "version": "0.0.26"
+}

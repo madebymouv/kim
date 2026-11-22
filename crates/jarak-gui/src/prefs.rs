@@ -206,6 +206,8 @@ impl JarakApp {
                 self.theme_now = Some(Theme::system());
             }
             self.settings_changed_outside();
+            // `jarak hotkeys set` may have changed the shortcuts too.
+            self.hotkeys_changed_outside();
         }
         self.prefs_focused = focused;
         let theme = self.theme_now.unwrap_or_else(|| self.prefs.theme());

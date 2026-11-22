@@ -54,8 +54,8 @@ binary content of `JARAK-FR-027` (the real Windows clipboard checked 2026-11-22;
 [JARAK_ARCHITECTURE §25](JARAK_ARCHITECTURE.md)); Step 104 implemented `JARAK-FR-120`, `JARAK-FR-121`
 and `JARAK-FR-122` (files changed on disk, recovery snapshots, the session's backup;
 [JARAK_RECOVERY](JARAK_RECOVERY.md)); Step 105 implements `JARAK-FR-130`, `JARAK-FR-131` and
-`JARAK-FR-132` (the Settings window, live settings, `jarak settings`; the shortcut mapper's
-remapping follows; [JARAK_SETTINGS](JARAK_SETTINGS.md));
+`JARAK-FR-132` (the Settings window, live settings, `jarak settings`, the shortcut mapper on the
+hotkey contract, `jarak hotkeys`; [JARAK_SETTINGS](JARAK_SETTINGS.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

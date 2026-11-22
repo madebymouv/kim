@@ -1273,11 +1273,24 @@ Requirements `JARAK-FR-130`, `JARAK-FR-131`, `JARAK-FR-132`; the reference is
   `tabs::BarOptions` (close buttons, double-click), `Document::use_spaces` (Tab and indentation
   insert spaces to the next stop), `assets::write_new_in` (the pasted-image folder), the menu and
   status bars, new documents' line ending, `single_window` in `main.rs`, Ctrl+, (`Action::Settings`).
-- **Keyboard**: `jarak-gui::shortcuts` lists the commands with their keys (named for screen readers);
-  remapping follows in the next part of Step 105.
+- **Shortcuts** (part 2): `jarak-core::hotkeys` — the manifest (`hotkeys.manifest.json`, 112 `app`
+  actions, backend `focus`), `load` (manifest + user layer, safe mode for a broken or newer file),
+  `change` (`Set` / `Disable` / `Reset` / `ResetAll` through `kim_hotkeys::edit`, written with
+  `store::save`; a refusal writes nothing; a newer file is never replaced, an invalid one only by
+  Reset all), `keys_of`. `jarak hotkeys list/show/set/disable/reset/check` use it with the shared
+  view and report data. `jarak-gui::shortcuts` — `manifest_json` (built from the palette's keyed
+  commands, without the keys §7.2 reserves; a test keeps the shipped manifest and the contract
+  example equal), the contract names of egui keys, `Bindings` (the user's chords and the freed
+  defaults; `JarakApp::action_of` replaces every direct `keys::action_for`), the Keyboard section
+  (your changes first, Change with capture before anything else sees the keys, Off, Reset, Take it,
+  Reset all twice), `hotkeys_changed_outside` on focus.
 
 Tests: core settings 6 (the registry, values checked, the file kept, schema and example, the
-reference), document 1 (spaces), assets 1 (folder); CLI 1 (list, get, set, dry run, reset, codes);
+reference), hotkeys 2 (the manifest valid without conflicting defaults; set, a default replaced, a
+clash refused and taken, dry run, disable, reset, reset all, an invalid file never rewritten),
+document 1 (spaces), assets 1 (folder); CLI 2 (settings; hotkeys list/show/set/disable/reset/check
+with codes); jarak-gui unit 2 (key names, the shipped manifest); window flows 3 more (a remapped
+command, the Keyboard section's capture, refusal, Take it and Reset all, a change from the CLI);
 window flows 10 (the gear, every section listed, live apply of the status bar, line numbers, word
 wrap, theme and language, a refused value, tab width and spaces, new documents and the image
 folder, multi-editing and the menu bar, Markdown's mode, a change from the CLI, reset twice, every

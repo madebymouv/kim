@@ -5,6 +5,8 @@
 //! 1. `jarak settings set theme light`, `set font_size 16`, `get`, a refused value (exit 2,
 //!    `setting_invalid`, nothing written), an unknown key (exit 3), `reset` — the file holds only
 //!    what was set, and lines it does not know stay.
+//! 3. `jarak hotkeys set` (a clash with the user's own binding refused, exit 7), `show`, `check`;
+//!    the Keyboard section shows the changed command (its Reset).
 //! 2. The release window with that settings file: Appearance shows the font size 16 and the window
 //!    is light (the theme comes from the file: no `KIM_UI_THEME` in this run); a document's text
 //!    is drawn at 16 points; General in Korean; the Settings window passes the audit's rules.
@@ -163,6 +165,32 @@ two
         (line.font_px - 16.0).abs() < 0.5,
         "font {} px",
         line.font_px
+    );
+    // 3. Shortcuts: `jarak hotkeys` on the shared contract, and the Keyboard section shows them.
+    let (code, v) = jarak(&dir, &["hotkeys", "set", "run.dialog", "Ctrl+Alt+R"]);
+    assert_eq!(
+        (code, v["data"]["written"].as_bool()),
+        (0, Some(true)),
+        "{v}"
+    );
+    let (code, v) = jarak(&dir, &["hotkeys", "set", "view.palette", "Ctrl+Alt+R"]);
+    assert_eq!(
+        (code, v["error"]["code"].as_str()),
+        (7, Some("hotkey_conflict")),
+        "{v}"
+    );
+    let (code, v) = jarak(&dir, &["hotkeys", "show", "run.dialog"]);
+    assert_eq!(code, 0);
+    assert!(
+        v["data"]["action"].to_string().contains("Ctrl+Alt+R"),
+        "{v}"
+    );
+    let (code, v) = jarak(&dir, &["hotkeys", "check"]);
+    assert_eq!(code, 0, "{v}");
+    let r = window(&dir, None, "settings-keyboard", "en");
+    assert!(
+        r.components.iter().any(|c| c.id == "button:Reset"),
+        "the changed command offers Reset: the window read hotkeys.json"
     );
     let r = window(&dir, None, "settings-general", "ko");
     assert!(texts(&r).iter().any(|t| t == "일반"), "{:?}", texts(&r));

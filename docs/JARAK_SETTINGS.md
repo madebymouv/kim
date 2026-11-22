@@ -1,6 +1,6 @@
 # Jarak — settings
 
-Status: **current** (Step 105; changing shortcuts follows in the next part of Step 105) ·
+Status: **current** (Step 105) ·
 Requirements: `JARAK-FR-130`, `JARAK-FR-131`, `JARAK-FR-132` ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) ·
 Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01…26
 ([JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)) · CLI: `jarak settings` ([CLI_CONTRACT](CLI_CONTRACT.md))
@@ -18,8 +18,17 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
   first: checked against the setting (a value it does not take is said beside the row and
   nothing is written), atomically (a temporary file, then a rename), keeping the file's other
   lines and comments. What the window shows is what the file says.
-- **Keyboard**: every command with its keys, searchable by name or keys. Changing shortcuts is not
-  in this build yet (the section says so).
+- **Keyboard** (the shortcut mapper, [HOTKEY_CONTRACT](HOTKEY_CONTRACT.md)): your changes first,
+  then every command with its keys, searchable by name or keys. **Change** records the next keys
+  (Esc cancels; recording stops when the window loses the focus), **Off** removes a command's keys,
+  **Reset** gives its defaults back. Keys another command has by default go to this one (the window
+  says which default they replace); keys another of *your* bindings has are refused and named,
+  with **Take it** to move them. **Reset all shortcuts** asks twice and keeps the previous file as
+  `hotkeys.json.bak`. The changes live in `%APPDATA%\mouv\jarak\hotkeys.json` (only what you
+  changed; a broken or newer file is not used and never rewritten). The navigation and editing
+  keys every Kim window reserves (arrows, Home, End, Page Up/Down, Tab, Enter, Backspace, Delete,
+  Insert, Esc and their Shift forms) are the editor's own; a saved macro's or run command's
+  shortcut is set where the macro or command is (Step 102).
 - **Advanced**: *Show in Explorer* (the settings file), *Reset every setting* (asks twice; lines
   Jarak does not know stay).
 - English and Korean for every string; **Language** follows Windows unless set (a `--lang` on
@@ -31,6 +40,9 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 - `settings.toml` holds one `key = value` line per setting that differs from its default
   (booleans and numbers bare, text quoted). A missing line, or a value the setting does not take,
   is the default — reading never fails.
+- `jarak hotkeys list | show <action> | set <action> <keys>... [--replace] | disable <action> |
+  reset <action> | check` change the shortcuts the same way (the window reads `hotkeys.json` again
+  when it gets the focus).
 - `jarak settings list [<section>]`, `get <key>`, `set <key> <value> [--dry-run]`,
   `reset <key> [--dry-run]` read and write the same file (CLI_CONTRACT: `setting_not_found`,
   `setting_invalid`). A running window reads the file again when it gets the focus.
@@ -153,7 +165,8 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 
 ## Not in this Step
 
-Changing shortcuts (the next part of Step 105); a default folder for the Open dialog (SET-07);
+`jarak hotkeys enable/export/import`, shortcut profiles and key sequences; a default folder for
+the Open dialog (SET-07);
 smart highlighting and mark-all options (SET-11); searching options (SET-13); word delimiters
 (SET-17); per-language tab sizes (SET-10, partial); multi-line tab bars (SET-02, partial);
 scrolling beyond the last line (SET-03, partial); hiding the bookmark margin (SET-05, partial);

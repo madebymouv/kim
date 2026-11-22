@@ -383,7 +383,12 @@ Step 105: `jarak settings list [<section>] | get <key> | set <key> <value> | res
 write `%APPDATA%\mouv\jarak\settings.toml` (the registry of [JARAK_SETTINGS](JARAK_SETTINGS.md),
 schema `jarak-settings-v1`). `set` checks the value before anything is written and writes the file
 atomically, keeping its other lines; `set` and `reset` are `write` with `--dry-run`. A running
-window applies a change when it next gets the focus.
+window applies a change when it next gets the focus. `jarak hotkeys list | show <action> | set
+<action> <keys>... [--replace] | disable <action> | reset <action> | check` follow
+[HOTKEY_CONTRACT](HOTKEY_CONTRACT.md) §10 on the shared library (`hotkeys-cli-v1` data; the shared
+codes `hotkey_invalid`, `hotkey_reserved`, `action_not_found`, `hotkey_conflict`, `hotkeys_invalid`);
+`set` / `disable` / `reset` are `write` with `--dry-run`, and `--replace` takes keys from another of
+the user's own bindings.
 
 ## 7. Output streams and the `--json` envelope
 

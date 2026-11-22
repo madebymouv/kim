@@ -170,6 +170,8 @@ impl JarakApp {
                     self.settings_win = None;
                     return;
                 }
+                // The Keyboard section records keys before anything else sees them.
+                self.capture_shortcut(&ctx);
                 let c = kim_ui::Colors::get(&ctx);
                 if !native {
                     ui.set_min_size(egui::vec2(size::SETTINGS_WINDOW_WIDTH - 40.0, 420.0));
