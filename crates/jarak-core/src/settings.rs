@@ -666,6 +666,18 @@ pub const SETTINGS: &[Setting] = &[
         Kind::Int { min: 0, max: 3600 },
         "10"
     ),
+    // Step 109: large files (SET-18, REL-06).
+    s!(
+        "large_file_mb",
+        Files,
+        ("Performance", "성능"),
+        "Large file from (MB)",
+        "대용량 파일 기준(MB)",
+        "Above this size highlighting, folding, word wrap, the Document Map and brace highlighting are off for the document.",
+        "이 크기보다 큰 문서는 구문 강조, 접기, 자동 줄 바꿈, 문서 지도, 괄호 강조를 끕니다.",
+        Kind::Int { min: 1, max: 4096 },
+        "200"
+    ),
     // Step 106: printing (SET-12).
     s!(
         "print_header",

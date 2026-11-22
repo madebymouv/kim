@@ -219,7 +219,7 @@ impl JarakApp {
             let k = self.active_of(pane);
             let lang = self.lang_for(k).cloned();
             let aids = aids_for(lang.as_ref(), &self.assist);
-            let on = self.assist.brace_highlight;
+            let on = self.assist.brace_highlight && !self.is_large(k);
             let t = &mut self.tabs[k];
             if t.file.doc.aids != aids {
                 t.file.doc.aids = aids;
@@ -233,6 +233,15 @@ impl JarakApp {
             t.view.braces.clear();
             if !on || d.selection().ranges().len() != 1 {
                 continue;
+            }
+            // Step 109: no bracket matching on a caret line of more than 20 000 characters (its
+            // text is not copied on every key).
+            {
+                let r = d.text();
+                let l = r.line(r.char_to_line(d.selection().primary().head.min(r.len_chars())));
+                if l.len_chars() > 20_000 {
+                    continue;
+                }
             }
             let r = d.text().clone();
             let head = d.selection().primary().head.min(r.len_chars());
@@ -288,9 +297,16 @@ impl JarakApp {
         let d = &self.tab().file.doc;
         let head = d.selection().primary().head;
         let line = d.text().char_to_line(head);
-        let start = d.text().line_to_char(line);
+        let line_start = d.text().line_to_char(line);
         let l = d.text().line(line);
-        let s = l.slice(..jarak_core::text::line_len(l)).to_string();
+        // Step 109: at most 4 096 characters before the caret (a long line is not copied whole on
+        // every key).
+        let col = head - line_start;
+        let skip = col.saturating_sub(4096);
+        let start = line_start + skip;
+        let s = l
+            .slice(skip..jarak_core::text::line_len(l).min(col + 256).max(col))
+            .to_string();
         let extra = self
             .lang_for(self.active)
             .map_or(String::new(), |l| l.ident_chars.clone());
@@ -317,7 +333,12 @@ impl JarakApp {
         let extra = self
             .lang_for(k)
             .map_or(String::new(), |l| l.ident_chars.clone());
-        let span = r.slice(r.line_to_char(lo)..r.line_to_char(hi));
+        // Step 109: at most 100 000 characters on each side of the caret (a very long line is
+        // not scanned whole on every key).
+        let head = d.selection().primary().head;
+        let from = r.line_to_char(lo).max(head.saturating_sub(100_000));
+        let to = r.line_to_char(hi).min(head + 100_000).max(from);
+        let span = r.slice(from..to);
         let words = core::words_in(span.chars(), prefix, &extra);
         if trigger == Trigger::Words {
             return core::candidates(prefix, &words, None, None, &[]);

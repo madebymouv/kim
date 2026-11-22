@@ -6242,3 +6242,88 @@ fn the_extension_question_passes_the_ui_audit_rules() {
     }
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// Step 109 (REL-06, SET-18): above the large-file setting a document is plain text — no
+/// language, no wrap (the toggle says why), no Document Map, a *Large file* status item; below it
+/// everything is back.
+#[test]
+fn a_large_file_is_plain_text_without_wrap_or_map() {
+    let (mut h, d) = settings_app("large-file", &[]);
+    let big = d.join("big.rs");
+    std::fs::write(&big, "fn x() {}\n".repeat(150_000)).unwrap();
+    h.state_mut().open_args(&[big.display().to_string()]);
+    h.run();
+    let i = h.state().active;
+    assert!(
+        h.state().lang_for(i).is_some(),
+        "1.5 MB is not large by default"
+    );
+    assert!(h.state_mut().change_setting("large_file_mb", "1"));
+    h.run();
+    assert!(h.state().is_large(i));
+    assert!(h.state().lang_for(i).is_none(), "plain text");
+    h.state_mut().act(Action::ToggleWrap);
+    assert!(!h.state().tab().view.wrap);
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("large files"))
+    );
+    h.state_mut().doc_map = true;
+    h.run();
+    assert!(
+        h.query_by_label("Large file").is_some(),
+        "the status bar says so"
+    );
+    assert!(h.state_mut().change_setting("large_file_mb", "200"));
+    h.run();
+    assert!(!h.state().is_large(i));
+    assert!(h.state().lang_for(i).is_some());
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 109 (`JARAK-NFR-004`): a 60 000-character line (laid out only around what is on screen)
+/// still takes End, typing at its end, Home and a click at the right place.
+#[test]
+fn a_very_long_line_is_edited_at_both_ends() {
+    let line = "abcdefghij".repeat(6_000);
+    let (mut h, d) = open_doc("long-line", "long.txt", &format!("{line}\nshort\n"));
+    key(&mut h, egui::Key::End, egui::Modifiers::NONE);
+    text(&mut h, "Z");
+    let t = doc_text(&h);
+    assert_eq!(t.lines().next().unwrap().len(), 60_001);
+    assert!(t.starts_with("abcdefghij") && t.lines().next().unwrap().ends_with("jZ"));
+    h.run();
+    // The caret at the end is drawn where it is, and a click there keeps it there.
+    let head = h.state().tab().file.doc.selection().primary().head;
+    assert_eq!(head, 60_001);
+    let p = {
+        let tb = h.state().tab();
+        tb.view
+            .pos_of_char(&tb.file.doc, head - 1)
+            .expect("on screen")
+    };
+    h.event(egui::Event::PointerButton {
+        pos: p,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    h.event(egui::Event::PointerButton {
+        pos: p,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = h.try_run();
+    let at = h.state().tab().file.doc.selection().primary().head;
+    assert!(
+        (59_999..=60_001).contains(&at),
+        "clicked near the end: {at}"
+    );
+    key(&mut h, egui::Key::Home, egui::Modifiers::NONE);
+    text(&mut h, "A");
+    assert!(doc_text(&h).starts_with("Aabcdefghij"));
+    let _ = std::fs::remove_dir_all(&d);
+}

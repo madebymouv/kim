@@ -65,7 +65,12 @@ command-line options, the interop capabilities for Kim and Ddalgak; [JARAK_CLI](
 desktop demonstrations with Subak and Noeul are still to be done); Step 108 implements
 `JARAK-FR-160`, `JARAK-FR-161` and `JARAK-SEC-007` (extensions with declared, granted and revocable
 permissions, `jarak extensions`, the sample extension; the plugin audit;
-[JARAK_EXTENSIONS](JARAK_EXTENSIONS.md), [JARAK_PLUGIN_AUDIT](JARAK_PLUGIN_AUDIT.md));
+[JARAK_EXTENSIONS](JARAK_EXTENSIONS.md), [JARAK_PLUGIN_AUDIT](JARAK_PLUGIN_AUDIT.md)); Step 109 measured
+`JARAK-NFR-001`…`JARAK-NFR-006` again where allowed (10 MB; a single 10 MB line went from 8.7–11.6 s
+a keystroke to p95 1.55 ms), added large-file mode (`JARAK-NFR-004`), the security tests and threat
+model, and reviewed the `JARAK-NFR-007` checklist (High Contrast is a gap; 1 GB not measured;
+[JARAK_PERFORMANCE](JARAK_PERFORMANCE.md), [JARAK_SECURITY](JARAK_SECURITY.md),
+[JARAK_ACCESSIBILITY](JARAK_ACCESSIBILITY.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

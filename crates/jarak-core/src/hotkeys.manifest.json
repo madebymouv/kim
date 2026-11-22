@@ -1534,5 +1534,5 @@
   "schema": "kim.hotkey-manifest",
   "schema_version": 1,
   "tool": "jarak",
-  "version": "0.0.30"
+  "version": "0.0.31"
 }

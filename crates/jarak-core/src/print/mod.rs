@@ -868,7 +868,9 @@ impl Md<'_> {
                 self.gap(lh * 0.5);
             }
             Block::List { start, items } => {
-                let step = self.m.char_width('M', self.body) * 2.2;
+                // Step 109: deep nesting stops indenting at 60 % of the column.
+                let step = (self.m.char_width('M', self.body) * 2.2)
+                    .min((self.width * 0.6 - indent).max(0.0));
                 for (n, it) in items.iter().enumerate() {
                     let marker = match (it.task, start) {
                         (Some(true), _) => "[x]".to_string(),
@@ -897,7 +899,8 @@ impl Md<'_> {
             }
             Block::Quote(v) => {
                 for b in v {
-                    self.block(b, indent, quote + 1);
+                    // Step 109: at most 16 bars (hostile nesting stays finite).
+                    self.block(b, indent, quote.saturating_add(1).min(16));
                 }
             }
             Block::Code { lang, text } => {

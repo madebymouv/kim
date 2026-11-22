@@ -1462,3 +1462,35 @@ permissions; install / replace / grants follow the manifest / revoke / remove; `
 input, a failing program, a timeout); CLI 1; window flows 3 (asked once, Cancel, the output undone in
 one step, the count as a message; a document changed meanwhile keeps its change; the question under
 the audit's rules). e2e `step108_jarak_extensions.rs`: PASS on its first run.
+
+## 31. Large files, hardening, accessibility (Step 109)
+
+[JARAK_PERFORMANCE](JARAK_PERFORMANCE.md), [JARAK_SECURITY](JARAK_SECURITY.md) and
+[JARAK_ACCESSIBILITY](JARAK_ACCESSIBILITY.md) are the references.
+
+- **A single 10 MB line** hung the window (8.7–11.6 s a keystroke; found by the new measurement).
+  Four causes, each fixed:
+  - `view::show` laid out the whole line every frame. A line of more than `LONG_LINE` (10 000)
+    characters without wrap is now laid out only around the visible columns: `window_of` picks
+    three screen widths around the scroll position, or around the caret when the view follows it.
+    `VisualLine::build_from` keeps the tab stops from the window's start column; `Laid::skip`,
+    `Laid::full` and `Laid::at` map line offsets into the laid part, so caret, selection, hits,
+    symbols and the IME composition work as before; `drawn` keeps each line's column-0 origin.
+  - Completion collected words from the whole long line: now at most 100 000 characters around
+    the caret, and the prefix from at most 4 096 characters before it.
+  - Bracket matching copied the caret's line: skipped on lines of more than 20 000 characters.
+  - The structure was computed inline for documents of few lines however long: now only when
+    they are also at most 2 MiB.
+- **Large-file mode**: `JarakApp::is_large` (`prefs.large_file_bytes`, setting `large_file_mb`).
+  `lang_for` gives none (no highlighting, folding or structure aids); wrap is refused and kept off
+  each frame; the Document Map is not drawn; brace highlighting is off; a *Large file* status item.
+- **Print layout**: quotes nested more than 16 deep draw 16 bars and lists stop indenting at 60 % of
+  the column. The security tests found a `u8` overflow at 256 nested quotes.
+- **Security tests** (`crates/jarak-core/tests/security.rs`, deterministic xorshift inputs): decoding
+  (lossless means byte-exact), hostile Markdown through parse, HTML export and print layout,
+  highlighting in every language, image bombs and garbage, asset references, extension manifests,
+  corrupt state files.
+
+Tests: security 7; window flows 2 (large-file mode; a 60 000-character line edited at both ends);
+perf 4 more (a single 10 MB line within the keystroke budget, fifty tabs, Find All in 10 MB, a 10 MB
+file in large-file mode). e2e `step109_jarak_hardening.rs`: PASS on its first run.

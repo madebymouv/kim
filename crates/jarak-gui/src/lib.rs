@@ -866,6 +866,7 @@ impl JarakApp {
                 });
             }
             Ex::Wrap(on) => {
+                let on = on && !self.is_large(i);
                 let v = &mut self.tabs[i].view;
                 v.wrap = on;
                 v.scroll_x = 0.0;
@@ -2449,6 +2450,16 @@ fn main() {
             Action::ZoomOut => self.zoom(-0.1),
             Action::ZoomReset => self.tab_mut().view.zoom = 1.0,
             Action::ToggleWrap => {
+                if self.is_large(self.active) {
+                    self.message = Some(
+                        self.t(
+                            "Word wrap is off for large files (Settings → Files → Performance)",
+                            "대용량 파일은 자동 줄 바꿈을 끕니다(설정 → 파일 → 성능)",
+                        )
+                        .into(),
+                    );
+                    return;
+                }
                 let v = &mut self.tab_mut().view;
                 v.wrap = !v.wrap;
                 v.scroll_x = 0.0;
@@ -3253,6 +3264,14 @@ fn main() {
         self.print_frame(&ctx);
         self.extension_question_ui(&ctx, &c);
         self.extension_frame(&ctx);
+        // Step 109: a large file never wraps (opened with the wrap setting on, or grown).
+        for i in 0..self.tabs.len() {
+            if self.tabs[i].view.wrap && self.is_large(i) {
+                let v = &mut self.tabs[i].view;
+                v.wrap = false;
+                v.after_edit();
+            }
+        }
         // Step 105: the Settings window (its audit is written by that window, ADR 0100).
         self.settings_window(&ctx);
         if kim_ui::inspect::active() && !self.audit_settings {
@@ -3676,6 +3695,10 @@ fn main() {
         }
         if t.view.wrap {
             items.push((self.t("Wrap", "줄 바꿈").to_string(), c.text_muted));
+        }
+        // Step 109: a large file shows as plain text with fewer aids.
+        if self.is_large(self.active) {
+            items.push((self.t("Large file", "대용량 파일").to_string(), c.warning));
         }
         // Step 102: a macro is being recorded.
         if self.recording.is_some() {

@@ -103,7 +103,10 @@ impl JarakApp {
             let at_gen = t.file.doc.edit_gen();
             let o = &mut t.outline;
             if !(o.fresh(at_gen, &name) && (!want || o.with_symbols)) {
-                if t.file.doc.text().len_lines() <= SMALL {
+                // Step 109: small in lines and in bytes (a few very long lines go to the worker).
+                if t.file.doc.text().len_lines() <= SMALL
+                    && t.file.doc.text().len_bytes() <= 2 * 1024 * 1024
+                {
                     let (f, s) = structure::outline(lang.as_ref(), &lines_of(&t.file.doc), want);
                     install(t, f, s, at_gen, name, want);
                 } else {

@@ -569,3 +569,179 @@ fn the_document_map_of_a_10_mb_document() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The frame times of `n` keystrokes ("a", every tenth an Enter): p50, p95, max (ms).
+fn keystroke_frames(h: &mut Harness<'static, JarakApp>, n: usize) -> (f64, f64, f64) {
+    let mut times = Vec::new();
+    for i in 0..n {
+        let ev = if i % 10 == 9 {
+            egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }
+        } else {
+            egui::Event::Text("a".into())
+        };
+        let t = Instant::now();
+        h.event(ev);
+        h.step();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(f64::total_cmp);
+    let p = |q: f64| times[((times.len() as f64 - 1.0) * q) as usize];
+    (p(0.5), p(0.95), p(1.0))
+}
+
+fn perf_dir(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("jarak-perf-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// Step 109 (`JARAK-NFR-004`): one 10 MB line (no line break) opens and takes keystrokes within
+/// the keystroke budget (`JARAK-NFR-002`).
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn a_single_10_mb_line_stays_responsive() {
+    let dir = perf_dir("line");
+    let file = dir.join("line.txt");
+    std::fs::write(&file, "word 한글 ".repeat(10 * 1024 * 1024 / 12)).unwrap();
+    let t = Instant::now();
+    let app = JarakApp::new(Lang::En, &[file.display().to_string()], Arc::default());
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    let open = t.elapsed().as_secs_f64() * 1000.0;
+    let (p50, p95, max) = keystroke_frames(&mut h, 100);
+    let mut idle = Vec::new();
+    for _ in 0..20 {
+        let t = Instant::now();
+        h.state_mut().tab_mut().view.follow = false;
+        ctx_repaint(&h);
+        h.step();
+        idle.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    idle.sort_by(f64::total_cmp);
+    let mut direct = Vec::new();
+    for _ in 0..20 {
+        let t = Instant::now();
+        h.state_mut().tab_mut().file.doc.type_text("b");
+        h.state_mut().tab_mut().view.after_edit();
+        h.step();
+        direct.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    direct.sort_by(f64::total_cmp);
+    println!(
+        "a single 10 MB line: open + first frames {open:.0} ms; keystroke frame p50 {p50:.2} ms, p95 {p95:.2} ms, max {max:.2} ms; an edit made on the document + a frame p50 {:.2} ms; a frame without input p50 {:.2} ms",
+        direct[10], idle[10]
+    );
+    // Step 109: the first measurement was 8.7–11.6 s a frame (the whole line laid out, and copied
+    // for completion, brace matching and the structure on every key).
+    assert!(p95 < 16.0, "p95 {p95:.2} ms");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Step 109: fifty open documents (200 KB each): opening them and switching between them.
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn fifty_tabs_open_and_switch() {
+    let dir = perf_dir("tabs");
+    let line = "fn example(value: u32) -> u32 { value * 2 } // 한글\n";
+    let mut args = Vec::new();
+    for i in 0..50 {
+        let f = dir.join(format!("f{i:02}.rs"));
+        std::fs::write(&f, line.repeat(200 * 1024 / line.len())).unwrap();
+        args.push(f.display().to_string());
+    }
+    let t = Instant::now();
+    let app = JarakApp::new(Lang::En, &args, Arc::default());
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    let open = t.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(h.state().tabs.len(), 50);
+    let mut times = Vec::new();
+    for k in 0..100 {
+        let t = Instant::now();
+        h.state_mut().show_doc(k % 50);
+        h.step();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(f64::total_cmp);
+    let p95 = times[94];
+    println!(
+        "fifty 200 KB tabs: open {open:.0} ms; switch frame p50 {:.2} ms, p95 {p95:.2} ms, max {:.2} ms",
+        times[49], times[99]
+    );
+    assert!(p95 < 50.0, "switch p95 {p95:.2} ms");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Step 109: Find All of a word in a 10 MB document (`JARAK-FR-070`), in the core.
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn find_all_in_a_10_mb_document() {
+    let line = "The quick brown fox 한글 문장 jumps over the lazy dog 0123456789\r\n";
+    let mut doc = jarak_core::document::Document::new();
+    doc.type_text(&line.repeat(10 * 1024 * 1024 / line.len() + 1));
+    for (what, regex) in [("lazy", false), (r"fox \S+ 문", true)] {
+        let q = jarak_core::search::Query {
+            text: what.into(),
+            mode: if regex {
+                jarak_core::search::Mode::Regex
+            } else {
+                jarak_core::search::Mode::Normal
+            },
+            ..Default::default()
+        };
+        let m = q.compile().unwrap();
+        let t = Instant::now();
+        let h = jarak_core::search::Haystack::of(&doc);
+        let (hits, done) = m.find_all(&h, None, &|| false);
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        println!(
+            "find all `{what}` in 10 MB: {} hits in {ms:.0} ms",
+            hits.len()
+        );
+        assert!(done && hits.len() > 100_000);
+        assert!(ms < 2000.0, "{ms:.0} ms");
+    }
+}
+
+/// Step 109 (REL-06): with the large-file limit at 1 MB a 10 MB Rust file is plain text —
+/// keystroke frames stay within the budget without highlighting or folding work.
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn a_10_mb_file_in_large_file_mode() {
+    let dir = perf_dir("large");
+    let file = dir.join("big.rs");
+    let line = "fn example(value: u32) -> u32 { if value > 1 { value * 2 } else { 0 } }\n";
+    std::fs::write(&file, line.repeat(10 * 1024 * 1024 / line.len())).unwrap();
+    std::fs::write(dir.join("settings.toml"), "large_file_mb = 1\n").unwrap();
+    let app = JarakApp::new(
+        Lang::En,
+        &[format!("{}:70000", file.display())],
+        Arc::default(),
+    )
+    .with_settings(dir.join("settings.toml"));
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.run();
+    assert!(h.state().is_large(0) && h.state().lang_for(0).is_none());
+    let (p50, p95, max) = keystroke_frames(&mut h, 200);
+    println!(
+        "10 MB Rust file in large-file mode: keystroke frame p50 {p50:.2} ms, p95 {p95:.2} ms, max {max:.2} ms"
+    );
+    assert!(p95 < 16.0, "p95 {p95:.2} ms");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn ctx_repaint(h: &Harness<'static, JarakApp>) {
+    h.ctx.request_repaint();
+}

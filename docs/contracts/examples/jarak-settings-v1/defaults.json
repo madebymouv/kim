@@ -18,6 +18,7 @@
   "image_folder": "assets",
   "indent": "smart",
   "language": "system",
+  "large_file_mb": 200,
   "line_numbers": true,
   "markdown_open_as": "source",
   "menu_bar": "alt",

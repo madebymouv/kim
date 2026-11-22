@@ -131,6 +131,13 @@
         "ko"
       ]
     },
+    "large_file_mb": {
+      "default": 200,
+      "description": "Large file from (MB) (Files).",
+      "maximum": 4096,
+      "minimum": 1,
+      "type": "integer"
+    },
     "line_numbers": {
       "default": true,
       "description": "Line numbers (Appearance).",

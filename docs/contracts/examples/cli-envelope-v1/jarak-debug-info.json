@@ -4,7 +4,7 @@
     "arch": "x86_64",
     "cli_contract": 1,
     "exe": "C:\\Users\\me\\AppData\\Local\\mouv\\kim\\tools\\jarak\\0.0.1\\jarak.exe",
-    "gui": null,
+    "gui": "C:\\Users\\me\\AppData\\Local\\mouv\\kim\\tools\\jarak\\0.0.1\\jarak-gui.exe",
     "hotkeys": {
       "exists": false,
       "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\hotkeys.json"
@@ -24,7 +24,7 @@
       "path": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\settings.toml"
     },
     "tool": "jarak",
-    "version": "0.0.30",
+    "version": "0.0.31",
     "windows_build": "10.0.19041"
   },
   "ok": true,

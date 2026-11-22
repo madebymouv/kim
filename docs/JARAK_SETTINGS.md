@@ -130,6 +130,7 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
 | `detect_changes` | Detect files changed by other programs | `true` / `false` | `true` |
 | `reload_unmodified_silently` | Reload unmodified documents silently | `true` / `false` | `false` |
 | `recovery_interval` | Keep unsaved documents every (seconds) | 0–3600 | `10` |
+| `large_file_mb` | Large file from (MB) | 1–4096 | `200` |
 | `print_header` | Header | text (one line) | `{file}\|\|{date} {time}` |
 | `print_footer` | Footer | text (one line) | `\|\|{page} / {pages}` |
 | `print_line_numbers` | Line numbers | `true` / `false` | `true` |
@@ -175,7 +176,9 @@ Architecture: [JARAK_ARCHITECTURE §27](JARAK_ARCHITECTURE.md) · Matrix: SET-01
   [JARAK_EXPORT](JARAK_EXPORT.md)): the header and footer are `left|center|right` with `{file}`,
   `{path}`, `{page}`, `{pages}`, `{date}` and `{time}` (empty prints none); line numbers; the
   window's colours or black on white; the text size (rendered Markdown's body is one point
-  larger); the four margins. `jarak print` and `jarak export --to pdf` use the same settings.
+  larger); the four margins. `jarak print` and `jarak export --to pdf` use the same settings. **Performance** (Step 109): above *Large file from (MB)* a document
+  is shown as plain text — no highlighting, folding, word wrap, Document Map or brace highlighting;
+  the status bar says *Large file*.
 
 ## Not in this Step
 

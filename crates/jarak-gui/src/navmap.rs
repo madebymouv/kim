@@ -121,7 +121,8 @@ impl JarakApp {
     /// The map panel (right): the whole document, the lines on screen in a frame; a click or a
     /// drag scrolls there.
     pub(crate) fn doc_map_ui(&mut self, ui: &mut egui::Ui, c: &Colors) {
-        if !self.doc_map {
+        // Step 109: no Document Map for a large file.
+        if !self.doc_map || self.is_large(self.active) {
             return;
         }
         let k = self.active;

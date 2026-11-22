@@ -41,6 +41,13 @@ fn comment_tokens(l: &Lang) -> (Option<String>, Option<(String, String)>) {
 }
 
 impl JarakApp {
+    /// Step 109 (REL-06, SET-18): whether document `i` is larger than the large-file setting.
+    pub fn is_large(&self, i: usize) -> bool {
+        self.tabs
+            .get(i)
+            .is_some_and(|t| t.file.doc.text().len_bytes() > self.prefs.large_file_bytes)
+    }
+
     /// Step 107 (`--language <name>`): the active document in the language called `name` (any
     /// case; the user's languages first); an unknown name says so and changes nothing.
     pub fn choose_language_named(&mut self, name: &str) {
@@ -75,6 +82,10 @@ impl JarakApp {
     /// The language of tab `i`: the chosen one, none (plain text) or the detected one.
     pub fn lang_for(&self, i: usize) -> Option<&Lang> {
         let t = self.tabs.get(i)?;
+        // Step 109 (REL-06): a large file is shown as plain text (no highlighting or folding).
+        if self.is_large(i) {
+            return None;
+        }
         match &t.lang_choice {
             LangChoice::Plain => None,
             LangChoice::Named(n) => self

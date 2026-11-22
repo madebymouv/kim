@@ -294,9 +294,21 @@ impl VisualLine {
         preedit: Option<(usize, &str)>,
         controls: bool,
     ) -> VisualLine {
+        VisualLine::build_from(line, tab_width, preedit, controls, 0)
+    }
+
+    /// Step 109: [`VisualLine::build_with`] of a part of a line that starts at display column
+    /// `start_col` (its tabs keep the line's tab stops).
+    pub fn build_from(
+        line: &str,
+        tab_width: usize,
+        preedit: Option<(usize, &str)>,
+        controls: bool,
+        start_col: usize,
+    ) -> VisualLine {
         let mut text = String::with_capacity(line.len());
         let mut map = Vec::with_capacity(line.len() + 1);
-        let mut col = 0usize;
+        let mut col = start_col;
         let mut drawn = 0usize;
         let tab = tab_width.max(1);
         for (o, ch) in line.chars().enumerate() {
@@ -355,6 +367,86 @@ struct Laid {
     galley: Arc<Galley>,
     vis: VisualLine,
     height: f32,
+    /// Step 109: the line offset where the laid text begins (a long unwrapped line is laid out
+    /// only around what is on screen) and the whole line's length in chars.
+    skip: usize,
+    full: usize,
+}
+
+impl Laid {
+    /// The drawn char index of line offset `off` (offsets outside the laid part clamp to it).
+    fn at(&self, off: usize) -> usize {
+        self.vis.map[off.saturating_sub(self.skip).min(self.vis.map.len() - 1)]
+    }
+}
+
+/// Step 109 (`JARAK-NFR-004`): a line longer than this, unwrapped, is laid out only around the
+/// visible columns.
+const LONG_LINE: usize = 10_000;
+
+/// The part of a long line to lay out: the first and last char offsets and the display column of
+/// the first, around display column `center` (`span` columns on each side).
+fn window_of(
+    chars: impl Iterator<Item = char> + Clone,
+    len: usize,
+    tab: usize,
+    center: usize,
+    span: usize,
+) -> (usize, usize, usize) {
+    let tab = tab.max(1);
+    let lo = center.saturating_sub(span);
+    let hi = center + span;
+    let (mut a, mut a_col, mut b) = (0usize, 0usize, len);
+    let mut col = 0usize;
+    let mut found_a = false;
+    for (o, ch) in chars.clone().take(len).enumerate() {
+        if !found_a && col >= lo {
+            a = o;
+            a_col = col;
+            found_a = true;
+        }
+        if col >= hi {
+            b = o;
+            break;
+        }
+        col += if ch == '\t' {
+            tab - col % tab
+        } else {
+            unicode_width_of(ch)
+        };
+    }
+    if !found_a {
+        // The window starts past the line's end: lay out its last columns.
+        a = len.saturating_sub(span);
+        a_col = 0;
+        let mut c = 0usize;
+        for (o, ch) in chars.take(len).enumerate() {
+            if o == a {
+                a_col = c;
+                break;
+            }
+            c += if ch == '\t' {
+                tab - c % tab
+            } else {
+                unicode_width_of(ch)
+            };
+        }
+    }
+    (a, b.max(a), a_col)
+}
+
+/// The display column of line offset `off`.
+fn column_of(chars: impl Iterator<Item = char>, off: usize, tab: usize) -> usize {
+    let tab = tab.max(1);
+    let mut col = 0usize;
+    for ch in chars.take(off) {
+        col += if ch == '\t' {
+            tab - col % tab
+        } else {
+            unicode_width_of(ch)
+        };
+    }
+    col
 }
 
 /// What the view did this frame (for the window to react).
@@ -479,25 +571,59 @@ pub fn show(
         let l = doc.text().line(line);
         let len = text::line_len(l);
         let start = doc.text().line_to_char(line);
-        let s: String = l.slice(..len).to_string();
+        // Step 109: a long unwrapped line is laid out only around the visible columns (around
+        // the caret when the view follows it there).
+        let (skip, end, skip_col) = if !state.wrap && len > LONG_LINE {
+            let cols = (text_rect.width() / m.char_w.max(1.0)) as usize + 1;
+            let center = if state.follow && line == caret_line {
+                column_of(l.chars(), caret - start, tab)
+            } else {
+                (state.scroll_x / m.char_w.max(1.0)) as usize + cols / 2
+            };
+            window_of(l.chars(), len, tab, center, cols * 2)
+        } else {
+            (0, len, 0)
+        };
+        let s: String = l.slice(skip..end).to_string();
         let pre = (!state.preedit.is_empty() && line == caret_line)
-            .then(|| (caret - start, state.preedit.as_str()));
-        let vis = VisualLine::build_with(&s, tab, pre, state.symbols.controls);
+            .then(|| caret - start)
+            .filter(|o| *o >= skip && *o <= end)
+            .map(|o| (o - skip, state.preedit.as_str()));
+        let vis = VisualLine::build_from(&s, tab, pre, state.symbols.controls, skip_col);
         let toks = state
             .syntax
             .iter()
             .find(|(l, _)| *l == line)
             .map_or(&[][..], |(_, t)| t.as_slice());
+        let shifted: Vec<jarak_core::syntax::Token>;
+        let toks = if skip > 0 || end < len {
+            shifted = toks
+                .iter()
+                .filter_map(|t| {
+                    let (a, b) = (t.start.max(skip), t.end.min(end));
+                    (a < b).then(|| jarak_core::syntax::Token {
+                        start: a - skip,
+                        end: b - skip,
+                        kind: t.kind,
+                    })
+                })
+                .collect();
+            &shifted[..]
+        } else {
+            toks
+        };
         let job = line_job(ui, &vis, toks, &m, &c, wrap_w);
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         let height = (galley.rows.len().max(1) as f32) * m.row;
         laid.push(Laid {
             line,
             start,
-            origin: egui::pos2(x0, y),
+            origin: egui::pos2(x0 + skip_col as f32 * m.char_w, y),
             galley,
             vis,
             height,
+            skip,
+            full: len,
         });
         y += height;
         line += 1;
@@ -537,7 +663,10 @@ pub fn show(
     let guides: Vec<usize> = if state.symbols.indent_guides {
         let own: Vec<Option<usize>> = laid
             .iter()
-            .map(|l| indent_cols(&doc.text().line(l.line).to_string(), tab.max(1)))
+            .map(|l| {
+                let head: String = doc.text().line(l.line).chars().take(4096).collect();
+                indent_cols(&head, tab.max(1))
+            })
             .collect();
         (0..own.len())
             .map(|i| {
@@ -618,7 +747,7 @@ pub fn show(
         if !state.preedit.is_empty() && l.line == caret_line {
             // `map` puts the caret after the composition; it starts that many chars before.
             let off = caret - l.start;
-            let end = l.vis.map[off];
+            let end = l.at(off);
             let a = l.galley.pos_from_cursor(CCursor::new(
                 end.saturating_sub(state.preedit.chars().count()),
             ));
@@ -757,11 +886,11 @@ pub fn show(
     let mut ime_rect = None;
     for (i, r) in sel.ranges().iter().enumerate() {
         if let Some(l) = laid.iter().find(|l| {
-            let end = l.start + l.vis.map.len() - 1;
+            let end = l.start + l.full;
             r.head >= l.start && r.head <= end
         }) {
             let off = r.head - l.start;
-            let p = l.galley.pos_from_cursor(CCursor::new(l.vis.map[off]));
+            let p = l.galley.pos_from_cursor(CCursor::new(l.at(off)));
             let mut x = l.origin.x + p.left();
             if let Some(b) = doc.block().filter(|_| doc.virtual_space && r.is_empty()) {
                 let (line, col) = doc.line_col_display(r.head);
@@ -835,7 +964,11 @@ pub fn show(
     // The scrollbar.
     paint_scrollbar(ui, rect, bar_w, lines, state, &c);
     // Mouse: clicks, drags, double and triple clicks, the wheel.
-    state.drawn = laid.iter().map(|l| (l.start, l.origin)).collect();
+    // The origin of each line's column 0 (a long line's laid part starts further right).
+    state.drawn = laid
+        .iter()
+        .map(|l| (l.start, egui::pos2(x0, l.origin.y)))
+        .collect();
     state.cell = Vec2::new(m.char_w, m.row);
     state.cols = ((text_rect.width() - 2.0 * pad) / m.char_w)
         .floor()
@@ -934,14 +1067,18 @@ fn paint_symbols(
     let ink = c.text_muted;
     let line = doc.text().line(l.line);
     let len = text::line_len(line);
-    let last = l.vis.map.len() - 1;
     let mid = |off: usize| {
-        let r = l
-            .galley
-            .pos_from_cursor(CCursor::new(l.vis.map[off.min(last)]));
+        let r = l.galley.pos_from_cursor(CCursor::new(l.at(off)));
         l.origin.y + r.center().y
     };
-    for (off, ch) in line.chars().take(len).enumerate() {
+    let laid_len = l.vis.map.len() - 1;
+    for (off, ch) in line
+        .chars()
+        .take(len)
+        .enumerate()
+        .skip(l.skip)
+        .take(laid_len)
+    {
         let (x0, x1) = (x_of(l, off), x_of(l, off + 1));
         match ch {
             ' ' | '\u{A0}' | '\u{3000}' if s.spaces => {
@@ -1038,11 +1175,7 @@ fn indent_cols(line: &str, tab: usize) -> Option<usize> {
 }
 
 fn x_of(l: &Laid, off: usize) -> f32 {
-    let off = off.min(l.vis.map.len() - 1);
-    l.origin.x
-        + l.galley
-            .pos_from_cursor(CCursor::new(l.vis.map[off]))
-            .left()
+    l.origin.x + l.galley.pos_from_cursor(CCursor::new(l.at(off))).left()
 }
 
 fn paint_selection(
@@ -1056,8 +1189,7 @@ fn paint_selection(
     if r.is_empty() {
         return;
     }
-    let len = l.vis.map.len() - 1;
-    let line_end = l.start + len;
+    let line_end = l.start + l.full;
     // Nothing of this line, nor its line break, is selected.
     if r.to() <= l.start || r.from() > line_end {
         return;
@@ -1065,8 +1197,8 @@ fn paint_selection(
     let _ = doc;
     let a = r.from().max(l.start) - l.start;
     let b = r.to().min(line_end) - l.start;
-    let ca = l.vis.map[a.min(len)];
-    let cb = l.vis.map[b.min(len)];
+    let ca = l.at(a);
+    let cb = l.at(b);
     let pa = l.galley.pos_from_cursor(CCursor::new(ca));
     let pb = l.galley.pos_from_cursor(CCursor::new(cb));
     let crosses_eol = r.to() > line_end && r.from() <= line_end;
@@ -1187,7 +1319,7 @@ fn hit(laid: &[Laid], doc: &Document, p: Pos2) -> usize {
         return first.start;
     }
     let cur = l.galley.cursor_from_pos(p - l.origin);
-    let off = l.vis.offset_of(cur.index.0).min(l.vis.map.len() - 1);
+    let off = l.skip + l.vis.offset_of(cur.index.0).min(l.vis.map.len() - 1);
     text::floor_grapheme(doc.text().slice(..), l.start + off)
 }
 
@@ -1203,11 +1335,9 @@ fn column_at(laid: &[Laid], doc: &Document, m: &Metrics, p: Pos2) -> (usize, usi
     else {
         return (line, col);
     };
-    let end = l.start + l.vis.map.len() - 1;
+    let end = l.start + l.full;
     if pos == end && l.line == line {
-        let e = l
-            .galley
-            .pos_from_cursor(CCursor::new(l.vis.map[end - l.start]));
+        let e = l.galley.pos_from_cursor(CCursor::new(l.at(end - l.start)));
         let extra = ((p.x - (l.origin.x + e.left())) / m.char_w).round();
         if extra > 0.0 {
             return (line, col + extra as usize);
