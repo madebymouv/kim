@@ -157,6 +157,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 99: the Function List with a folded block, the Go to dialog.
                 "functions",
                 "goto",
+                // Step 100: the completion popup, the parameter hint.
+                "completion",
+                "hint",
             ],
         ),
     ];

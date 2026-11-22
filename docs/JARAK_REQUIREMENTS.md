@@ -41,7 +41,10 @@ user-defined languages and the Notepad++ UDL import, comments; [ADR 0103](adr/01
 [JARAK_ARCHITECTURE §20](JARAK_ARCHITECTURE.md)); Step 99 implemented `JARAK-FR-092`,
 `JARAK-FR-093`, the go-to / select-matching-bracket part of `JARAK-FR-096` and the Go to line or
 offset part of `JARAK-FR-103` (folding by syntax, indentation, sections, headings and markers, the
-fold margin and keys, the Function List; [JARAK_ARCHITECTURE §21](JARAK_ARCHITECTURE.md));
+fold margin and keys, the Function List; [JARAK_ARCHITECTURE §21](JARAK_ARCHITECTURE.md)); Step 100
+implemented `JARAK-FR-094`, `JARAK-FR-095` and the rest of `JARAK-FR-096` (completion, parameter
+hints, Notepad++ API files, path completion, snippets, closing brackets, quotes and tags, smart
+indentation, the bracket and tag highlight; [JARAK_ASSIST](JARAK_ASSIST.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

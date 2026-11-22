@@ -51,6 +51,8 @@ pub struct Outline {
     /// document's structure (for a generation, a language, with symbols).
     changed_at: Option<(u64, f64)>,
     job: Option<(u64, String, bool, Found)>,
+    /// How many workers this document started (typing must not start one per keystroke).
+    pub jobs_started: u64,
 }
 
 impl Outline {
@@ -105,21 +107,23 @@ impl JarakApp {
                     let (f, s) = structure::outline(lang.as_ref(), &lines_of(&t.file.doc), want);
                     install(t, f, s, at_gen, name, want);
                 } else {
-                    let finished = match &o.job {
-                        Some((g, l, w, found)) if *g == at_gen && *l == name && (*w || !want) => {
-                            Some(
-                                found
-                                    .lock()
-                                    .ok()
-                                    .and_then(|mut x| x.take())
-                                    .map(|r| (r, *w)),
-                            )
-                        }
-                        _ => None,
-                    };
+                    // One worker per document at a time: while it runs nothing else starts (a
+                    // keystroke every frame would otherwise start a new one every frame).
+                    let finished = o.job.as_ref().map(|(g, l, w, found)| {
+                        let r = found.lock().ok().and_then(|mut x| x.take());
+                        (*g, l.clone(), *w, r)
+                    });
                     match finished {
-                        Some(Some(((f, s), w))) => install(t, f, s, at_gen, name, w),
-                        Some(None) => {
+                        Some((g, l, w, Some((f, s)))) => {
+                            if l == name {
+                                // Taken even when the text changed meanwhile: the newest structure
+                                // there is (its folded folds follow their markers until the next).
+                                install(t, f, s, g, l, w);
+                            } else {
+                                o.job = None;
+                            }
+                        }
+                        Some((_, _, _, None)) => {
                             ctx.request_repaint_after(std::time::Duration::from_millis(30));
                         }
                         None => {
@@ -151,6 +155,8 @@ impl JarakApp {
                                     });
                                 if spawned.is_err() {
                                     o.job = None;
+                                } else {
+                                    o.jobs_started += 1;
                                 }
                             } else {
                                 ctx.request_repaint_after(std::time::Duration::from_secs_f64(
@@ -760,11 +766,15 @@ fn install(
     lang: String,
     with_symbols: bool,
 ) {
-    let starts: Vec<usize> = folds.iter().map(|f| f.start).collect();
-    t.file
-        .doc
-        .retain_folded(|l| starts.binary_search(&l).is_ok());
+    // Only a structure of the text as it is now says which folded folds are gone.
+    if at_gen == t.file.doc.edit_gen() {
+        let starts: Vec<usize> = folds.iter().map(|f| f.start).collect();
+        t.file
+            .doc
+            .retain_folded(|l| starts.binary_search(&l).is_ok());
+    }
     let marks = t.outline.marks.clone();
+    let jobs_started = t.outline.jobs_started;
     t.outline = Outline {
         folds,
         symbols,
@@ -773,6 +783,7 @@ fn install(
         lang,
         with_symbols,
         valid: true,
+        jobs_started,
         ..Outline::default()
     };
 }

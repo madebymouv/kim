@@ -246,7 +246,7 @@ impl Document {
         match cmd {
             Command::Undo => return self.undo(),
             Command::Redo => return self.redo(),
-            Command::DeleteBackward => self.delete_backward(),
+            Command::DeleteBackward => self.delete_backward_assisted(),
             Command::DeleteForward => self.delete_forward(),
             Command::DeleteWordBackward => self.delete_word_backward(),
             Command::DeleteWordForward => self.delete_word_forward(),

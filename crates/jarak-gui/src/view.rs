@@ -66,6 +66,9 @@ pub struct ViewState {
     /// Step 99: the fold margin's marks (each fold's first line, whether it is folded); the
     /// folded-away lines are the document's `hidden`.
     pub fold_marks: Arc<Vec<(usize, bool)>>,
+    /// Step 100: the bracket (or tag name) at the caret and its partner (char ranges; `false`
+    /// for one without a partner).
+    pub braces: Vec<(usize, usize, bool)>,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -106,6 +109,7 @@ impl Default for ViewState {
             cols: 80,
             syntax: Vec::new(),
             fold_marks: Arc::default(),
+            braces: Vec::new(),
             drag: None,
             clicks: None,
         }
@@ -460,6 +464,17 @@ pub fn show(
         }
         for (a, b) in &state.marks {
             paint_selection(&painter, l, &Range::new(*a, *b), doc, &m, c.accent_soft);
+        }
+        for (a, b, ok) in &state.braces {
+            let col = if *ok { c.accent } else { c.danger };
+            paint_selection(
+                &painter,
+                l,
+                &Range::new(*a, *b),
+                doc,
+                &m,
+                col.gamma_multiply(0.35),
+            );
         }
         for r in sel.ranges() {
             paint_selection(&painter, l, r, doc, &m, c.bg_selected);
@@ -1059,6 +1074,11 @@ impl ViewState {
             origin.x + col as f32 * self.cell.x + 0.1,
             origin.y + self.cell.y / 2.0,
         ))
+    }
+
+    /// Step 100: the height of a line (the completion popup and the hint sit against it).
+    pub fn row_height(&self) -> f32 {
+        self.cell.y
     }
 
     /// Step 99: the lines the view drew last frame (folded-away ones are missing).

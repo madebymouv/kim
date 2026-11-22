@@ -3334,3 +3334,433 @@ fn the_structure_views_pass_the_ui_audit_rules() {
     }
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 100: completion, snippets, hints, typing aids, bracket highlight ---------------------
+
+fn open_doc(name: &str, file: &str, content: &str) -> (Harness<'static, JarakApp>, PathBuf) {
+    let d = temp(name);
+    let f = d.join(file);
+    std::fs::write(&f, content).unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    (h, d)
+}
+
+fn to_end(h: &mut Harness<'static, JarakApp>) {
+    key(h, egui::Key::End, egui::Modifiers::CTRL);
+}
+
+fn popup(h: &Harness<'static, JarakApp>) -> Vec<String> {
+    h.state()
+        .completion
+        .as_ref()
+        .map(|c| c.items.iter().map(|i| i.text.clone()).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn completion_pops_up_while_typing_and_never_takes_enter_unasked() {
+    let (mut h, d) = open_doc("complete", "a.rs", "let counter = 1;\n");
+    to_end(&mut h);
+    text(&mut h, "co");
+    assert_eq!(
+        popup(&h),
+        ["const", "continue", "counter"],
+        "keywords and the document's words"
+    );
+    assert!(
+        h.query_by_label("counter  word").is_some(),
+        "the popup's row"
+    );
+    // Enter without choosing: a new line, the popup gone.
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(h.state().completion.is_none());
+    assert_eq!(doc_text(&h), "let counter = 1;\nco\n");
+    // Tab is not taken either (JARAK-FR-094): it indents and closes the popup.
+    text(&mut h, "cou");
+    assert_eq!(popup(&h), ["counter"]);
+    key(&mut h, egui::Key::Tab, egui::Modifiers::NONE);
+    assert!(h.state().completion.is_none());
+    assert_eq!(doc_text(&h), "let counter = 1;\nco\ncou\t");
+    key(&mut h, egui::Key::Backspace, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Backspace, egui::Modifiers::NONE);
+    // An entry chosen with an arrow key is taken by Tab.
+    text(&mut h, "u");
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Tab, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "let counter = 1;\nco\ncounter");
+    // Down chooses; then Enter takes it.
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "co");
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(doc_text(&h).ends_with("\ncontinue"), "{}", doc_text(&h));
+    // Esc closes; Backspace follows the word; a non-word character closes.
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "cou");
+    key(&mut h, egui::Key::Backspace, egui::Modifiers::NONE);
+    assert_eq!(popup(&h), ["const", "continue", "counter"]);
+    text(&mut h, " ");
+    assert!(h.state().completion.is_none());
+    text(&mut h, "co");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state().completion.is_none());
+    // Turned off: no popup while typing; Ctrl+Space still asks; Ctrl+Enter only the words.
+    palette_run(&mut h, "Completion while typing");
+    text(&mut h, "\nco");
+    assert!(h.state().completion.is_none());
+    key(&mut h, egui::Key::Space, egui::Modifiers::CTRL);
+    assert_eq!(popup(&h).len(), 3);
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Enter, egui::Modifiers::CTRL);
+    let kinds: Vec<jarak_core::assist::CandKind> = h
+        .state()
+        .completion
+        .as_ref()
+        .expect("the words")
+        .items
+        .iter()
+        .map(|i| i.kind)
+        .collect();
+    assert!(
+        !kinds.is_empty()
+            && kinds
+                .iter()
+                .all(|k| *k == jarak_core::assist::CandKind::Word),
+        "{kinds:?}"
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    // A popup asked for takes Enter at once; one that opened by itself only once set so.
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "co");
+    key(&mut h, egui::Key::Space, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(doc_text(&h).ends_with("\nconst"), "{}", doc_text(&h));
+    palette_run(&mut h, "Completion while typing");
+    palette_run(&mut h, "Enter always accepts");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "co");
+    assert!(h.state().completion.is_some(), "on again");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(doc_text(&h).ends_with("\nconst"), "{}", doc_text(&h));
+    palette_run(&mut h, "Tab always accepts");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::CTRL);
+    assert!(h.state().completion.is_none());
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "cou");
+    key(&mut h, egui::Key::Tab, egui::Modifiers::NONE);
+    assert!(doc_text(&h).ends_with("\ncounter"), "{}", doc_text(&h));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_snippet_expands_from_the_list_and_tab_walks_its_stops() {
+    let (mut h, d) = open_doc("snippet", "a.rs", "\n");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, "fn");
+    assert_eq!(
+        popup(&h).first().map(String::as_str),
+        Some("fn"),
+        "the snippet is offered"
+    );
+    assert_eq!(
+        h.state().completion.as_ref().unwrap().items[0].kind,
+        jarak_core::assist::CandKind::Snippet
+    );
+    // Tab indents a popup that opened by itself; Ctrl+Space asks: one entry expands at once.
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Space, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "fn name() {\n\t\n}\n");
+    let r = h.state().tab().file.doc.selection().primary();
+    assert_eq!((r.from(), r.to()), (3, 7), "the name is selected");
+    text(&mut h, "go");
+    key(&mut h, egui::Key::Tab, egui::Modifiers::NONE);
+    assert_eq!(h.state().tab().file.doc.selection().primary().head, 6);
+    text(&mut h, "x: u8");
+    key(&mut h, egui::Key::Tab, egui::Modifiers::NONE);
+    assert!(!h.state().tab().file.doc.snippet_active());
+    text(&mut h, "x;");
+    assert_eq!(doc_text(&h), "fn go(x: u8) {\n\tx;\n}\n");
+    // Undo takes back the typing and then the snippet.
+    for _ in 0..6 {
+        key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    }
+    assert_eq!(doc_text(&h), "\n");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn closers_and_tags_only_when_turned_on_and_smart_indentation() {
+    let (mut h, d) = open_doc("aids", "a.rs", "\n");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, "(");
+    assert_eq!(doc_text(&h), "(\n", "off by default (as in Notepad++)");
+    key(&mut h, egui::Key::Backspace, egui::Modifiers::NONE);
+    palette_run(&mut h, "Close brackets and quotes");
+    for c in ["f", "(", "\"", "x"] {
+        text(&mut h, c);
+    }
+    assert_eq!(doc_text(&h), "f(\"x\")\n");
+    text(&mut h, "\"");
+    text(&mut h, ")");
+    assert_eq!(doc_text(&h), "f(\"x\")\n", "typed over the closers");
+    assert_eq!(h.state().tab().file.doc.selection().primary().head, 6);
+    // Smart indentation between braces.
+    text(&mut h, " ");
+    text(&mut h, "{");
+    assert_eq!(doc_text(&h), "f(\"x\") {}\n");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "f(\"x\") {\n\t\n}\n");
+    // Keep: the line's indentation only.
+    palette_run(&mut h, "Indentation on Enter: keep");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(doc_text(&h), "f(\"x\") {\n\t\n\t\n}\n");
+    let _ = std::fs::remove_dir_all(&d);
+    // HTML: tags close once turned on.
+    let (mut h, d) = open_doc("tags", "a.html", "\n");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    for c in ["<", "p", ">"] {
+        text(&mut h, c);
+    }
+    assert_eq!(doc_text(&h), "<p>\n");
+    key(&mut h, egui::Key::A, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::Delete, egui::Modifiers::NONE);
+    palette_run(&mut h, "Close HTML/XML tags");
+    for c in ["<", "d", "i", "v", ">"] {
+        text(&mut h, c);
+    }
+    assert_eq!(doc_text(&h), "<div></div>");
+    assert_eq!(h.state().tab().file.doc.selection().primary().head, 5);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn parameter_hints_follow_the_call_and_matching_brackets_are_highlighted() {
+    let (mut h, d) = open_doc("hint", "a.c", "int main(void) {\n}\n");
+    click_at_pos(&mut h, 16, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "printf(");
+    let hint = h.state().hint.clone().expect("the hint");
+    assert_eq!((hint.name.as_str(), hint.arg), ("printf", 0));
+    assert!(
+        h.query_by_label_contains("int printf(const char *format, ...)")
+            .is_some()
+    );
+    text(&mut h, "\"a, b\", ");
+    assert_eq!(
+        h.state().hint.as_ref().unwrap().arg,
+        1,
+        "the comma in the string does not count"
+    );
+    text(&mut h, ")");
+    h.run();
+    assert!(h.state().hint.is_none(), "outside the call");
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+    key(
+        &mut h,
+        egui::Key::Space,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert!(h.state().hint.is_some(), "asked for");
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert!(h.state().hint.is_none());
+    // The bracket after the caret and its partner.
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    key(&mut h, egui::Key::End, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+    h.run();
+    let text_now = doc_text(&h);
+    let open = text_now.find('{').unwrap();
+    let close = text_now.rfind('}').unwrap();
+    assert_eq!(
+        h.state().tab().view.braces,
+        vec![(open, open + 1, true), (close, close + 1, true)]
+    );
+    palette_run(&mut h, "Highlight matching brackets");
+    h.run();
+    assert!(h.state().tab().view.braces.is_empty(), "turned off");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_users_snippets_and_notepad_plus_plus_api_files_are_read() {
+    let d = temp("userassist");
+    let cfg = d.join("config");
+    std::fs::create_dir_all(cfg.join("autoCompletion")).unwrap();
+    std::fs::write(
+        cfg.join("snippets.json"),
+        r#"{"Python": {"main": {"body": ["def main():", "\t$0"], "description": "mine"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        cfg.join("autoCompletion").join("python.xml"),
+        r#"<NotepadPlus><AutoComplete language="Python"><KeyWord name="greet" func="yes"><Overload retVal="str" descr="Says hello"><Param name="name"/></Overload></KeyWord></AutoComplete></NotepadPlus>"#,
+    )
+    .unwrap();
+    std::fs::write(cfg.join("autoCompletion").join("broken.xml"), "<x/>").unwrap();
+    let f = d.join("a.py");
+    std::fs::write(&f, "\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let a = a.with_assist(cfg.clone());
+    assert!(
+        a.message
+            .as_deref()
+            .is_some_and(|m| m.contains("broken.xml")),
+        "{:?}",
+        a.message
+    );
+    let mut h = harness(a);
+    h.run();
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, "gre");
+    assert_eq!(popup(&h), ["greet"]);
+    let item = &h.state().completion.as_ref().unwrap().items[0];
+    assert_eq!(
+        (item.kind, item.detail.as_str()),
+        (jarak_core::assist::CandKind::Function, "str greet(name)")
+    );
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Tab, egui::Modifiers::NONE);
+    text(&mut h, "(");
+    assert_eq!(
+        h.state().hint.as_ref().map(|x| x.name.as_str()),
+        Some("greet")
+    );
+    text(&mut h, ")");
+    h.run();
+    assert!(h.state().hint.is_none());
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "mai");
+    assert!(popup(&h).contains(&"main".to_string()));
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Space, egui::Modifiers::CTRL);
+    // Python's unit (four spaces) for the snippet's `\t`.
+    assert_eq!(doc_text(&h), "greet()\ndef main():\n    \n");
+    // The files on disk are untouched.
+    assert!(
+        std::fs::read_to_string(cfg.join("snippets.json"))
+            .unwrap()
+            .contains("mine")
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 100: the completion popup and the hint pass the UI audit's rules (headless).
+#[test]
+fn the_completion_popup_and_the_hint_pass_the_ui_audit_rules() {
+    let (mut h, d) = open_doc(
+        "audit100",
+        "a.c",
+        "int counter, count;\nint main(void) {\n}\n",
+    );
+    click_at_pos(&mut h, 36, egui::Modifiers::NONE);
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    text(&mut h, "co");
+    for (screen, hint) in [("completion", false), ("hint", true)] {
+        if hint {
+            key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+            text(&mut h, " ");
+            text(&mut h, "printf(");
+        }
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        let want = if hint {
+            "hint:signature"
+        } else {
+            "completion:row#0"
+        };
+        assert!(r.components.iter().any(|c| c.id == want), "{want}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn paths_complete_tags_match_and_hints_switch_overloads() {
+    // Ctrl+Alt+Space: the document's folder.
+    let (mut h, d) = open_doc("pathcomp", "notes.md", "\n");
+    std::fs::create_dir_all(d.join("images")).unwrap();
+    std::fs::write(d.join("index.md"), "").unwrap();
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, "![x](im");
+    h.state_mut().completion = None;
+    key(
+        &mut h,
+        egui::Key::Space,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    assert!(
+        h.state().completion.is_none(),
+        "one entry: inserted at once"
+    );
+    assert_eq!(doc_text(&h), "![x](images\\\n");
+    // Into the folder: nothing there yet says so.
+    key(
+        &mut h,
+        egui::Key::Space,
+        egui::Modifiers::CTRL | egui::Modifiers::ALT,
+    );
+    assert!(h.query_by_label_contains("No completion").is_some());
+    let _ = std::fs::remove_dir_all(&d);
+    // HTML: the tag at the caret and its partner.
+    let (mut h, d) = open_doc("tagmatch", "a.html", "<div>\n  <p>x</p>\n</div>\n");
+    click_at_pos(&mut h, 2, egui::Modifiers::NONE);
+    h.run();
+    assert_eq!(
+        h.state().tab().view.braces,
+        vec![(1, 4, true), (19, 22, true)]
+    );
+    let _ = std::fs::remove_dir_all(&d);
+    // Python's range has two overloads: Alt+Down shows the next one.
+    let (mut h, d) = open_doc("overloads", "a.py", "\n");
+    key(&mut h, egui::Key::Home, egui::Modifiers::CTRL);
+    text(&mut h, "range(");
+    assert!(h.query_by_label_contains("range range(stop)").is_some());
+    key(&mut h, egui::Key::ArrowDown, egui::Modifiers::ALT);
+    assert_eq!(h.state().hint.as_ref().unwrap().overload, 1);
+    assert!(
+        h.query_by_label_contains("range(start, stop, step=1)")
+            .is_some()
+    );
+    key(&mut h, egui::Key::ArrowUp, egui::Modifiers::ALT);
+    assert_eq!(h.state().hint.as_ref().unwrap().overload, 0);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 99, found by Step 100's measurement: typing in a large document before its first
+/// structure arrived started a new worker every frame (each one lexing the whole text). One runs
+/// at a time; its result is taken even though the text changed meanwhile.
+#[test]
+fn typing_before_the_first_structure_starts_one_worker_at_a_time() {
+    let unit = "fn f() {\n    x();\n}\n";
+    let (mut h, d) = open_doc("onejob", "big.rs", &unit.repeat(3000));
+    for _ in 0..40 {
+        h.event(egui::Event::Text("y".into()));
+        h.step();
+    }
+    let started_while_typing = h.state().tab().outline.jobs_started;
+    assert!(
+        started_while_typing <= 2,
+        "{started_while_typing} workers for 40 keys"
+    );
+    // The structure arrives (from the worker that was running), then again after the pause.
+    let t = std::time::Instant::now();
+    while h.state().tab().outline.folds.is_empty() {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        h.step();
+        assert!(t.elapsed().as_secs() < 20, "the structure arrives");
+    }
+    assert!(h.state().tab().outline.folds.len() >= 2999);
+    let _ = std::fs::remove_dir_all(&d);
+}

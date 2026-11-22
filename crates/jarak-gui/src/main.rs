@@ -262,6 +262,8 @@ fn run(
                 app = app.with_settings(p.settings_file());
                 // Step 98: the user-defined languages.
                 app = app.with_languages(p.languages_dir());
+                // Step 100: the snippets file and Notepad++ API files.
+                app = app.with_assist(p.config.clone());
                 // Step 95: Replace in Files journals the originals here (not in a UI audit).
                 if !kim_ui::inspect::active() {
                     app = app.with_journal(p.journal_dir());

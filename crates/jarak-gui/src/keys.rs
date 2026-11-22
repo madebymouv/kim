@@ -78,6 +78,9 @@ pub enum Action {
     /// (Alt+1…8 / Alt+Shift+1…8), 9 the current one (Ctrl+Alt+F / Ctrl+Alt+Shift+F); Ctrl+G Go to,
     /// Ctrl+B the matching bracket, Ctrl+Alt+B select between them.
     Fold(u8, bool),
+    /// Step 100: completion — 0 everything (Ctrl+Space), 1 the document's words (Ctrl+Enter),
+    /// 2 paths (Ctrl+Alt+Space), 3 the parameter hint (Ctrl+Shift+Space).
+    Complete(u8),
     GoTo,
     MatchBrace,
     SelectBraces,
@@ -168,6 +171,14 @@ pub fn action_for(key: Key, m: Modifiers) -> Option<Action> {
         (true, Key::F) if shift && !m.alt => Some(A::FindInFiles),
         (true, Key::F) if m.alt => Some(A::Fold(9, !shift)),
         (true, Key::G) if !shift && !m.alt => Some(A::GoTo),
+        (true, Key::Space) => Some(A::Complete(if m.alt {
+            2
+        } else if shift {
+            3
+        } else {
+            0
+        })),
+        (true, Key::Enter) if !shift && !m.alt => Some(A::Complete(1)),
         (true, Key::B) if !shift => Some(if m.alt {
             A::SelectBraces
         } else {
@@ -382,6 +393,10 @@ pub fn key_label(a: Action) -> Option<&'static str> {
             "Alt+Shift+8",
         ][usize::from(n.clamp(1, 8)) - 1],
         A::GoTo => "Ctrl+G",
+        A::Complete(0) => "Ctrl+Space",
+        A::Complete(1) => "Ctrl+Enter",
+        A::Complete(2) => "Ctrl+Alt+Space",
+        A::Complete(_) => "Ctrl+Shift+Space",
         A::MatchBrace => "Ctrl+B",
         A::SelectBraces => "Ctrl+Alt+B",
     })
@@ -484,6 +499,10 @@ mod tests {
             Action::Fold(9, true),
             Action::Fold(9, false),
             Action::GoTo,
+            Action::Complete(0),
+            Action::Complete(1),
+            Action::Complete(2),
+            Action::Complete(3),
             Action::MatchBrace,
             Action::SelectBraces,
         ]);

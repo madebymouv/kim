@@ -17,6 +17,7 @@
 //! - Step 94: find and replace in a document ([`search`]); markers on the document.
 
 pub mod assets;
+pub mod assist;
 pub mod command;
 pub mod document;
 pub mod file;

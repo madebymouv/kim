@@ -340,7 +340,7 @@ fn folded_structure_of_a_10_mb_rust_file() {
     h.run();
     // The first structure: wait for the worker.
     let t = Instant::now();
-    while h.state().tab().outline.folds.is_empty() {
+    while h.state().tab().outline.folds.is_empty() || h.state().tab().outline.symbols.is_empty() {
         std::thread::sleep(std::time::Duration::from_millis(5));
         h.step();
         assert!(t.elapsed().as_secs() < 30, "the structure arrives");
@@ -435,5 +435,76 @@ fn folded_structure_of_a_10_mb_rust_file() {
         "typing with all folded p95 {:.2} ms",
         p(&typing, 0.95)
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Step 100 (#119): typing with the completion popup, closing brackets and the bracket highlight
+/// in a 10 MB Rust file — the popup is found again at every keystroke from the words around the
+/// caret, the highlight looks a bounded distance for the partner. `cargo test --release -p
+/// jarak-gui --test perf assisted -- --ignored --nocapture`
+#[test]
+#[ignore = "a measurement: run with --release --ignored --nocapture"]
+fn assisted_typing_in_a_10_mb_rust_file() {
+    let unit =
+        "fn main() {\n    let counter = vec![1, 2, 3];\n    if counter.is_empty() { return; }\n}\n";
+    let text = unit.repeat(10 * 1024 * 1024 / unit.len() + 1);
+    let dir = std::env::temp_dir().join(format!("jarak-perf-assist-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ten.rs");
+    std::fs::write(&file, &text).unwrap();
+    let lines = text.lines().count();
+    let incoming: Incoming = Arc::new(Mutex::new(Vec::new()));
+    let app = JarakApp::new(
+        Lang::En,
+        &[format!("{}:{}", file.display(), lines / 2)],
+        incoming,
+    );
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 900.0))
+        .build_ui_state(|ui, app: &mut JarakApp| app.ui(ui), app);
+    h.state_mut().assist.auto_close = true;
+    h.run();
+    let mut times = Vec::new();
+    let mut opened = 0;
+    let typed = ["c", "o", "u", "(", "x", ")", " ", "\n"];
+    for i in 0..400 {
+        let s = typed[i % typed.len()];
+        let t = Instant::now();
+        if s == "\n" {
+            h.event(egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        } else {
+            h.event(egui::Event::Text(s.into()));
+        }
+        h.step();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+        // JARAK_PERF_SLOW=1 names the slow keystrokes (how the Step 99 worker storm was found).
+        if std::env::var_os("JARAK_PERF_SLOW").is_some() && *times.last().unwrap() > 30.0 {
+            eprintln!(
+                "slow key {i} {s:?}: {:.1} ms (popup {}, hint {})",
+                times.last().unwrap(),
+                h.state().completion.is_some(),
+                h.state().hint.is_some()
+            );
+        }
+        if h.state().completion.is_some() {
+            opened += 1;
+        }
+    }
+    times.sort_by(f64::total_cmp);
+    let p = |q: f64| times[((times.len() as f64 - 1.0) * q) as usize];
+    println!(
+        "assisted typing (10 MB Rust): p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms; the popup open after {opened} of 400 keys",
+        p(0.5),
+        p(0.95),
+        p(1.0)
+    );
+    assert!(opened > 0, "the popup opened");
+    assert!(p(0.95) < 16.0, "p95 {:.2} ms", p(0.95));
     let _ = std::fs::remove_dir_all(&dir);
 }

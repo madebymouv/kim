@@ -1365,7 +1365,7 @@ pub fn fold_ranges(lang: &Lang, lines: &[String]) -> Vec<(usize, usize)> {
 
 // ---- Notepad++ UDL import -----------------------------------------------------------------------------
 
-fn xml_unescape(s: &str) -> String {
+pub(crate) fn xml_unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(p) = rest.find('&') {

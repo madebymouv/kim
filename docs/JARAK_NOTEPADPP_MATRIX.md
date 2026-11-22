@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -176,15 +176,15 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| AUTO-01 | Word completion from the document | planned | `JARAK-FR-094` | 100 | T | — |
-| AUTO-02 | Function / keyword completion from language definitions | planned | `JARAK-FR-094` | 100 | T | — |
-| AUTO-03 | Function parameters hint (and previous/next hint) | planned | `JARAK-FR-094` | 100 | T | — |
-| AUTO-04 | Path completion | planned | `JARAK-FR-094` | 100 | T | — |
-| AUTO-05 | Auto-insert closing brackets and quotes (setting) | planned | `JARAK-FR-096` | 100 | T | — |
-| AUTO-06 | HTML/XML closing tag auto-insertion | planned | `JARAK-FR-096` | 100 | T | — |
-| AUTO-07 | Auto-indent (keep / smart per language) | planned | `JARAK-FR-096` | 100 | T | — |
-| AUTO-08 | Brace highlighting | planned | `JARAK-FR-096` | 100 | T | — |
-| AUTO-09 | HTML/XML tag matching highlight | planned | `JARAK-FR-096` | 100 | T | — |
+| AUTO-01 | Word completion from the document | supported | `JARAK-FR-094` | 100 | T | Step 100: words around the caret (Korean too), while typing and Ctrl+Enter (`assist::tests::words_keywords_api_and_snippets_complete_a_prefix`, `completion_pops_up_while_typing_and_never_takes_enter_unasked`); 10 MB keystroke p95 1.30 ms |
+| AUTO-02 | Function / keyword completion from language definitions | supported | `JARAK-FR-094` | 100 | T | Step 100: the language's keywords, types, constants and Notepad++ API files (`autoCompletion\\*.xml`, built-in C, Python, JavaScript) (`assist::tests::notepad_plus_plus_api_files_are_read`, `the_users_snippets_and_notepad_plus_plus_api_files_are_read`) |
+| AUTO-03 | Function parameters hint (and previous/next hint) | supported | `JARAK-FR-094` | 100 | T | Step 100: the call's signature, current parameter, Alt+Up/Down overloads, Ctrl+Shift+Space (`parameter_hints_follow_the_call_and_matching_brackets_are_highlighted`, `paths_complete_tags_match_and_hints_switch_overloads`) |
+| AUTO-04 | Path completion | supported | `JARAK-FR-094` | 100 | T | Step 100: Ctrl+Alt+Space from the document's folder or an absolute path, never a network path (`assist::tests::paths_complete_inside_the_documents_folder_and_never_on_the_network`, `paths_complete_tags_match_and_hints_switch_overloads`) |
+| AUTO-05 | Auto-insert closing brackets and quotes (setting) | supported | `JARAK-FR-096` | 100 | T | Step 100: off by default; pairs, stepping over and Backspace for the ones it inserted, wrapping a selection (`assist::tests::brackets_and_quotes_close_step_over_wrap_and_delete_in_pairs`, `closers_and_tags_only_when_turned_on_and_smart_indentation`) |
+| AUTO-06 | HTML/XML closing tag auto-insertion | supported | `JARAK-FR-096` | 100 | T | Step 100: off by default; not for void, closing, `<!`, `<?` or self-closing tags (`assist::tests::tags_close_in_markup_and_enter_indents_smartly`, `closers_and_tags_only_when_turned_on_and_smart_indentation`) |
+| AUTO-07 | Auto-indent (keep / smart per language) | supported | `JARAK-FR-096` | 100 | T | Step 100: off / keep / smart (brackets, Python and YAML colons, a closer's dedent, the document's unit) (`assist::tests::tags_close_in_markup_and_enter_indents_smartly`, `closers_and_tags_only_when_turned_on_and_smart_indentation`) |
+| AUTO-08 | Brace highlighting | supported | `JARAK-FR-096` | 100 | T | Step 100: the bracket and its partner, an unmatched one in the danger colour, strings and comments skipped, bounded to 3 000 lines (`assist::tests::bracket_and_tag_matching_is_bounded_and_skips_strings`, `parameter_hints_follow_the_call_and_matching_brackets_are_highlighted`) |
+| AUTO-09 | HTML/XML tag matching highlight | supported | `JARAK-FR-096` | 100 | T | Step 100: the tag name and its partner's, void elements without (`assist::tests::bracket_and_tag_matching_is_bounded_and_skips_strings`, `paths_complete_tags_match_and_hints_switch_overloads`) |
 | AUTO-10 | Smart highlighting of the selected word (with options) | partial | `JARAK-FR-071` | 94 | T | Step 94: a selected word (letters, digits, `_`) highlights its other whole-word, same-case occurrences on screen (`incremental_search_highlight_all_and_smart_highlighting`); the options (case, whole word, the find panel's settings) come with the settings window, Step 110 |
 
 ### SRCH — Search menu: find and replace in the document (sources S, U)
@@ -473,7 +473,7 @@ palette, the headless CLI) follow in §2.
 | JRK-09 | Vim: visual, visual-line, visual-block | supported | `JARAK-FR-052` | 92 | T | Step 92: v, V, Ctrl+V; a block is one range per line by display columns, I/A/c type on every line (engine tests, real desktop V-LINE); full column mode is Step 96 |
 | JRK-10 | Vim: : command line | supported | `JARAK-FR-053` | 92 | T | Step 92: :w :q :q! :wq :x :e :e! :s with ranges and flags, :noh, :set, :N, / ? (engine tests, window test, e2e step92 writes with :w, real desktop :wq) |
 | JRK-11 | Command palette listing every command with its keys | supported | `JARAK-FR-054` | 92 | T, M | Step 92: Ctrl+Shift+P lists every window action and registry command with its keys (labels checked against the bindings), filter in English/Korean/id/keys (window test, e2e, UI audit) |
-| JRK-12 | Snippets with tab stops | planned | `JARAK-FR-095` | 100 | T | — |
+| JRK-12 | Snippets with tab stops | supported | `JARAK-FR-095` | 100 | T | Step 100: `snippets.json` (per language and `*`), `$n`, `${n:placeholder}`, mirrors, `$0`, Tab/Shift+Tab, built-ins (`assist::tests::snippets_expand_with_tab_stops_mirrors_and_indentation`, `a_snippet_expands_from_the_list_and_tab_walks_its_stops`) |
 | JRK-13 | Quick open of files (Ctrl+P) and navigation history | planned | `JARAK-FR-103` | 101 | T | — |
 | JRK-14 | Headless CLI with --json (info, find, replace --dry-run, convert, export) | planned | `JARAK-FR-150` | 107 | T | — |
 | JRK-15 | Kim interoperability (Subak, Noeul, Ddalgak) | planned | `JARAK-FR-151` | 107 | T, M | — |

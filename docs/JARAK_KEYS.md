@@ -1,6 +1,6 @@
 # Jarak — keyboard reference
 
-Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96; line and case keys since Step 97; comment keys since Step 98) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
+Status: **current** (Step 92; tabs and views since Step 93; find and mark since Step 94; find in files since Step 95; carets and columns since Step 96; line and case keys since Step 97; comment keys since Step 98; folding and Go to since Step 99; completion since Step 100) · Requirements: `JARAK-FR-031`, `JARAK-FR-054`, `JARAK-FR-070`…`JARAK-FR-072`
 ([JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md)) · Vim editing: [JARAK_VIM](JARAK_VIM.md)
 
 Every command is in the **command palette** (Ctrl+Shift+P) with its keys, and in the **menu bar**
@@ -105,6 +105,12 @@ screen (smart highlighting).
 | Click the fold margin | Fold or unfold that fold (the caret stays) |
 | Ctrl+G | Go to a line or a character offset |
 | Ctrl+B / Ctrl+Alt+B | Go to the matching bracket / select everything between them |
+| Ctrl+Space | Complete the word (snippets, functions, keywords, words) |
+| Ctrl+Enter | Complete from the document's words |
+| Ctrl+Alt+Space | Complete a path |
+| Ctrl+Shift+Space | Parameter hint (Alt+Up / Alt+Down: the previous / next overload) |
+| In the completion popup | Up/Down choose; Tab / Enter take the chosen entry (a popup that opened by itself: only after choosing, unless set otherwise — [JARAK_ASSIST](JARAK_ASSIST.md)); Esc closes |
+| In a snippet | Tab / Shift+Tab: the next / previous tab stop; Esc ends it |
 
 The palette and the Edit menu have the rest: removing duplicate, consecutive duplicate and empty
 lines, reverse, randomize, the sorts (lexicographic, ignoring case, locale, integers, decimals,

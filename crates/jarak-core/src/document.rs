@@ -90,6 +90,11 @@ pub struct Document {
     /// (the window sets them from its folds).
     pub hidden: Vec<(usize, usize)>,
     fold_gen: u64,
+    /// Step 100: the typing aids in effect (the window sets them) and the snippet being filled
+    /// (its stop numbers in order, the current one).
+    pub aids: assist::Aids,
+    snippet: Vec<u8>,
+    snippet_at: usize,
     /// Columns per tab stop (display and vertical moves).
     pub tab_width: usize,
     /// What Enter inserts.
@@ -129,6 +134,9 @@ impl Document {
             comment_block: None,
             hidden: Vec::new(),
             fold_gen: 0,
+            aids: assist::Aids::default(),
+            snippet: Vec::new(),
+            snippet_at: 0,
             tab_width: 4,
             eol,
         }
@@ -484,23 +492,17 @@ impl Document {
     /// Enter: the line ending plus the indentation of the line the caret is on (up to the
     /// caret), replacing selections.
     pub fn newline(&mut self) {
-        let parts = self
+        // Step 100: the indentation of the aids (the line's by default).
+        let (parts, back): (Vec<_>, Vec<usize>) = self
             .sel
             .ranges()
             .iter()
             .map(|r| {
-                let line = self.text.char_to_line(r.from());
-                let start = self.text.line_to_char(line);
-                let indent: String = self
-                    .text
-                    .slice(start..r.from())
-                    .chars()
-                    .take_while(|c| *c == ' ' || *c == '\t')
-                    .collect();
-                (r.from(), r.to(), format!("{}{indent}", self.eol.as_str()))
+                let (text, back) = self.newline_text(r.from(), r.to());
+                ((r.from(), r.to(), text), back)
             })
-            .collect();
-        self.change(parts, Kind::Other);
+            .unzip();
+        self.change_back(parts, Kind::Other, &back);
     }
 
     /// Backspace: the selection, or the grapheme before each caret.
@@ -1002,6 +1004,9 @@ fn merge_parts(mut parts: Vec<(usize, usize, String)>) -> Vec<(usize, usize, Str
 
 /// Step 96: multiple carets and column selections.
 pub mod multi;
+
+/// Step 100: typing aids and snippets.
+pub mod assist;
 
 #[cfg(test)]
 mod tests;

@@ -11,6 +11,7 @@
 //!   (`assets/<name>-<date>-<n>.png`) and inserts a relative reference ([`images`]); the preview
 //!   shows local images.
 
+pub mod assist;
 pub mod clipboard;
 pub mod column;
 pub mod docops;
@@ -98,6 +99,8 @@ pub struct Tab {
     pub(crate) hl_lang: String,
     /// Step 99: the folds and symbols.
     pub outline: outline::Outline,
+    /// Step 100: what the bracket highlight was found for (edit generation, caret, on).
+    pub(crate) brace_key: Option<(u64, usize, bool)>,
     pub file: FileDocument,
     pub view: ViewState,
     pub mode: Mode,
@@ -122,6 +125,7 @@ impl Tab {
             hl_gen: 0,
             hl_lang: String::new(),
             outline: outline::Outline::default(),
+            brace_key: None,
             file,
             view: ViewState::default(),
             mode: Mode::Source,
@@ -458,6 +462,16 @@ pub struct JarakApp {
     pub function_list: bool,
     pub function_filter: String,
     pub goto: Option<outline::GotoDialog>,
+    /// Step 100: the assistance settings, the completion popup, the parameter hint, the API
+    /// files and snippets, and the folder they are read from.
+    pub assist: assist::AssistSettings,
+    pub completion: Option<assist::Completion>,
+    /// The word (its document and start) for which the popup found nothing while typing.
+    pub completion_miss: Option<(u64, usize, String)>,
+    pub hint: Option<assist::Hint>,
+    pub apis: Vec<jarak_core::assist::Api>,
+    pub snippets: Vec<jarak_core::assist::Snippet>,
+    pub assist_dir: Option<PathBuf>,
 }
 
 /// The assets dialog's content.
@@ -519,6 +533,8 @@ impl JarakApp {
         self.virtual_space = read_setting(&path, "virtual_space").is_some_and(|v| v == "true");
         // Step 97: copying the line without a selection (on unless the file says no).
         self.copy_line = read_setting(&path, "copy_line").is_none_or(|v| v != "false");
+        // Step 100: completion, hints, snippets and the typing aids.
+        self.assist = assist::AssistSettings::read(&path);
         self.settings = Some(path);
         self
     }
@@ -684,6 +700,8 @@ impl JarakApp {
     fn vim_frame(&mut self) {
         let i = self.active;
         self.highlight_frame();
+        // Step 100: the typing aids and the bracket highlight.
+        self.assist_frame();
         // Step 96: the virtual space setting applies to every document.
         let vs = self.virtual_space;
         for t in &mut self.tabs {
@@ -743,7 +761,9 @@ impl JarakApp {
             // Step 96: Esc goes back to one caret (egui would drop the focus with it).
             let d = &self.tabs[i].file.doc;
             let many = d.selection().len() > 1 || d.block().is_some();
-            self.tabs[i].view.keep_escape = many;
+            // Step 100: and closes the completion popup, the hint or a snippet's stops.
+            let assisting = self.completion.is_some() || self.hint.is_some() || d.snippet_active();
+            self.tabs[i].view.keep_escape = many || assisting;
             return;
         }
         if self.vim_tab != i || self.vim_tab >= self.tabs.len() {
@@ -835,6 +855,7 @@ impl JarakApp {
             palette::Run::Udl(k) => self.udl_tool(k),
             palette::Run::Outline(0) => self.function_list = !self.function_list,
             palette::Run::Outline(k) => self.symbol_step(k == 2),
+            palette::Run::Assist(k) => self.assist_tool(k),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1489,6 +1510,13 @@ impl JarakApp {
             function_list: false,
             function_filter: String::new(),
             goto: None,
+            assist: assist::AssistSettings::default(),
+            completion: None,
+            completion_miss: None,
+            hint: None,
+            apis: Vec::new(),
+            snippets: jarak_core::assist::snippets_with(&[]),
+            assist_dir: None,
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1574,7 +1602,7 @@ impl JarakApp {
             // Step 98: a Rust sample (written next to the audit's copy) and the Language menu.
             // Step 99: the same sample with the Function List open and the `if` block folded, and
             // the Go to dialog.
-            "syntax" | "functions" | "goto" => {
+            "syntax" | "functions" | "goto" | "completion" | "hint" => {
                 let dir = self
                     .tab()
                     .file
@@ -1608,6 +1636,29 @@ fn main() {
                         self.function_list = true;
                         // The `if` line of `main` (line 10).
                         self.tab_mut().file.doc.set_folded(9, true);
+                    } else if screen == "completion" {
+                        // Step 100: after `Po` of `Point` on the `let p` line.
+                        let d = &mut self.tab_mut().file.doc;
+                        let s = d.text().to_string();
+                        let at = s
+                            .match_indices("Point {")
+                            .nth(1)
+                            .map_or(0, |(b, _)| d.text().byte_to_char(b));
+                        d.set_selection(&jarak_core::selection::Selection::point(at + 2));
+                        // As while typing (a manual popup with one entry would insert it).
+                        self.open_completion(assist::Trigger::Auto);
+                    } else if screen == "hint" {
+                        let p = dir.join("sample.c");
+                        let _ = std::fs::write(
+                            &p,
+                            "#include <stdio.h>\n\nint main(void) {\n    printf(\"%d\\n\", 42);\n    return 0;\n}\n",
+                        );
+                        self.open_args(&[p.display().to_string()]);
+                        let d = &mut self.tab_mut().file.doc;
+                        let at = d.text().to_string().find("42").unwrap_or(0);
+                        let at = d.text().byte_to_char(at);
+                        d.set_selection(&jarak_core::selection::Selection::point(at));
+                        self.open_hint(true);
                     } else if screen == "goto" {
                         self.goto = Some(outline::GotoDialog {
                             text: "12".into(),
@@ -2025,6 +2076,12 @@ fn main() {
                 });
             }
             Action::MatchBrace => self.match_brace(false),
+            Action::Complete(k) => match k {
+                0 => self.open_completion(assist::Trigger::All),
+                1 => self.open_completion(assist::Trigger::Words),
+                2 => self.open_completion(assist::Trigger::Paths),
+                _ => self.open_hint(true),
+            },
             Action::SelectBraces => self.match_brace(true),
             Action::FindInFiles => self.open_find(find::Page::Files),
             Action::NextResult => self.result_step(false),
@@ -2126,9 +2183,11 @@ fn main() {
         if t.view.overwrite {
             t.file.doc.overwrite_text(s);
         } else {
-            t.file.doc.type_text(s);
+            // Step 100: with the typing aids (closers, tags, a closing bracket's dedent).
+            t.file.doc.type_assisted(s);
         }
         t.view.after_edit();
+        self.after_typed(s);
     }
 
     /// Ctrl+V: text when the clipboard has text (also when it has an image too, as office
@@ -2717,6 +2776,7 @@ fn main() {
         self.column_editor_ui(&ctx, &c);
         self.hash_dialog_ui(&ctx, &c);
         self.goto_ui(&ctx, &c);
+        self.assist_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
@@ -2905,8 +2965,21 @@ fn main() {
                     modifiers,
                     ..
                 } => {
+                    // Step 100: the completion popup, a hint or a snippet's tab stops first.
+                    if self.assist_key(key, modifiers) {
+                        continue;
+                    }
                     if let Some(a) = keys::action_for(key, modifiers) {
                         self.act(a);
+                        if matches!(
+                            a,
+                            Action::Cmd(
+                                jarak_core::command::Command::DeleteBackward
+                                    | jarak_core::command::Command::DeleteForward
+                            )
+                        ) {
+                            self.after_deleted();
+                        }
                     }
                 }
                 egui::Event::MouseWheel {

@@ -170,6 +170,14 @@ impl History {
         self.undo.last()
     }
 
+    /// Step 100: where the carets are after the newest entry (an aid that places the caret
+    /// inside what it inserted).
+    pub fn set_last_after(&mut self, after: Selection) {
+        if let Some(e) = self.undo.last_mut() {
+            e.after = after;
+        }
+    }
+
     pub fn undo_len(&self) -> usize {
         self.undo.len()
     }

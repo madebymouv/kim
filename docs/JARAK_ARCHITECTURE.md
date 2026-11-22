@@ -923,7 +923,9 @@ go-to-line-or-offset part of `JARAK-FR-103`; matrix rows `FOLD-01`…`FOLD-06`, 
   the folded folds keep their length and follow their markers; for one edit with one caret they
   just move by the lines it added or removed. Nothing is laid out again in a frame where neither
   the text, the folds nor the carets changed; a caret that lands inside a folded fold (a search
-  hit, Go to, an edit) opens it. Folding is per document: both views of a cloned document show the
+  hit, Go to, an edit) opens it. One worker runs per document at a time, and its result is
+  taken even when the text changed meanwhile (found by Step 100's measurement: typing before the
+  first structure arrived started a worker every frame). Folding is per document: both views of a cloned document show the
   same folds (Notepad++ folds each view on its own).
 - **The fold margin**: a cell between the line numbers and the text; a down-pointing triangle
   beside an open fold's first line, a right-pointing accent one beside a folded fold, whose line is
@@ -955,3 +957,48 @@ Function List, the margin and the Go to dialog under the UI audit's rules, headl
 measurement. UI audit views `functions`, `goto`; the line numbers on screen are in the geometry
 report (`gutter:line#n`). e2e `step99_jarak_folding_functions.rs` — compiled; its first run and the
 real-desktop check wait until the maintainer is away from the PC.
+
+## 22. Editing assistance (Step 100)
+
+`JARAK-FR-094`, `JARAK-FR-095`, `JARAK-FR-096`; matrix rows `AUTO-01`…`AUTO-09`, `JRK-12`; the
+user-facing reference is [JARAK_ASSIST](JARAK_ASSIST.md).
+
+- **`jarak-core::assist`** (no UI): `words_in` / `document_words` (the distinct words starting
+  with a prefix), `candidates` (snippets, API functions and keywords, the language's keywords,
+  types and constants, words; one text once, the richer kind winning), `path_candidates` (never a
+  network path), Notepad++ API files (`parse_npp_api`, `load_apis`, `builtin_api` for C, Python,
+  JavaScript), `call_at` and `signature` (the call around the caret, outside strings and comments),
+  snippets (`parse_snippets`, `snippets_with`, `expand` into text and tab stops), and
+  `match_bracket_by` / `match_tag_by` (bounded, taking the lines and tokens from the caller).
+- **`Document` typing aids** (`document::assist`): `Aids` (closing brackets and quotes, closing
+  tags, `IndentMode` off / keep / smart, the language's quotes, colon indentation, markup, the
+  indentation unit) set by the window each frame; `type_assisted` (stepping over a closer an aid
+  inserted, opening a pair, wrapping a selection, closing a tag, a closing bracket's dedent),
+  `delete_backward_assisted` (an empty pair it inserted), `newline` with the indentation of the
+  aids, `indent_unit` (the document's own); closers it inserted are marked (`AUTOCLOSE`, an empty
+  marker that moves with edits) so only those are stepped over or removed in pairs; snippets as
+  markers `SNIPPET + n`, `insert_snippet`, `snippet_step`, `clear_snippet`. The document's default
+  is Keep and no closers (the behaviour before Step 100).
+- **The window** (`jarak-gui::assist`): `AssistSettings` (read from and written to the settings
+  file; palette entries), the popup (`Completion`: entries, choice, its start and word, how it was
+  opened), the hint (`Hint`: call, overload, parameter), `assist_key` before the window's keys,
+  `after_typed` / `after_deleted`, the bracket highlight cached per (edit, caret). Tab and Enter are
+  taken by a popup that opened by itself only after an arrow key chose an entry (or when set to
+  always); one asked for takes them. Esc closes the popup, the hint or a snippet's stops (the view
+  keeps the keyboard for it).
+- **Costs**: words from 2 000 lines around the caret, scanned on the rope (no string per line); an
+  open popup is narrowed as the word grows; a word that found nothing is not searched again as it
+  grows; the highlight looks at most 3 000 lines for a partner, with the cached line states of the
+  highlighter. Measured (release, 10 MB of Rust): keystroke frames with the popup, closers and the
+  highlight p95 1.30 ms; the Step 98 highlighted keystroke p95 1.10 ms and the Step 99 ones
+  (keystroke p95 0.59 ms, typing with every fold folded p95 10.22 ms) with Step 100 in place.
+
+Tests: `assist` 7 (completion sources, Notepad++ API files and calls, paths without the network,
+snippets with stops and mirrors and the user's file, closers stepping over, wrapping and deleting in
+pairs, tags and the three indentation modes, bounded bracket and tag matching); window flows 8
+(the popup never taking Enter or Tab unasked, the settings; a snippet's stops and undo; closers and
+tags only when on, smart and kept indentation; hints following the call and the bracket highlight;
+the user's snippets and API files with a broken one named; paths, tag matching and overloads; the
+popup and the hint under the UI audit's rules, headless; one structure worker at a time); the 10 MB
+measurement. UI audit views `completion`, `hint`. e2e `step100_jarak_assist.rs` — compiled; its
+first run and the real-desktop check wait until the maintainer allows visible test windows.
