@@ -360,6 +360,9 @@ shared `usage`, `io`, `permission_denied` and `not_installed`.
 | `reference_unlocated` | 7 | Step 91: a reference to the asset cannot be located exactly in the text (rename it by hand). Nothing was changed. |
 | `batch_not_found` | 3 | Step 95: `jarak journal undo` of a batch the journal does not hold (`jarak journal list`). Nothing was changed. |
 | `setting_not_found` | 3 | Step 105: `jarak settings get/set/reset` of a key that is not a setting (`jarak settings list` names them). Nothing was changed. |
+| `extension_invalid` | 4 | Step 108: an extension folder does not check (manifest, paths leaving the folder, a program that is not an .exe, a permission a command needs but the manifest does not name); `details` lists every problem. Nothing was changed. |
+| `extension_exists` | 7 | Step 108: `jarak extensions install` of an extension whose id is installed; pass `--replace`. Nothing was changed. |
+| `extension_not_found` | 3 | Step 108: `jarak extensions grant/remove` of an id that is not installed (`jarak extensions list`). |
 | `text_unencodable` | 7 | Step 107: `jarak new` or `jarak convert` (or `assets add`) would need a character the target encoding cannot hold (named with its line and column); nothing was written. |
 | `session_invalid` | 4 | Step 107: `jarak session list` found a session file that is not a valid `jarak-session-v1` document (the window keeps it as `session.json.broken` and uses its backup). |
 | `export_exists` | 7 | Step 106: `jarak export` would replace files that exist (`details` lists them); pass `--overwrite`. Nothing was written. |
@@ -410,6 +413,13 @@ command has a golden example (`jarak-*.json`; a test checks it): among them `jar
 `jarak-convert-dry-run.json`, `jarak-text-unencodable.json`, `jarak-session-list.json`,
 `jarak-assets-add-dry-run.json`, `jarak-interop-invoke.json`,
 `jarak-interop-capability-missing.json`, the settings and hotkeys commands.
+
+Step 108 ([JARAK_EXTENSIONS](JARAK_EXTENSIONS.md)): `jarak extensions list | check <folder>`
+(`read`) and `install <folder> [--replace] | remove <id> | grant <id> | revoke <id>` (`write`, with
+`--dry-run`); nothing is downloaded; codes `extension_invalid` (4), `extension_exists` (7),
+`extension_not_found` (3). The manifest's schema is `jarak-extension-v1`. Examples:
+`jarak-extensions-*.json`, `jarak-extension-exists.json`, `jarak-extension-not-found.json`,
+`jarak-extension-invalid.json`.
 
 Step 105: `jarak settings list [<section>] | get <key> | set <key> <value> | reset <key>` read and
 write `%APPDATA%\mouv\jarak\settings.toml` (the registry of [JARAK_SETTINGS](JARAK_SETTINGS.md),

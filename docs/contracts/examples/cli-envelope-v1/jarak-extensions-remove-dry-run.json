@@ -1,0 +1,13 @@
+{
+  "command": "extensions.remove",
+  "data": {
+    "dry_run": true,
+    "folder": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\extensions\\mouv.sample-tools",
+    "grant_ended": false,
+    "id": "mouv.sample-tools",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

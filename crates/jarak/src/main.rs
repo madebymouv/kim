@@ -79,6 +79,19 @@ Commands:
                 document.open; docs/INTEROP.md)
   debug-info    Jarak's version, programs, folders, files and Windows build, for a bug report
                 (read-only)
+  extensions list
+                The installed extensions (languages, snippets, commands), their grants and the
+                folders that do not check (read-only)
+  extensions check <folder>
+                Every problem of an extension folder (read-only)
+  extensions install <folder>
+                Copies a local extension folder that checks (never downloads); --replace
+                replaces an installed one with the same id; --dry-run checks only
+  extensions remove <id>
+                Removes an installed extension and its grant; --dry-run checks only
+  extensions grant <id> / revoke <id>
+                Allows an extension's commands the permissions its manifest names (for exactly
+                this manifest), or ends that; --dry-run checks only
   journal list  The Replace in Files batches kept for undo (read-only)
   journal undo <batch>
                 Gives the files of a batch their original bytes back, unless changed since;
@@ -361,6 +374,12 @@ fn run(args: &[String]) -> ExitCode {
         (Some("session"), Some("list")) => "session.list",
         (Some("assets"), Some("add")) => "assets.add",
         (Some("interop"), Some("invoke")) => "interop.invoke",
+        (Some("extensions"), Some("list")) => "extensions.list",
+        (Some("extensions"), Some("check")) => "extensions.check",
+        (Some("extensions"), Some("install")) => "extensions.install",
+        (Some("extensions"), Some("remove")) => "extensions.remove",
+        (Some("extensions"), Some("grant")) => "extensions.grant",
+        (Some("extensions"), Some("revoke")) => "extensions.revoke",
         (Some("settings"), Some("list")) => "settings.list",
         (Some("settings"), Some("get")) => "settings.get",
         (Some("settings"), Some("set")) => "settings.set",
@@ -397,8 +416,10 @@ fn run(args: &[String]) -> ExitCode {
         Err(Fail::usage(
             "--yes belongs to `jarak replace` and `jarak journal undo`",
         ))
-    } else if g.replace && command != "hotkeys.set" {
-        Err(Fail::usage("--replace belongs to `jarak hotkeys set`"))
+    } else if g.replace && !matches!(command, "hotkeys.set" | "extensions.install") {
+        Err(Fail::usage(
+            "--replace belongs to `jarak hotkeys set` and `jarak extensions install`",
+        ))
     } else if g.export_flags && !matches!(command, "export" | "print") {
         Err(Fail::usage(
             "--to, --output, --linked, --line-numbers, --source and --overwrite belong to `jarak export` (--output and --overwrite also to `jarak print`)",
@@ -433,6 +454,12 @@ fn run(args: &[String]) -> ExitCode {
             (Some(&"session"), None) => "`jarak session` needs list".into(),
             (Some(&"interop"), Some(w)) => format!("unknown command `interop {w}` (invoke)"),
             (Some(&"interop"), None) => "`jarak interop` needs invoke".into(),
+            (Some(&"extensions"), Some(w)) => format!(
+                "unknown command `extensions {w}` (list, check, install, remove, grant, revoke)"
+            ),
+            (Some(&"extensions"), None) => {
+                "`jarak extensions` needs list, check, install, remove, grant or revoke".into()
+            }
             (Some(&"journal"), Some(w)) => format!("unknown command `journal {w}` (list, undo)"),
             (Some(&"journal"), None) => "`jarak journal` needs list or undo".into(),
             (Some(&"settings"), Some(w)) => {
@@ -462,6 +489,10 @@ fn run(args: &[String]) -> ExitCode {
                 | "convert"
                 | "assets.add"
                 | "interop.invoke"
+                | "extensions.install"
+                | "extensions.remove"
+                | "extensions.grant"
+                | "extensions.revoke"
                 | "journal.undo"
                 | "settings.set"
                 | "settings.reset"
@@ -471,7 +502,7 @@ fn run(args: &[String]) -> ExitCode {
         )
     {
         Err(Fail::usage(format!(
-            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak export`, `jarak print`, `jarak new`, `jarak convert`, `jarak assets add`, `jarak interop invoke`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
+            "`jarak {}` changes nothing; --dry-run belongs to `jarak open`, `jarak assets rename`, `jarak replace`, `jarak export`, `jarak print`, `jarak new`, `jarak convert`, `jarak assets add`, `jarak interop invoke`, `jarak extensions install/remove/grant/revoke`, `jarak journal undo`, `jarak settings set/reset` and `jarak hotkeys set/disable/reset`",
             command.replace('.', " ")
         )))
     } else {
@@ -532,6 +563,17 @@ fn dispatch(command: &str, rest: &[&str], g: &Global) -> Result<Done, Fail> {
             interop_invoke(&req, g)
         }
         "debug-info" => debug_info(),
+        c if c.starts_with("extensions.") => {
+            let p = Paths::from_env()
+                .ok_or_else(|| Fail::new("io", 1, "APPDATA or LOCALAPPDATA is not set"))?;
+            extensions_in(
+                command,
+                rest,
+                g,
+                &p.extensions_dir(),
+                &p.extension_grants_file(),
+            )
+        }
         "journal.list" | "journal.undo" => journal(command, rest, g),
         "assets.list" => assets_list(rest),
         "assets.rename" => assets_rename(rest, g),
@@ -1669,6 +1711,225 @@ fn debug_info() -> Result<Done, Fail> {
     Ok((data, human))
 }
 
+/// An extension as JSON (what `jarak extensions list` shows).
+fn extension_json(
+    e: &jarak_core::extensions::Extension,
+    grants: &jarak_core::extensions::Grants,
+) -> Value {
+    let m = &e.manifest;
+    json!({
+        "id": m.id,
+        "name": m.name,
+        "version": m.version,
+        "description": m.description,
+        "folder": e.dir.display().to_string(),
+        "sha256": e.sha256,
+        "languages": e.languages.iter().map(|l| l.name.clone()).collect::<Vec<_>>(),
+        "snippets": e.snippets.len(),
+        "commands": m.contributes.commands.iter().map(|c| json!({
+            "id": c.id, "title": c.title, "program": c.program,
+            "input": format!("{:?}", c.input).to_lowercase(),
+            "needs": c.needs().iter().map(|p| p.name()).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "permissions": m.permissions.iter().map(|p| p.name()).collect::<Vec<_>>(),
+        "granted": grants.covers(e),
+    })
+}
+
+/// Step 108: `jarak extensions …` with the extensions folder `root` and the grants file `gf`.
+fn extensions_in(
+    command: &str,
+    rest: &[&str],
+    g: &Global,
+    root: &Path,
+    gf: &Path,
+) -> Result<Done, Fail> {
+    use jarak_core::extensions::{self as ext, Grants, InstallError};
+    let mut grants = Grants::load(gf);
+    let invalid = |p: Vec<String>| Fail {
+        details: p.iter().map(|x| json!(x)).collect(),
+        ..Fail::new(
+            "extension_invalid",
+            4,
+            format!("the extension does not check: {}", p.join("; ")),
+        )
+    };
+    let installed = |id: &str| -> Result<ext::Extension, Fail> {
+        let dir = root.join(id);
+        if !dir.join(ext::MANIFEST).is_file() {
+            return Err(Fail {
+                hint: Some("`jarak extensions list` names the installed ones".into()),
+                ..Fail::new(
+                    "extension_not_found",
+                    3,
+                    format!("no extension `{id}` is installed"),
+                )
+            });
+        }
+        ext::check(&dir).map_err(invalid)
+    };
+    let one = |what: &str| -> Result<&str, Fail> {
+        match rest {
+            [x] => Ok(*x),
+            _ => Err(Fail::usage(format!(
+                "`jarak {}` needs one {what}",
+                command.replace('.', " ")
+            ))),
+        }
+    };
+    match command {
+        "extensions.list" => {
+            if !rest.is_empty() {
+                return Err(Fail::usage("`jarak extensions list` takes no arguments"));
+            }
+            let (ok, bad) = ext::load_all(root);
+            let mut human: Vec<String> = ok
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{} {} — {} ({} command{}){}",
+                        e.manifest.id,
+                        e.manifest.version,
+                        e.manifest.name,
+                        e.manifest.contributes.commands.len(),
+                        if e.manifest.contributes.commands.len() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        },
+                        if e.manifest.contributes.commands.is_empty() {
+                            ""
+                        } else if grants.covers(e) {
+                            ", granted"
+                        } else {
+                            ", not granted"
+                        }
+                    )
+                })
+                .collect();
+            human.extend(
+                bad.iter()
+                    .map(|(d, p)| format!("{} does not check: {}", d.display(), p.join("; "))),
+            );
+            if human.is_empty() {
+                human.push(format!("No extensions in {}.", root.display()));
+            }
+            Ok((
+                json!({
+                    "folder": root.display().to_string(),
+                    "extensions": ok.iter().map(|e| extension_json(e, &grants)).collect::<Vec<_>>(),
+                    "problems": bad.iter().map(|(d, p)| json!({ "folder": d.display().to_string(), "problems": p })).collect::<Vec<_>>(),
+                }),
+                human.join("\n"),
+            ))
+        }
+        "extensions.check" => {
+            let dir = absolute(Path::new(one("folder")?));
+            let e = ext::check(&dir).map_err(invalid)?;
+            let name = e.manifest.name.clone();
+            Ok((
+                extension_json(&e, &grants),
+                format!("{} ({}) checks.", name, e.manifest.id),
+            ))
+        }
+        "extensions.install" => {
+            let src = absolute(Path::new(one("folder")?));
+            let e = ext::install(&src, root, g.replace, g.dry_run).map_err(|e| match e {
+                InstallError::Invalid(p) => invalid(p),
+                InstallError::Exists(id) => Fail {
+                    hint: Some("pass --replace to replace it".into()),
+                    ..Fail::new(
+                        "extension_exists",
+                        7,
+                        format!("`{id}` is installed already; nothing was changed"),
+                    )
+                },
+                other => Fail::new("io", 1, format!("{other}; nothing was changed")),
+            })?;
+            let mut data = extension_json(&e, &grants);
+            data["dry_run"] = json!(g.dry_run);
+            data["written"] = json!(!g.dry_run);
+            Ok((
+                data,
+                format!(
+                    "{} {} into {}.{}",
+                    if g.dry_run {
+                        "Would install"
+                    } else {
+                        "Installed"
+                    },
+                    e.manifest.id,
+                    e.dir.display(),
+                    if e.manifest.contributes.commands.is_empty() || grants.covers(&e) {
+                        String::new()
+                    } else {
+                        format!(
+                            " Its commands run after `jarak extensions grant {}` (or when the window asks).",
+                            e.manifest.id
+                        )
+                    }
+                ),
+            ))
+        }
+        "extensions.remove" => {
+            let id = one("extension id")?;
+            let dir = ext::remove(root, id, g.dry_run).map_err(|e| match e {
+                InstallError::NotInstalled(id) => Fail::new(
+                    "extension_not_found",
+                    3,
+                    format!("no extension `{id}` is installed"),
+                ),
+                other => Fail::new("io", 1, format!("{other}; nothing was changed")),
+            })?;
+            let had = grants.grants.contains_key(id);
+            if !g.dry_run && grants.revoke(id) {
+                grants.save(gf).map_err(|e| {
+                    Fail::new("io", 1, format!("cannot write {}: {e}", gf.display()))
+                })?;
+            }
+            Ok((
+                json!({ "id": id, "folder": dir.display().to_string(), "grant_ended": had, "dry_run": g.dry_run, "written": !g.dry_run }),
+                format!(
+                    "{} {id}.",
+                    if g.dry_run { "Would remove" } else { "Removed" }
+                ),
+            ))
+        }
+        "extensions.grant" | "extensions.revoke" => {
+            let id = one("extension id")?;
+            let grant = command == "extensions.grant";
+            let changed = if grant {
+                let e = installed(id)?;
+                let before = grants.covers(&e);
+                grants.grant(&e);
+                !before
+            } else {
+                grants.revoke(id)
+            };
+            if changed && !g.dry_run {
+                grants.save(gf).map_err(|e| {
+                    Fail::new("io", 1, format!("cannot write {}: {e}", gf.display()))
+                })?;
+            }
+            let perms: Vec<&str> = grants
+                .grants
+                .get(id)
+                .map(|g| g.permissions.iter().map(|p| p.name()).collect())
+                .unwrap_or_default();
+            Ok((
+                json!({ "id": id, "granted": grant, "permissions": perms, "changed": changed, "dry_run": g.dry_run, "written": changed && !g.dry_run }),
+                match (grant, changed) {
+                    (true, true) => format!("Granted {id}: {}.", perms.join(", ")),
+                    (true, false) => format!("{id} is granted already."),
+                    (false, true) => format!("Revoked {id}'s grant."),
+                    (false, false) => format!("{id} had no grant."),
+                },
+            ))
+        }
+        _ => unreachable!("checked in run"),
+    }
+}
+
 /// What values a setting takes, for the CLI's JSON.
 fn kind_json(k: jarak_core::settings::Kind) -> Value {
     use jarak_core::settings::Kind;
@@ -2761,6 +3022,12 @@ mod tests {
                 "assets.add",
                 "interop.invoke",
                 "debug-info",
+                "extensions.list",
+                "extensions.check",
+                "extensions.install",
+                "extensions.remove",
+                "extensions.grant",
+                "extensions.revoke",
                 "journal.list",
                 "journal.undo",
                 "assets.list",
@@ -3280,6 +3547,54 @@ mod tests {
             let name = c["name"].as_str().unwrap();
             assert!(seen.contains(name), "no example of `jarak {name}`");
         }
+    }
+
+    /// Step 108 (`JARAK-FR-160`, `JARAK-SEC-007`): the sample extension checks, installs (never
+    /// replacing one without --replace), is granted for exactly its manifest, revoked, removed.
+    #[test]
+    fn extensions_install_grant_revoke_and_remove() {
+        let d = temp("extensions");
+        let root = d.join("extensions");
+        let gf = d.join("grants.json");
+        let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/jarak-extensions/mouv.sample-tools");
+        let s = sample.to_string_lossy().into_owned();
+        let g = Global::default();
+        let run = |c: &str, rest: &[&str], g: &Global| extensions_in(c, rest, g, &root, &gf);
+        let (data, _) = run("extensions.check", &[&s], &g).unwrap();
+        assert_eq!(data["id"], "mouv.sample-tools");
+        assert_eq!(data["languages"][0], "TODO list");
+        assert_eq!(data["granted"], false);
+        let dry = Global {
+            dry_run: true,
+            ..Global::default()
+        };
+        run("extensions.install", &[&s], &dry).unwrap();
+        assert!(!root.exists(), "a dry run copies nothing");
+        run("extensions.install", &[&s], &g).unwrap();
+        let e = run("extensions.install", &[&s], &g).unwrap_err();
+        assert_eq!((e.code, e.exit), ("extension_exists", 7));
+        let replace = Global {
+            replace: true,
+            ..Global::default()
+        };
+        run("extensions.install", &[&s], &replace).unwrap();
+        let (data, _) = run("extensions.grant", &["mouv.sample-tools"], &g).unwrap();
+        assert_eq!(data["changed"], true);
+        let (data, _) = run("extensions.list", &[], &g).unwrap();
+        assert_eq!(data["extensions"][0]["granted"], true);
+        let (data, _) = run("extensions.revoke", &["mouv.sample-tools"], &g).unwrap();
+        assert_eq!(data["changed"], true);
+        let e = run("extensions.grant", &["no.such"], &g).unwrap_err();
+        assert_eq!((e.code, e.exit), ("extension_not_found", 3));
+        let broken = d.join("broken");
+        std::fs::create_dir_all(&broken).unwrap();
+        std::fs::write(broken.join("extension.json"), "{}").unwrap();
+        let e = run("extensions.check", &[&broken.to_string_lossy()], &g).unwrap_err();
+        assert_eq!((e.code, e.exit), ("extension_invalid", 4));
+        run("extensions.remove", &["mouv.sample-tools"], &g).unwrap();
+        assert!(!root.join("mouv.sample-tools").exists());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

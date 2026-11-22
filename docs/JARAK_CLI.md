@@ -65,6 +65,8 @@ diagnostics to stderr.
 | `jarak session list` | read | The saved session: documents (path or untitled, active, how shown, caret), the second view, the workspace, recent files |
 | `jarak settings list/get/set/reset` | read / write | The settings ([JARAK_SETTINGS](JARAK_SETTINGS.md)) |
 | `jarak hotkeys list/show/set/disable/reset/check` | read / write | The shortcuts ([HOTKEY_CONTRACT](HOTKEY_CONTRACT.md)) |
+| `jarak extensions list` / `check <folder>` | read | The installed extensions and their grants; every problem of a folder ([JARAK_EXTENSIONS](JARAK_EXTENSIONS.md)) |
+| `jarak extensions install <folder> [--replace]` / `remove <id>` / `grant <id>` / `revoke <id>` `[--dry-run]` | write | Copies a local extension folder (never downloads); removes one; grants its commands exactly its manifest's permissions, or ends that |
 | `jarak interop invoke` | as the capability | One Kim interop capability from a `kim.interop.request` on stdin ([below](#kim-interoperability)) |
 | `jarak open [<file>[:<line>[:<column>]]...] [--language <name>] [--read-only] [--new-window] [--dry-run]` | write, opens a window | Opens the files in the editor window; a running window takes them |
 

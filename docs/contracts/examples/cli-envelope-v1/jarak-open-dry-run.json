@@ -1,23 +1,12 @@
 {
   "command": "open",
-  "data": {
-    "dry_run": true,
-    "gui": "C:\\Users\\me\\AppData\\Local\\mouv\\kim\\tools\\jarak\\0.0.1\\jarak-gui.exe",
-    "language": null,
-    "new_window": false,
-    "read_only": true,
-    "started": false,
-    "targets": [
-      {
-        "column": 5,
-        "exists": true,
-        "folder": false,
-        "line": 2,
-        "path": "C:\\Users\\me\\Documents\\main.rs"
-      }
-    ]
+  "error": {
+    "code": "not_installed",
+    "details": [],
+    "exit_code": 3,
+    "hint": "reinstall Jarak with Kim (`kim install jarak`)",
+    "message": "jarak-gui.exe is not next to jarak.exe"
   },
-  "ok": true,
-  "schema_version": 1,
-  "warnings": []
+  "ok": false,
+  "schema_version": 1
 }

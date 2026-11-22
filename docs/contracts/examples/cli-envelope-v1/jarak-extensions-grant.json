@@ -1,0 +1,18 @@
+{
+  "command": "extensions.grant",
+  "data": {
+    "changed": true,
+    "dry_run": false,
+    "granted": true,
+    "id": "mouv.sample-tools",
+    "permissions": [
+      "run-process",
+      "read-document",
+      "write-document"
+    ],
+    "written": true
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

@@ -1426,3 +1426,39 @@ Tests: core about 1, assets 1 (`add_image`: dry run, line endings, never replaci
 the real commands, and the release `jarak` installed by the debug `kim` from a test-signed
 loopback catalog, its five capabilities found and invoked with Kim's consent rules — PASS on its
 first full run.
+
+## 30. Extensions (Step 108)
+
+[JARAK_EXTENSIONS](JARAK_EXTENSIONS.md) is the user reference; [JARAK_PLUGIN_AUDIT](JARAK_PLUGIN_AUDIT.md)
+the Notepad++ plugin audit.
+
+- `jarak-core::extensions` (no UI toolkit): `Manifest` (serde, unknown fields refused), `check`
+  (schema and version, id, name, version, every path inside the folder, language files through
+  `syntax::parse_udl`, snippet files through `assist::parse_snippets`, commands: unique ids,
+  `program_path` — an `.exe` in the folder or a System32 program by name, never a script — the
+  timeout, and every permission a command `needs` declared), `load_all` (folders named by their
+  id; the others reported, not used), `install` (a checked folder copied file by file — no links,
+  200 files, 50 MiB — into a staging folder, then moved into place; an installed id only with
+  `replace`), `remove`, `Grants` (`load`, atomic `save`, `covers`: the manifest's SHA-256 and the
+  needed permissions; `grant`, `revoke`), `run` (the program without a window from a fresh empty
+  temporary folder with `SystemRoot`, `TEMP`, `TMP` and `PATH` only; a Windows job with
+  kill-on-close, 512 MiB per process and no crash dialogs; stdin written on a thread, stdout and
+  stderr read with limits; killed at its timeout; a non-zero exit reported with stderr's first
+  line; UTF-8 output only).
+- `jarak extensions list/check/install/remove/grant/revoke` (`extensions_in`, testable with any
+  folder); `Paths::extensions_dir`, `Paths::extension_grants_file`; schema `jarak-extension-v1`.
+- `jarak-gui::ext_ui`: `with_extensions` (languages into `user_langs` — kept when the user's
+  languages are read again — and snippets into the snippets), `extension_entries` (palette and
+  Edit menu, `Run::Extension(n)`), `run_extension` (the grant question first:
+  `extension_question_ui`, audit view `extension-question`; Allow grants and saves, Cancel runs
+  nothing), `start_extension` (refused on a read-only document for document outputs, or without a
+  selection for selection input; the document's text and selection remembered; the program on a
+  thread), `extension_frame` (a message, a new document, or — only when the document is still as it
+  was — the selection replaced or the output inserted, in the document's line endings, as one undo
+  step).
+
+Tests: core extensions 4 (the sample checks and is the contract example; checks and declared
+permissions; install / replace / grants follow the manifest / revoke / remove; `sort.exe` with
+input, a failing program, a timeout); CLI 1; window flows 3 (asked once, Cancel, the output undone in
+one step, the count as a message; a document changed meanwhile keeps its change; the question under
+the audit's rules). e2e `step108_jarak_extensions.rs`: PASS on its first run.

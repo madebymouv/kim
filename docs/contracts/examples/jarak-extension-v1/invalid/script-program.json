@@ -1,0 +1,11 @@
+{
+  "schema": "jarak.extension",
+  "schema_version": 1,
+  "id": "example.scripts",
+  "name": "Runs a script",
+  "version": "1.0.0",
+  "contributes": {
+    "commands": [{ "id": "run", "title": "Run", "program": "run.cmd" }]
+  },
+  "permissions": ["run-process"]
+}

@@ -1,0 +1,12 @@
+{
+  "command": "extensions.install",
+  "error": {
+    "code": "extension_exists",
+    "details": [],
+    "exit_code": 7,
+    "hint": "pass --replace to replace it",
+    "message": "`mouv.sample-tools` is installed already; nothing was changed"
+  },
+  "ok": false,
+  "schema_version": 1
+}

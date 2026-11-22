@@ -1,0 +1,14 @@
+{
+  "command": "extensions.revoke",
+  "data": {
+    "changed": true,
+    "dry_run": false,
+    "granted": false,
+    "id": "mouv.sample-tools",
+    "permissions": [],
+    "written": true
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

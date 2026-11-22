@@ -1,0 +1,12 @@
+{
+  "command": "extensions.grant",
+  "error": {
+    "code": "extension_not_found",
+    "details": [],
+    "exit_code": 3,
+    "hint": "`jarak extensions list` names the installed ones",
+    "message": "no extension `no.such-extension` is installed"
+  },
+  "ok": false,
+  "schema_version": 1
+}

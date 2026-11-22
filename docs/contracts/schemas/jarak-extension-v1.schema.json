@@ -1,0 +1,65 @@
+{
+  "$id": "https://github.com/madebymouv/kim/docs/contracts/schemas/jarak-extension-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jarak extension manifest",
+  "description": "extension.json of a Jarak extension folder (Step 108, JARAK-FR-160, JARAK-SEC-007): languages, snippets and commands; a command needs the permissions it uses, and runs only after the user's grant. See docs/JARAK_EXTENSIONS.md; jarak_core::extensions::check also checks paths, programs and permissions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "id", "name", "version"],
+  "properties": {
+    "schema": { "const": "jarak.extension" },
+    "schema_version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
+      "maxLength": 64,
+      "description": "Lower-case letters and digits joined by . or -; the installed folder's name."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "version": { "type": "string", "pattern": "^[0-9]+" },
+    "description": { "type": "string" },
+    "author": { "type": "string" },
+    "contributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "languages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "User-language JSON files inside the folder (Step 98)."
+        },
+        "snippets": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "snippets.json-format files inside the folder (Step 100)."
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "title", "program"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+              "title": { "type": "string", "minLength": 1 },
+              "title_ko": { "type": "string" },
+              "program": {
+                "type": "string",
+                "pattern": "[.][eE][xX][eE]$",
+                "description": "An .exe inside the folder (a relative path) or a Windows program's name found in System32."
+              },
+              "args": { "type": "array", "items": { "type": "string" } },
+              "input": { "enum": ["none", "selection", "document"] },
+              "output": { "enum": ["message", "replace-selection", "insert", "new-document"] },
+              "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 60000 }
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "enum": ["run-process", "read-document", "write-document"] }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "command": "extensions.install",
+  "data": {
+    "commands": [
+      {
+        "id": "sort-lines",
+        "input": "selection",
+        "needs": [
+          "run-process",
+          "read-document",
+          "write-document"
+        ],
+        "program": "sort.exe",
+        "title": "Sort the selected lines (Windows sort)"
+      },
+      {
+        "id": "count-lines",
+        "input": "document",
+        "needs": [
+          "run-process",
+          "read-document"
+        ],
+        "program": "find.exe",
+        "title": "Count the document's lines (Windows find)"
+      }
+    ],
+    "description": "The sample extension of docs/JARAK_EXTENSIONS.md: a TODO list language, two snippets, and two commands that run Windows programs (sort the selected lines with sort.exe; count the document's lines with find.exe).",
+    "dry_run": true,
+    "folder": "C:\\Users\\me\\AppData\\Roaming\\mouv\\jarak\\extensions\\mouv.sample-tools",
+    "granted": false,
+    "id": "mouv.sample-tools",
+    "languages": [
+      "TODO list"
+    ],
+    "name": "Sample tools",
+    "permissions": [
+      "run-process",
+      "read-document",
+      "write-document"
+    ],
+    "sha256": "1213f77472957e2b92fb00fa4720816add585693ef819b206b9343128cf7864e",
+    "snippets": 2,
+    "version": "1.0.0",
+    "written": false
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

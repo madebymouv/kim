@@ -61,6 +61,16 @@ impl Paths {
         self.local.join("replace-journal")
     }
 
+    /// Step 108: installed extensions (one folder per id).
+    pub fn extensions_dir(&self) -> PathBuf {
+        self.config.join("extensions")
+    }
+
+    /// Step 108: the user's grants to extensions.
+    pub fn extension_grants_file(&self) -> PathBuf {
+        self.config.join("extension-grants.json")
+    }
+
     /// Where a second `jarak-gui` start leaves the files for the running window.
     pub fn handoff_dir(&self) -> PathBuf {
         self.local.join("handoff")

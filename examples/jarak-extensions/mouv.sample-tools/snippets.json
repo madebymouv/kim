@@ -1,0 +1,6 @@
+{
+  "TODO list": {
+    "todo": { "body": "TODO ${1:what} ${2:@work}$0", "description": "A new TODO item" },
+    "done": { "body": "DONE ${1:what}$0", "description": "A finished item" }
+  }
+}

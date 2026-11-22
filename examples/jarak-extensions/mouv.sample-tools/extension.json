@@ -1,0 +1,33 @@
+{
+  "schema": "jarak.extension",
+  "schema_version": 1,
+  "id": "mouv.sample-tools",
+  "name": "Sample tools",
+  "version": "1.0.0",
+  "description": "The sample extension of docs/JARAK_EXTENSIONS.md: a TODO list language, two snippets, and two commands that run Windows programs (sort the selected lines with sort.exe; count the document's lines with find.exe).",
+  "author": "mouv",
+  "contributes": {
+    "languages": ["todo-list.json"],
+    "snippets": ["snippets.json"],
+    "commands": [
+      {
+        "id": "sort-lines",
+        "title": "Sort the selected lines (Windows sort)",
+        "title_ko": "선택한 줄 정렬(Windows sort)",
+        "program": "sort.exe",
+        "input": "selection",
+        "output": "replace-selection"
+      },
+      {
+        "id": "count-lines",
+        "title": "Count the document's lines (Windows find)",
+        "title_ko": "문서의 줄 수 세기(Windows find)",
+        "program": "find.exe",
+        "args": ["/c", "/v", ""],
+        "input": "document",
+        "output": "message"
+      }
+    ]
+  },
+  "permissions": ["run-process", "read-document", "write-document"]
+}

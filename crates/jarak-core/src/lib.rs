@@ -22,6 +22,7 @@ pub mod assist;
 pub mod command;
 pub mod document;
 pub mod export;
+pub mod extensions;
 pub mod file;
 pub mod history;
 pub mod hotkeys;

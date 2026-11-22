@@ -62,7 +62,10 @@ Windows print dialog and GDI, PDF through Microsoft Print to PDF, `jarak export`
 the desktop); Step 107 implements `JARAK-FR-150` and `JARAK-FR-151` (the headless command line with
 golden examples, `new`, `convert`, `session list`, `assets add`, `debug-info`, the window's
 command-line options, the interop capabilities for Kim and Ddalgak; [JARAK_CLI](JARAK_CLI.md); the
-desktop demonstrations with Subak and Noeul are still to be done);
+desktop demonstrations with Subak and Noeul are still to be done); Step 108 implements
+`JARAK-FR-160`, `JARAK-FR-161` and `JARAK-SEC-007` (extensions with declared, granted and revocable
+permissions, `jarak extensions`, the sample extension; the plugin audit;
+[JARAK_EXTENSIONS](JARAK_EXTENSIONS.md), [JARAK_PLUGIN_AUDIT](JARAK_PLUGIN_AUDIT.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

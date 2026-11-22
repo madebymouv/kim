@@ -166,6 +166,66 @@
       {
         "dry_run": false,
         "effect": "read",
+        "name": "extensions.list",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "The installed extensions (languages, snippets, commands), their grants and the folders that do not check; changes nothing",
+        "usage": "jarak extensions list [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
+        "name": "extensions.check",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Every problem of an extension folder (manifest, paths, programs, permissions); changes nothing",
+        "usage": "jarak extensions check <folder> [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "extensions.install",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Copies a local extension folder that checks into the extensions folder (never downloads); an installed one with the same id only with --replace",
+        "usage": "jarak extensions install <folder> [--replace] [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "extensions.remove",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Removes an installed extension's folder and its grant",
+        "usage": "jarak extensions remove <id> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "extensions.grant",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Allows an extension's commands the permissions its manifest names, for exactly this manifest (a changed manifest needs a new grant)",
+        "usage": "jarak extensions grant <id> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": true,
+        "effect": "write",
+        "name": "extensions.revoke",
+        "network": false,
+        "opens_window": false,
+        "requires_yes": false,
+        "summary": "Ends an extension's grant",
+        "usage": "jarak extensions revoke <id> [--dry-run] [--json]"
+      },
+      {
+        "dry_run": false,
+        "effect": "read",
         "name": "journal.list",
         "network": false,
         "opens_window": false,
@@ -352,7 +412,7 @@
     "schema_version": 1,
     "summary": "Pre-alpha (Step 91): the headless CLI (file inspection, image assets of Markdown documents) and the editor window (editing, files, Markdown preview, Ctrl+V images)",
     "tool": "jarak",
-    "version": "0.0.29"
+    "version": "0.0.30"
   },
   "ok": true,
   "schema_version": 1,

@@ -79,6 +79,8 @@ pub enum Run {
     Export(u8),
     /// Step 107 (HELP-10): the debug information to the clipboard.
     DebugInfo,
+    /// Step 108: the `n`th command of the installed extensions.
+    Extension(u16),
 }
 
 /// The menu an entry belongs to.

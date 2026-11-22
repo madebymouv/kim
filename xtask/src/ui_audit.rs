@@ -175,6 +175,8 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 "recovery",
                 // Step 106: publishing would replace files.
                 "publish-question",
+                // Step 108: an extension asks for its grant.
+                "extension-question",
                 // Step 105: every section of the Settings window (its own window).
                 "settings-general",
                 "settings-editor",

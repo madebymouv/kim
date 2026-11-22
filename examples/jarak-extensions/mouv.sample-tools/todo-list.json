@@ -1,0 +1,11 @@
+{
+  "name": "TODO list",
+  "extensions": ["todo"],
+  "case_sensitive": true,
+  "line_comment": ["#"],
+  "keywords": ["TODO", "DOING", "DONE", "WAIT"],
+  "types": ["@home", "@work", "@phone"],
+  "constants": ["!high", "!low"],
+  "operators": "-*+:",
+  "numbers": true
+}

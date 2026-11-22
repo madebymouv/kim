@@ -6113,3 +6113,132 @@ fn copy_debug_info_names_the_version_and_windows() {
     assert!(t.contains("Windows 10."), "{t}");
     assert_eq!(h.state().message.as_deref(), Some("Debug info copied"));
 }
+
+// ---- Step 108: extensions -------------------------------------------------------------------
+
+/// The sample extension installed into `root` (a copy of examples/jarak-extensions).
+fn install_sample(root: &std::path::Path) {
+    let sample = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/jarak-extensions/mouv.sample-tools");
+    jarak_core::extensions::install(&sample, root, false, false).unwrap();
+}
+
+/// Runs frames until the extension command has finished (it runs on a thread).
+fn wait_extension(h: &mut Harness<'static, JarakApp>) {
+    for _ in 0..500 {
+        let _ = h.try_run();
+        if h.state().ext_running.is_none() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("the extension command did not finish");
+}
+
+/// Step 108 (`JARAK-FR-160`, `JARAK-SEC-007`): an extension's language and commands are there;
+/// the first run asks for the grant (Cancel runs nothing); once allowed, the program's output
+/// replaces the selection as one undo step and the grant is kept for this manifest.
+#[test]
+fn an_extension_command_asks_once_and_its_output_is_undoable() {
+    let d = temp("ext-run");
+    let root = d.join("extensions");
+    install_sample(&root);
+    let doc = d.join("list.txt");
+    std::fs::write(&doc, "pear\r\napple\r\nfig\r\n").unwrap();
+    let (a, _) = app_with(&[doc.to_str().unwrap()], Arc::default());
+    let grants = d.join("grants.json");
+    let mut h = harness(a.with_extensions(&root, grants.clone()));
+    assert!(
+        h.state().user_langs.iter().any(|l| l.name == "TODO list"),
+        "the extension's language"
+    );
+    let entries = h.state().extension_entries_for_test();
+    assert_eq!(entries.len(), 2);
+    assert!(entries[0].contains("Sort the selected lines"));
+    h.state_mut().tab_mut().file.doc.select_all();
+    h.state_mut().run_extension(0);
+    h.run();
+    assert!(h.state().ext_question.is_some(), "asked first");
+    assert!(h.query_by_label_contains("asks to run sort.exe").is_some());
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert_eq!(
+        doc_text(&h),
+        "pear\r\napple\r\nfig\r\n",
+        "Cancel runs nothing"
+    );
+    assert!(!grants.exists());
+    h.state_mut().run_extension(0);
+    h.run();
+    h.get_by_label("Allow and run").click();
+    wait_extension(&mut h);
+    assert_eq!(doc_text(&h), "apple\r\nfig\r\npear\r\n");
+    assert!(grants.is_file(), "the grant is kept");
+    assert!(h.state_mut().tab_mut().file.doc.undo());
+    assert_eq!(doc_text(&h), "pear\r\napple\r\nfig\r\n", "one undo step");
+    // Granted now: the count runs without asking; its result is a message.
+    h.state_mut().run_extension(1);
+    assert!(h.state().ext_question.is_none());
+    wait_extension(&mut h);
+    let msg = h.state().message.clone().unwrap_or_default();
+    assert!(
+        msg.contains("Count the document's lines") && msg.contains('3'),
+        "{msg}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// A document changed while the command ran keeps the change; the output is not used.
+#[test]
+fn an_extension_output_never_overwrites_a_document_changed_meanwhile() {
+    use jarak_core::extensions::Output;
+    let d = temp("ext-changed");
+    let doc = d.join("a.txt");
+    std::fs::write(&doc, "b\na\n").unwrap();
+    let (a, _) = app_with(&[doc.to_str().unwrap()], Arc::default());
+    let mut h = harness(a);
+    let id = h.state().tab().id;
+    let result = Arc::new(Mutex::new(Some(Ok("a\nb\n".to_string()))));
+    h.state_mut().ext_running = Some(jarak_gui::ext_ui::ExtRun {
+        title: "Sort".into(),
+        output: Output::ReplaceSelection,
+        tab: id,
+        before: "something else".into(),
+        range: (0, 4),
+        result,
+    });
+    h.run();
+    assert_eq!(doc_text(&h), "b\na\n");
+    assert!(
+        h.state()
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("changed while it ran"))
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 108: the grant question under the UI audit's rules (English and Korean).
+#[test]
+fn the_extension_question_passes_the_ui_audit_rules() {
+    let (mut h, d) = open_doc("audit108", "a.txt", "x\n");
+    for lang in [Lang::En, Lang::Ko] {
+        h.state_mut().lang = lang;
+        h.state_mut().prepare_audit("extension-question");
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", "extension-question");
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{lang:?}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+        assert!(r.components.iter().any(|c| c.id == "extension:question"));
+        h.state_mut().ext_question = None;
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}

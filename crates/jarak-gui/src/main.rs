@@ -325,6 +325,8 @@ fn run(
                 }
                 // Step 98: the user-defined languages.
                 app = app.with_languages(p.languages_dir());
+                // Step 108: the installed extensions (after the user's languages).
+                app = app.with_extensions(&p.extensions_dir(), p.extension_grants_file());
                 // Step 100: the snippets file and Notepad++ API files.
                 app = app.with_assist(p.config.clone());
                 // Step 102: the saved macros and run commands.

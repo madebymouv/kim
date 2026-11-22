@@ -1,6 +1,6 @@
 [package]
 name = "jarak-core"
-version = "0.0.29"
+version = "0.0.30"
 description = "Jarak's document model and editing engine: no GUI toolkit, no windowing, no clipboard (ADR 0102)"
 edition.workspace = true
 rust-version.workspace = true
@@ -48,7 +48,8 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 # GetACP (the system ANSI code page) and ReplaceFileW (atomic save keeping the attributes).
 # Step 104: OpenProcess / GetProcessTimes / GetExitCodeProcess tell whether the window that wrote
 # recovery snapshots still runs. Step 106: printing through GDI and the spooler (CreateDCW,
-# StartDocW with an output file, EnumPrintersW), GetLocalTime for the header's date.
+# StartDocW with an output file, EnumPrintersW), GetLocalTime for the header's date. Step 108:
+# a Windows job (CreateJobObjectW) around an extension command's program.
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
@@ -57,6 +58,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_Storage_Xps",
+    "Win32_System_JobObjects",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
 ] }

@@ -220,6 +220,13 @@ impl JarakApp {
         };
         let (ok, bad) = syntax::load_udls(dir);
         self.user_langs = ok;
+        // Step 108: the extensions' languages stay.
+        let ext: Vec<_> = self
+            .extensions
+            .iter()
+            .flat_map(|e| e.languages.iter().cloned())
+            .collect();
+        self.user_langs.extend(ext);
         if let Some((p, e)) = bad.first() {
             self.message = Some(format!("{}: {e}", p.display()));
         }

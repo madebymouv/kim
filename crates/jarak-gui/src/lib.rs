@@ -17,6 +17,7 @@ pub mod column;
 pub mod docops;
 pub mod encoding;
 pub mod export_ui;
+pub mod ext_ui;
 pub mod find;
 pub mod handoff;
 pub mod hashdlg;
@@ -567,6 +568,13 @@ pub struct JarakApp {
     /// job on its way.
     pub printers: Arc<dyn jarak_core::print::Printers>,
     pub printing: Option<print_ui::Running>,
+    /// Step 108: the installed extensions, the user's grants, the grant question and the
+    /// command on its way.
+    pub extensions: Vec<jarak_core::extensions::Extension>,
+    pub ext_grants: jarak_core::extensions::Grants,
+    pub ext_grants_file: Option<PathBuf>,
+    pub ext_question: Option<ext_ui::ExtQuestion>,
+    pub ext_running: Option<ext_ui::ExtRun>,
     /// Step 105: the settings applied to the window, the Settings window, and what was applied
     /// (the language is fixed for the run when `--lang` named it, or by a test).
     pub prefs: prefs::Prefs,
@@ -1046,6 +1054,7 @@ impl JarakApp {
             palette::Run::Binary(k) => self.binary_tool(k),
             palette::Run::Disk(k) => self.disk_tool(k),
             palette::Run::Export(k) => self.export_tool(k),
+            palette::Run::Extension(k) => self.run_extension(k),
             palette::Run::DebugInfo => {
                 let text = jarak_core::about::debug_text("jarak-gui");
                 self.message = Some(if self.clipboard.set_text(&text) {
@@ -1313,6 +1322,7 @@ impl JarakApp {
         entries.extend(self.language_entries());
         entries.extend(self.macro_entries());
         entries.extend(self.encoding_entries());
+        entries.extend(self.extension_entries());
         let found = palette::filter(&entries, &st.query);
         st.selected = st.selected.min(found.len().saturating_sub(1));
         let (up, down, enter) = ctx.input(|i| {
@@ -1431,6 +1441,7 @@ impl JarakApp {
         entries.extend(self.language_entries());
         entries.extend(self.macro_entries());
         entries.extend(self.encoding_entries());
+        entries.extend(self.extension_entries());
         let lang = self.lang;
         let mut run = None;
         let mut show = None;
@@ -1752,6 +1763,11 @@ impl JarakApp {
             publish_question: None,
             printers: Arc::new(jarak_core::print::NoPrinters),
             printing: None,
+            extensions: Vec::new(),
+            ext_grants: jarak_core::extensions::Grants::default(),
+            ext_grants_file: None,
+            ext_question: None,
+            ext_running: None,
             prefs: prefs::Prefs::default(),
             settings_win: None,
             lang_fixed: true,
@@ -1858,7 +1874,7 @@ impl JarakApp {
             // the Go to dialog.
             "syntax" | "functions" | "goto" | "completion" | "hint" | "docmap" | "quick-open"
             | "summary" | "run" | "macros" | "symbols" | "encoding-question" | "disk-question"
-            | "recovery" | "publish-question" => {
+            | "recovery" | "publish-question" | "extension-question" => {
                 let dir = self
                     .tab()
                     .file
@@ -1920,6 +1936,14 @@ fn main() {
                         self.watch
                             .questions
                             .push_back(watch::DiskQuestion::Conflict(id));
+                    } else if screen == "extension-question" {
+                        // Step 108: the sample extension asks for its grant.
+                        let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("../../examples/jarak-extensions/mouv.sample-tools");
+                        if let Ok(e) = jarak_core::extensions::check(&sample) {
+                            self.extensions = vec![e];
+                            self.ext_question = Some(ext_ui::ExtQuestion { ext: 0, cmd: 0 });
+                        }
                     } else if screen == "publish-question" {
                         // Step 106: publishing into a folder that holds two of its files.
                         let id = self.tab().id;
@@ -3227,6 +3251,8 @@ fn main() {
         self.recovery_offer_ui(&ctx, &c);
         self.publish_question_ui(&ctx, &c);
         self.print_frame(&ctx);
+        self.extension_question_ui(&ctx, &c);
+        self.extension_frame(&ctx);
         // Step 105: the Settings window (its audit is written by that window, ADR 0100).
         self.settings_window(&ctx);
         if kim_ui::inspect::active() && !self.audit_settings {

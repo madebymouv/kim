@@ -1,0 +1,16 @@
+{
+  "command": "extensions.check",
+  "error": {
+    "code": "extension_invalid",
+    "details": [
+      "the id `Bad Id` is not lower-case letters and digits joined by `.` or `-` (64 at most)",
+      "the command `run`: `run.cmd` is not an .exe (scripts and shell commands are not run)",
+      "the command `run` needs `read-document`; the manifest's permissions must name it"
+    ],
+    "exit_code": 4,
+    "hint": null,
+    "message": "the extension does not check: the id `Bad Id` is not lower-case letters and digits joined by `.` or `-` (64 at most); the command `run`: `run.cmd` is not an .exe (scripts and shell commands are not run); the command `run` needs `read-document`; the manifest's permissions must name it"
+  },
+  "ok": false,
+  "schema_version": 1
+}
