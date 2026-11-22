@@ -281,6 +281,42 @@ pub fn decode(bytes: &[u8], fallback: TextEncoding) -> Decoded {
     } else {
         (fallback, false, bytes)
     };
+    decode_body(bytes, body, encoding, bom)
+}
+
+/// Step 103 (Reinterpret): `bytes` decoded as `format.encoding` whatever they look like. A BOM of
+/// that encoding at the start is taken off (and kept for saving); `format.bom` asks for one.
+pub fn decode_as(bytes: &[u8], format: Format) -> Decoded {
+    let mark: &[u8] = match format.encoding {
+        TextEncoding::Utf8 => b"\xEF\xBB\xBF",
+        TextEncoding::Utf16Le => b"\xFF\xFE",
+        TextEncoding::Utf16Be => b"\xFE\xFF",
+        TextEncoding::Legacy(_) => b"",
+    };
+    let had = !mark.is_empty() && bytes.starts_with(mark);
+    let body = if had { &bytes[mark.len()..] } else { bytes };
+    let mut d = decode_body(
+        bytes,
+        body,
+        format.encoding,
+        had || (format.bom && !mark.is_empty()),
+    );
+    // Asked for a BOM the file does not have: the text is the same, saving adds it.
+    if format.bom && !had && !mark.is_empty() {
+        d.lossless = d.lossless
+            || encode(
+                &d.text,
+                Format {
+                    bom: false,
+                    ..d.format
+                },
+            )
+            .is_ok_and(|b| b == bytes);
+    }
+    d
+}
+
+fn decode_body(bytes: &[u8], body: &[u8], encoding: TextEncoding, bom: bool) -> Decoded {
     let (text, mut lossless) = match encoding {
         TextEncoding::Utf8 => match std::str::from_utf8(body) {
             Ok(s) => (s.to_string(), true),
@@ -330,6 +366,77 @@ pub fn decode(bytes: &[u8], fallback: TextEncoding) -> Decoded {
         binary,
         eol,
     }
+}
+
+/// Step 103: the character sets of the Encoding menu by script (Notepad++'s groups): the group,
+/// the name shown, and the WHATWG label `encoding_rs` knows. ISO 8859-1 and ISO 8859-9 are read as
+/// Windows-1252 and Windows-1254, as browsers do (WHATWG).
+pub const CHARSETS: &[(&str, &str, &str, &str)] = &[
+    ("Korean", "한국어", "EUC-KR / Windows-949", "euc-kr"),
+    ("Japanese", "일본어", "Shift-JIS", "shift_jis"),
+    ("Japanese", "일본어", "EUC-JP", "euc-jp"),
+    ("Japanese", "일본어", "ISO-2022-JP", "iso-2022-jp"),
+    ("Chinese", "중국어", "GB2312 / GBK", "gbk"),
+    ("Chinese", "중국어", "GB18030", "gb18030"),
+    ("Chinese", "중국어", "Big5", "big5"),
+    ("Cyrillic", "키릴", "Windows-1251", "windows-1251"),
+    ("Cyrillic", "키릴", "KOI8-R", "koi8-r"),
+    ("Cyrillic", "키릴", "KOI8-U", "koi8-u"),
+    ("Cyrillic", "키릴", "ISO 8859-5", "iso-8859-5"),
+    ("Cyrillic", "키릴", "OEM 866", "ibm866"),
+    (
+        "Western European",
+        "서유럽",
+        "Windows-1252 (ISO 8859-1)",
+        "windows-1252",
+    ),
+    ("Western European", "서유럽", "ISO 8859-15", "iso-8859-15"),
+    ("Central European", "중유럽", "Windows-1250", "windows-1250"),
+    ("Central European", "중유럽", "ISO 8859-2", "iso-8859-2"),
+    ("Greek", "그리스어", "Windows-1253", "windows-1253"),
+    ("Greek", "그리스어", "ISO 8859-7", "iso-8859-7"),
+    (
+        "Turkish",
+        "터키어",
+        "Windows-1254 (ISO 8859-9)",
+        "windows-1254",
+    ),
+    ("Hebrew", "히브리어", "Windows-1255", "windows-1255"),
+    ("Hebrew", "히브리어", "ISO 8859-8", "iso-8859-8"),
+    ("Arabic", "아랍어", "Windows-1256", "windows-1256"),
+    ("Arabic", "아랍어", "ISO 8859-6", "iso-8859-6"),
+    ("Baltic", "발트어", "Windows-1257", "windows-1257"),
+    ("Baltic", "발트어", "ISO 8859-4", "iso-8859-4"),
+    ("Baltic", "발트어", "ISO 8859-13", "iso-8859-13"),
+    ("Vietnamese", "베트남어", "Windows-1258", "windows-1258"),
+    ("Thai", "태국어", "Windows-874", "windows-874"),
+];
+
+/// Step 103: the characters of `text` that `encoding` cannot hold: how many, and the char index and
+/// character of the first ones (at most `keep`).
+pub fn unmappable(text: &str, encoding: TextEncoding, keep: usize) -> (usize, Vec<(usize, char)>) {
+    let TextEncoding::Legacy(e) = encoding else {
+        return (0, Vec::new());
+    };
+    let mut count = 0;
+    let mut first = Vec::new();
+    let mut enc = e.new_encoder();
+    let mut buf = [0u8; 16];
+    for (i, ch) in text.chars().enumerate() {
+        if ch.is_ascii() && !matches!(e.name(), "ISO-2022-JP") {
+            continue;
+        }
+        let mut b = [0u8; 4];
+        let s = ch.encode_utf8(&mut b);
+        let (r, _, _) = enc.encode_from_utf8_without_replacement(s, &mut buf, false);
+        if matches!(r, encoding_rs::EncoderResult::Unmappable(_)) {
+            count += 1;
+            if first.len() < keep {
+                first.push((i, ch));
+            }
+        }
+    }
+    (count, first)
 }
 
 /// UTF-16 without a byte-order mark: ASCII-heavy text has a zero byte in every other position.
@@ -662,6 +769,27 @@ impl FileDocument {
     fn write_to(&self, path: &Path) -> Result<(), SaveError> {
         let bytes = self.bytes().map_err(SaveError::Unmappable)?;
         save_atomic(path, &bytes).map_err(SaveError::Io)
+    }
+
+    /// Step 103: reads the file again as `format` (Reinterpret: the bytes stay, only how they are
+    /// read changes), discarding the text in memory (the caller asked the user first).
+    pub fn reinterpret(&mut self, format: Format, limit: u64) -> Result<(), OpenError> {
+        let Some(path) = self.path.clone() else {
+            return Err(OpenError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                "the document has no file",
+            )));
+        };
+        let meta = std::fs::metadata(&path).map_err(OpenError::Io)?;
+        if meta.len() > limit {
+            return Err(OpenError::TooLarge {
+                size: meta.len(),
+                limit,
+            });
+        }
+        let bytes = std::fs::read(&path).map_err(OpenError::Io)?;
+        *self = FileDocument::from_decoded(Some(path), decode_as(&bytes, format));
+        Ok(())
     }
 
     /// Reads the file again, discarding the text in memory (the caller asked the user first).

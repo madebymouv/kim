@@ -61,6 +61,16 @@ pub enum Run {
     Macro(u8),
     PlayMacro(u16),
     RunCommand(u16),
+    /// Step 103: reinterpret as / convert to an Encoding menu target (by index), EOL conversion
+    /// (0 Windows, 1 Unix, 2 Macintosh), the encoding of new documents (0 UTF-8, 1 UTF-8-BOM,
+    /// 2 ANSI), Show Symbol (see `JarakApp::symbols_tool`), binary content (0 copy, 1 cut,
+    /// 2 paste).
+    Reinterpret(u16),
+    ConvertTo(u16),
+    Eol(u8),
+    NewEncoding(u8),
+    Symbols(u8),
+    Binary(u8),
 }
 
 /// The menu an entry belongs to.
@@ -75,10 +85,12 @@ pub enum Menu {
     Window,
     Markdown,
     Language,
+    /// Step 103.
+    Encoding,
 }
 
 impl Menu {
-    pub const ALL: [Menu; 9] = [
+    pub const ALL: [Menu; 10] = [
         Menu::File,
         Menu::Edit,
         Menu::Search,
@@ -88,6 +100,7 @@ impl Menu {
         Menu::Window,
         Menu::Markdown,
         Menu::Language,
+        Menu::Encoding,
     ];
 
     /// The menu's name (English, Korean).
@@ -102,6 +115,7 @@ impl Menu {
             Menu::Window => ("Window", "창"),
             Menu::Markdown => ("Markdown", "Markdown"),
             Menu::Language => ("Language", "언어"),
+            Menu::Encoding => ("Encoding", "인코딩"),
         }
     }
 }
@@ -1445,6 +1459,119 @@ pub fn entries() -> Vec<Entry> {
             "기본 브라우저로 파일 보기",
             Run::Macro(4),
             M::View,
+        ),
+        // Step 103: line endings, new documents' encoding, Show Symbol, binary content.
+        run(
+            "eol.windows",
+            "EOL: Windows (CR LF)",
+            "줄 끝: Windows (CR LF)",
+            Run::Eol(0),
+            M::Edit,
+        ),
+        run(
+            "eol.unix",
+            "EOL: Unix (LF)",
+            "줄 끝: Unix (LF)",
+            Run::Eol(1),
+            M::Edit,
+        ),
+        run(
+            "eol.mac",
+            "EOL: Macintosh (CR)",
+            "줄 끝: Macintosh (CR)",
+            Run::Eol(2),
+            M::Edit,
+        ),
+        run(
+            "encoding.new-utf8",
+            "Encoding: new documents in UTF-8",
+            "인코딩: 새 문서는 UTF-8",
+            Run::NewEncoding(0),
+            M::Encoding,
+        ),
+        run(
+            "encoding.new-utf8-bom",
+            "Encoding: new documents in UTF-8-BOM",
+            "인코딩: 새 문서는 UTF-8-BOM",
+            Run::NewEncoding(1),
+            M::Encoding,
+        ),
+        run(
+            "encoding.new-ansi",
+            "Encoding: new documents in ANSI",
+            "인코딩: 새 문서는 ANSI",
+            Run::NewEncoding(2),
+            M::Encoding,
+        ),
+        run(
+            "view.show-spaces",
+            "Show spaces and tabs",
+            "공백과 탭 보이기",
+            Run::Symbols(0),
+            M::View,
+        ),
+        run(
+            "view.show-eol",
+            "Show the line endings",
+            "줄 끝 보이기",
+            Run::Symbols(1),
+            M::View,
+        ),
+        run(
+            "view.show-controls",
+            "Show control characters and Unicode line endings",
+            "제어 문자와 유니코드 줄 끝 보이기",
+            Run::Symbols(2),
+            M::View,
+        ),
+        run(
+            "view.show-all",
+            "Show all characters",
+            "모든 문자 보이기",
+            Run::Symbols(3),
+            M::View,
+        ),
+        run(
+            "view.indent-guides",
+            "Show the indent guides",
+            "들여쓰기 안내선 보이기",
+            Run::Symbols(4),
+            M::View,
+        ),
+        run(
+            "view.wrap-symbol",
+            "Show the wrap symbol",
+            "줄 바꿈 기호 보이기",
+            Run::Symbols(5),
+            M::View,
+        ),
+        run(
+            "view.edge-line",
+            "Show the edge line (the settings' columns, 80 by default)",
+            "경계선 보이기(설정의 열, 기본 80)",
+            Run::Symbols(6),
+            M::View,
+        ),
+        run(
+            "edit.copy-binary",
+            "Copy binary content",
+            "바이너리 내용 복사",
+            Run::Binary(0),
+            M::Edit,
+        ),
+        run(
+            "edit.cut-binary",
+            "Cut binary content",
+            "바이너리 내용 잘라내기",
+            Run::Binary(1),
+            M::Edit,
+        ),
+        run(
+            "edit.paste-binary",
+            "Paste binary content",
+            "바이너리 내용 붙여넣기",
+            Run::Binary(2),
+            M::Edit,
         ),
     ]);
     for c in COMMANDS {

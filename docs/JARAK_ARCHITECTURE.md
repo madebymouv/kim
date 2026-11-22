@@ -1085,3 +1085,74 @@ elevation refusal; the real runner; the manager changing a shortcut and removing
 HTML file opened in the browser; the dialogs under the UI audit's rules, headless). UI audit views
 `run`, `macros`. e2e `step102_jarak_macros.rs` — compiled; its first run and the real-desktop check
 (recording and playing back in the real window) wait until visible test windows are allowed.
+
+## 25. The Encoding menu, line endings and Show Symbol (Step 103)
+
+`JARAK-FR-025`, `JARAK-FR-026`, `JARAK-FR-037`, the menu of `JARAK-FR-021`, the clickable status of
+`JARAK-FR-035`, binary content of `JARAK-FR-027`; matrix rows `ENC-01`…`ENC-16`, `BLANK-08`,
+`VIEW-06`…`VIEW-11`, `UI-06`, `EDIT-12`.
+
+- **The character sets** (`file::CHARSETS`, `encoding_rs`): Korean (EUC-KR / Windows-949), Japanese
+  (Shift-JIS, EUC-JP, ISO-2022-JP), Chinese (GB2312 / GBK, GB18030, Big5), Cyrillic (Windows-1251,
+  KOI8-R, KOI8-U, ISO 8859-5, OEM 866), Western European (Windows-1252, ISO 8859-15), Central
+  European (Windows-1250, ISO 8859-2), Greek (Windows-1253, ISO 8859-7), Turkish (Windows-1254),
+  Hebrew (Windows-1255, ISO 8859-8), Arabic (Windows-1256, ISO 8859-6), Baltic (Windows-1257,
+  ISO 8859-4, ISO 8859-13), Vietnamese (Windows-1258), Thai (Windows-874). ISO 8859-1 and
+  ISO 8859-9 are read as Windows-1252 and Windows-1254, as browsers do (WHATWG). Windows-1258
+  holds Vietnamese with combining marks; precomposed letters it lacks (ế) are unmappable.
+- **The Encoding menu** (palette and menu bar), with targets UTF-8, UTF-8-BOM, UTF-16 BE BOM,
+  UTF-16 LE BOM, ANSI (the system code page) and every character set:
+  - *Reinterpret as …*: `file::decode_as` reads the file's bytes again in that encoding (a BOM of
+    it is taken off and kept). Nothing is written. A document with unsaved changes asks first, and
+    an untitled one has no bytes to read. A lossy reading stays read-only; reinterpreting with the
+    right encoding makes it writable.
+  - *Convert to …*: the text stays and the next save writes the new encoding.
+    `file::unmappable` names the characters it cannot hold (how many, the first ones with their
+    lines) and asks; agreeing replaces them with `?` in one undo step. Saving still refuses any
+    character that cannot be written.
+  - *New documents in UTF-8 / UTF-8-BOM / ANSI* (setting `new_encoding`).
+  - **The status bar**: a click on the encoding, the line ending or the language opens the palette
+    on those entries.
+- **EOL conversion** (Edit; Windows CR LF, Unix LF, Macintosh CR): `Document::convert_eol` rewrites
+  each line ending in one undo step; bookmarks and other marks stay on their lines. A text whose
+  line endings are all of one kind now makes it the document's (as on open; after undoing a
+  conversion too).
+- **Show Symbol** (View; each a setting):
+  - spaces and tabs: a dot, an arrow;
+  - line endings: a CRLF / LF / CR / NEL / LS / PS tag after the line;
+  - control characters: drawn as their names (`NUL`, `ESC`, `DEL`, `C1`, `ZWSP`, `ZWNJ`, `ZWJ`,
+    `LRM`, `RLM`, `WJ`, `BOM`, `SHY`) in a box;
+  - *Show all characters*: the three above together;
+  - indent guides: dotted, at each level of the leading whitespace (a blank line takes the smaller
+    of its neighbours');
+  - the wrap symbol at the end of each wrapped row;
+  - edge lines at the columns of `edge_columns` (80 by default).
+
+  Only the lines on screen are drawn.
+- **Binary content** (Edit): *copy*, *cut* and *paste binary content* keep NUL characters. They use
+  a clipboard format of their own (`Jarak Binary Text`: the UTF-16 length, then the units),
+  because plain text stops at the first NUL for every other program.
+
+Tests:
+- `file`, 4 tests:
+  - every character set round-trips a sample in its script and is decoded back losslessly;
+  - UTF-8 and UTF-16 with and without BOM are reinterpreted;
+  - Korean bytes are garbled as Windows-1252 and right again as EUC-KR;
+  - lossy conversions are found; Reinterpret reads the file again and never writes it.
+- `document`: EOL conversion and undo, marking unsaved, replacing characters.
+- `view`: control character names.
+- Window flows, 5 new:
+  - Reinterpret of a Shift-JIS file opened with the Korean fallback, asking about unsaved changes;
+  - Convert naming the unmappable characters, Cancel, replacing, saving in Windows-1252 and in
+    UTF-16 LE BOM;
+  - the status bar's encoding and line ending opening their entries;
+  - EOL conversion and undo, the new-document encoding;
+  - Show Symbol reaching the view, binary content keeping NUL through the clipboard;
+  - the question and every symbol under the UI audit's rules, headless.
+- An older test now expects LF where its text held only LF line endings.
+
+The real `jarak info --fallback` reads files that Python's codecs wrote (Shift-JIS, EUC-KR, KOI8-R,
+Windows-874, GB18030, Windows-1256) as those encodings, losslessly, without changing them. UI
+audit views `symbols`, `encoding-question`. e2e `step103_jarak_encodings.rs` (every character set
+through the real `jarak info`, the two views) is compiled. Its first run, the real-desktop check
+and the real Windows clipboard (binary content) wait until the maintainer is away from the PC.

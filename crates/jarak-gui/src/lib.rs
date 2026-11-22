@@ -15,6 +15,7 @@ pub mod assist;
 pub mod clipboard;
 pub mod column;
 pub mod docops;
+pub mod encoding;
 pub mod find;
 pub mod handoff;
 pub mod hashdlg;
@@ -207,6 +208,14 @@ impl Tab {
                     prev_cr = chunk.ends_with('\r');
                 }
                 let mixed = counts.mixed();
+                // Step 103: one kind of line ending in the text is the document's (after an undo of
+                // an EOL conversion too), so new lines and the status bar follow the text.
+                if !mixed
+                    && let Some(dominant) = counts.dominant()
+                    && dominant != self.file.doc.eol
+                {
+                    self.file.doc.eol = dominant;
+                }
                 self.eol_cache = Some((state, mixed));
                 mixed
             }
@@ -498,6 +507,11 @@ pub struct JarakApp {
     runner: Arc<dyn macros::Runner>,
     pub macro_dialog: Option<macros::Dialog>,
     pub search_engine: String,
+    /// Step 103: the Encoding menu's question, the Show Symbol settings, the format of new
+    /// documents.
+    pub enc_question: Option<encoding::Question>,
+    pub symbols: encoding::Symbols,
+    pub new_format: file::Format,
 }
 
 /// Step 102: the web search's address unless the settings name another (`$(QUERY)`: the words).
@@ -568,6 +582,19 @@ impl JarakApp {
         if let Some(s) = read_setting(&path, "search_engine").filter(|s| s.contains("$(QUERY)")) {
             self.search_engine = s;
         }
+        // Step 103: Show Symbol and the encoding of new documents.
+        self.symbols = encoding::Symbols::read(&path);
+        self.new_format = match read_setting(&path, "new_encoding").as_deref() {
+            Some("utf-8-bom") => file::Format {
+                encoding: TextEncoding::Utf8,
+                bom: true,
+            },
+            Some("ansi") => file::Format {
+                encoding: file::system_encoding(),
+                bom: false,
+            },
+            _ => file::Format::utf8(),
+        };
         self.settings = Some(path);
         self
     }
@@ -804,6 +831,10 @@ impl JarakApp {
             t.view.bookmarks = marks;
             // Step 101: the change history of the lines on screen.
             t.view.changes = t.file.doc.changed_lines_in(first, last);
+            // Step 103: Show Symbol.
+            if t.view.symbols != self.symbols {
+                t.view.symbols = self.symbols.clone();
+            }
         }
         if self.editing != Editing::Vim {
             let v = &mut self.tabs[i].view;
@@ -913,6 +944,12 @@ impl JarakApp {
             palette::Run::Macro(k) => self.macro_tool(k),
             palette::Run::PlayMacro(i) => self.play_saved(usize::from(i)),
             palette::Run::RunCommand(i) => self.confirm_command(usize::from(i)),
+            palette::Run::Reinterpret(i) => self.reinterpret(usize::from(i), false),
+            palette::Run::ConvertTo(i) => self.convert_to(usize::from(i), false),
+            palette::Run::Eol(k) => self.convert_eol(k),
+            palette::Run::NewEncoding(k) => self.new_encoding_tool(k),
+            palette::Run::Symbols(k) => self.symbols_tool(k),
+            palette::Run::Binary(k) => self.binary_tool(k),
             palette::Run::InFiles(k) => match k {
                 0 => self.find_all_docs(false),
                 1 => self.find_all_docs(true),
@@ -1166,6 +1203,7 @@ impl JarakApp {
         }
         entries.extend(self.language_entries());
         entries.extend(self.macro_entries());
+        entries.extend(self.encoding_entries());
         let found = palette::filter(&entries, &st.query);
         st.selected = st.selected.min(found.len().saturating_sub(1));
         let (up, down, enter) = ctx.input(|i| {
@@ -1282,6 +1320,7 @@ impl JarakApp {
         let mut entries = palette::entries();
         entries.extend(self.language_entries());
         entries.extend(self.macro_entries());
+        entries.extend(self.encoding_entries());
         let lang = self.lang;
         let mut run = None;
         let mut show = None;
@@ -1592,6 +1631,9 @@ impl JarakApp {
             runner: Arc::new(macros::NoRunner),
             macro_dialog: None,
             search_engine: DEFAULT_SEARCH.into(),
+            enc_question: None,
+            symbols: encoding::Symbols::default(),
+            new_format: file::Format::utf8(),
         };
         app.main_active = app.tabs[0].id;
         app.open_args(args);
@@ -1678,7 +1720,7 @@ impl JarakApp {
             // Step 99: the same sample with the Function List open and the `if` block folded, and
             // the Go to dialog.
             "syntax" | "functions" | "goto" | "completion" | "hint" | "docmap" | "quick-open"
-            | "summary" | "run" | "macros" => {
+            | "summary" | "run" | "macros" | "symbols" | "encoding-question" => {
                 let dir = self
                     .tab()
                     .file
@@ -1720,6 +1762,24 @@ fn main() {
                         let p = d.text().line_to_char(6);
                         d.set_selection(&jarak_core::selection::Selection::point(p));
                         d.type_text("// 고침\n");
+                    } else if screen == "symbols" {
+                        // Step 103: every symbol over the Rust sample, an edge line at 40.
+                        self.symbols = encoding::Symbols {
+                            spaces: true,
+                            eol: true,
+                            controls: true,
+                            indent_guides: true,
+                            wrap_symbol: true,
+                            edges: vec![40],
+                        };
+                    } else if screen == "encoding-question" {
+                        // The sample's Korean comment cannot be written in Windows-1252.
+                        if let Some(i) = encoding::targets()
+                            .iter()
+                            .position(|t| t.en.contains("Windows-1252"))
+                        {
+                            self.convert_to(i, false);
+                        }
                     } else if screen == "run" {
                         self.open_run();
                         if let Some(macros::Dialog::Run { command, .. }) =
@@ -2144,6 +2204,8 @@ fn main() {
             }
             Action::New => {
                 let mut t = Tab::new(FileDocument::untitled());
+                // Step 103: new documents in the encoding of the settings.
+                t.file.format = self.new_format;
                 if self.second_focused() {
                     t.pane = views::Pane::Second;
                     if let Some(s) = self.second.as_mut() {
@@ -2858,7 +2920,8 @@ fn main() {
             || self.goto.is_some()
             || self.quick.is_some()
             || self.summary_open
-            || self.macro_dialog.is_some();
+            || self.macro_dialog.is_some()
+            || self.enc_question.is_some();
         if self.pending.is_none() && !dialog_open {
             let preview_only = self.tab().mode == Mode::Preview;
             let salt = u8::from(self.second_focused());
@@ -2899,6 +2962,7 @@ fn main() {
         self.quick_ui(&ctx, &c);
         self.summary_ui(&ctx, &c);
         self.macro_dialog_ui(&ctx, &c);
+        self.enc_question_ui(&ctx, &c);
         if kim_ui::inspect::active() {
             // Measure once the pictures on screen are decoded (at most 15 s after the start).
             let loading = self
@@ -3362,6 +3426,8 @@ fn main() {
             items.retain(|(s, _)| s != "INS" && s != "OVR");
         }
         let mut leave_vim = false;
+        // Step 103: a click on the encoding, line-ending or language item opens its menu.
+        let mut status_click: Option<usize> = None;
         egui::Panel::bottom("jarak-status")
             .exact_size(size::CONTROL)
             .resizable(false)
@@ -3418,8 +3484,18 @@ fn main() {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = space::L;
                             for (k, (item, col)) in items.iter().enumerate().rev() {
-                                let r =
-                                    ui.label(RichText::new(item).size(font::CAPTION).color(*col));
+                                let text = RichText::new(item).size(font::CAPTION).color(*col);
+                                let r = if (1..=3).contains(&k) {
+                                    let r = ui
+                                        .add(egui::Label::new(text).sense(egui::Sense::click()))
+                                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                                    if r.clicked() {
+                                        status_click = Some(k);
+                                    }
+                                    r
+                                } else {
+                                    ui.label(text)
+                                };
                                 // Step 96: the status items are in the geometry report too.
                                 if kim_ui::inspect::active() {
                                     kim_ui::inspect::record(
@@ -3445,6 +3521,18 @@ fn main() {
                 });
                 if leave_vim {
                     self.set_editing(Editing::Standard);
+                }
+                if let Some(k) = status_click {
+                    let query = match k {
+                        1 => "Encoding:",
+                        2 => "EOL:",
+                        _ => "Language:",
+                    };
+                    self.palette = Some(palette::PaletteState {
+                        query: query.into(),
+                        selected: 0,
+                        focus: true,
+                    });
                 }
                 if self.settings_note {
                     let note = self.t(

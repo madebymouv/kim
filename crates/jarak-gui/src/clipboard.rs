@@ -9,6 +9,14 @@ use crate::images::ClipImage;
 pub trait Clipboard: Send + Sync {
     fn get_text(&self) -> Option<String>;
     fn set_text(&self, text: &str) -> bool;
+    /// Step 103: text that may hold NUL characters (Copy / Paste binary content); by default the
+    /// text itself.
+    fn set_binary(&self, text: &str) -> bool {
+        self.set_text(text)
+    }
+    fn get_binary(&self) -> Option<String> {
+        self.get_text()
+    }
     /// An image on the clipboard (Step 90): PNG, a bitmap, or copied image files.
     fn get_image(&self) -> Option<ClipImage> {
         None
@@ -204,6 +212,104 @@ mod win {
         text
     }
 
+    /// Step 103: the clipboard format of text with NULs: its UTF-16 length (u64, little-endian),
+    /// then the units.
+    fn binary_format() -> u32 {
+        let name: Vec<u16> = "Jarak Binary Text"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        // SAFETY: a NUL-terminated name; registering an existing name returns its id.
+        unsafe { windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW(name.as_ptr()) }
+    }
+
+    /// Step 103: `text` as plain text (up to a NUL, as other programs read it) and in full in the
+    /// binary format.
+    pub fn set_binary(text: &str) -> bool {
+        let units: Vec<u16> = text.encode_utf16().collect();
+        let mut packed = Vec::with_capacity(units.len() * 2 + 8);
+        packed.extend_from_slice(&(units.len() as u64).to_le_bytes());
+        for u in &units {
+            packed.extend_from_slice(&u.to_le_bytes());
+        }
+        let format = binary_format();
+        let wide: Vec<u16> = units.iter().copied().chain(std::iter::once(0)).collect();
+        if format == 0 || !open() {
+            return false;
+        }
+        // SAFETY: as in `set_text`: memory filled while locked, owned by the clipboard after a
+        // successful SetClipboardData, freed here when that fails.
+        let ok = unsafe {
+            EmptyClipboard();
+            let put = |data: &[u8], fmt: u32| -> bool {
+                let mem = GlobalAlloc(GMEM_MOVEABLE, data.len().max(1));
+                if mem.is_null() {
+                    return false;
+                }
+                let p = GlobalLock(mem) as *mut u8;
+                if p.is_null() {
+                    GlobalFree(mem);
+                    return false;
+                }
+                std::ptr::copy_nonoverlapping(data.as_ptr(), p, data.len());
+                GlobalUnlock(mem);
+                if SetClipboardData(fmt, mem as HANDLE).is_null() {
+                    GlobalFree(mem);
+                    false
+                } else {
+                    true
+                }
+            };
+            let bytes: Vec<u8> = wide.iter().flat_map(|u| u.to_le_bytes()).collect();
+            put(&bytes, CF_UNICODETEXT) & put(&packed, format)
+        };
+        close();
+        ok
+    }
+
+    /// Step 103: the binary format's text, else the plain text.
+    pub fn get_binary() -> Option<String> {
+        let format = binary_format();
+        // SAFETY: a plain query.
+        if format == 0 || unsafe { IsClipboardFormatAvailable(format) } == 0 {
+            return get_text();
+        }
+        if !open() {
+            return None;
+        }
+        // SAFETY: the clipboard is open; the handle stays the clipboard's; the locked memory holds
+        // the length then the units (read within its size).
+        let text = unsafe {
+            let h = GetClipboardData(format);
+            if h.is_null() {
+                None
+            } else {
+                let p = GlobalLock(h as _) as *const u8;
+                if p.is_null() {
+                    None
+                } else {
+                    let size = windows_sys::Win32::System::Memory::GlobalSize(h as _);
+                    let all = std::slice::from_raw_parts(p, size);
+                    let n = all.get(..8).map_or(0, |b| {
+                        u64::from_le_bytes(b.try_into().unwrap_or([0; 8])) as usize
+                    });
+                    let units: Vec<u16> = all
+                        .get(8..8 + n * 2)
+                        .unwrap_or(&[])
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                        .collect();
+                    GlobalUnlock(h as _);
+                    Some(String::from_utf16_lossy(&units))
+                }
+            }
+        };
+        close();
+        text
+    }
+
     pub fn set_text(text: &str) -> bool {
         let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
         if !open() {
@@ -256,6 +362,18 @@ impl Clipboard for WinClipboard {
         #[cfg(windows)]
         {
             win::set_text(text)
+        }
+    }
+    fn set_binary(&self, text: &str) -> bool {
+        #[cfg(windows)]
+        {
+            win::set_binary(text)
+        }
+    }
+    fn get_binary(&self) -> Option<String> {
+        #[cfg(windows)]
+        {
+            win::get_binary()
         }
     }
 }

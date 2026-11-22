@@ -48,7 +48,10 @@ indentation, the bracket and tag highlight; [JARAK_ASSIST](JARAK_ASSIST.md)); St
 `JARAK-FR-100`, `JARAK-FR-101`, `JARAK-FR-102`, `JARAK-FR-104` and the navigation history and
 quick open of `JARAK-FR-103` ([JARAK_ARCHITECTURE §23](JARAK_ARCHITECTURE.md)); Step 102
 implemented `JARAK-FR-110` and `JARAK-FR-111` (macros, Run, the browser entries;
-[JARAK_MACROS](JARAK_MACROS.md));
+[JARAK_MACROS](JARAK_MACROS.md)); Step 103 implemented `JARAK-FR-025`, `JARAK-FR-026`,
+`JARAK-FR-037`, the Encoding menu of `JARAK-FR-021`, the clickable status of `JARAK-FR-035` and
+binary content of `JARAK-FR-027` (the real Windows clipboard path not tested yet;
+[JARAK_ARCHITECTURE §25](JARAK_ARCHITECTURE.md));
 each implementing Step updates the rows it delivers) · Owner: mouv · Derived from [JARAK_PHILOSOPHY](JARAK_PHILOSOPHY.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md) · Parity:
 [JARAK_NOTEPADPP_MATRIX](JARAK_NOTEPADPP_MATRIX.md)

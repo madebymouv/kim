@@ -71,6 +71,8 @@ pub struct ViewState {
     pub braces: Vec<(usize, usize, bool)>,
     /// Step 101: the change history of the lines on screen (a bar in the margin).
     pub changes: Vec<(usize, jarak_core::document::navigate::Change)>,
+    /// Step 103: Show Symbol.
+    pub symbols: crate::encoding::Symbols,
     drag: Option<Drag>,
     clicks: Option<(f64, Pos2, u8)>,
 }
@@ -113,6 +115,7 @@ impl Default for ViewState {
             fold_marks: Arc::default(),
             braces: Vec::new(),
             changes: Vec::new(),
+            symbols: crate::encoding::Symbols::default(),
             drag: None,
             clicks: None,
         }
@@ -222,6 +225,16 @@ pub struct VisualLine {
 impl VisualLine {
     /// `line` without its line break; `preedit` is inserted at `caret` (an offset in the line).
     pub fn build(line: &str, tab_width: usize, preedit: Option<(usize, &str)>) -> VisualLine {
+        VisualLine::build_with(line, tab_width, preedit, false)
+    }
+
+    /// Step 103: with `controls`, a control character is drawn as its name (`NUL`, `ESC`, `ZWSP` …).
+    pub fn build_with(
+        line: &str,
+        tab_width: usize,
+        preedit: Option<(usize, &str)>,
+        controls: bool,
+    ) -> VisualLine {
         let mut text = String::with_capacity(line.len());
         let mut map = Vec::with_capacity(line.len() + 1);
         let mut col = 0usize;
@@ -240,6 +253,10 @@ impl VisualLine {
                 text.extend(std::iter::repeat_n(' ', n));
                 drawn += n;
                 col += n;
+            } else if let Some(name) = controls.then(|| control_name(ch)).flatten() {
+                text.push_str(name);
+                drawn += name.len();
+                col += name.len();
             } else {
                 text.push(ch);
                 drawn += 1;
@@ -401,7 +418,7 @@ pub fn show(
         let s: String = l.slice(..len).to_string();
         let pre = (!state.preedit.is_empty() && line == caret_line)
             .then(|| (caret - start, state.preedit.as_str()));
-        let vis = VisualLine::build(&s, tab, pre);
+        let vis = VisualLine::build_with(&s, tab, pre, state.symbols.controls);
         let toks = state
             .syntax
             .iter()
@@ -452,9 +469,27 @@ pub fn show(
     } else if state.follow {
         state.follow = false;
     }
+    // Step 103: the indent guides' columns of the laid lines.
+    let guides: Vec<usize> = if state.symbols.indent_guides {
+        let own: Vec<Option<usize>> = laid
+            .iter()
+            .map(|l| indent_cols(&doc.text().line(l.line).to_string(), tab.max(1)))
+            .collect();
+        (0..own.len())
+            .map(|i| {
+                own[i].unwrap_or_else(|| {
+                    let before = own[..i].iter().rev().find_map(|x| *x).unwrap_or(0);
+                    let after = own[i + 1..].iter().find_map(|x| *x).unwrap_or(0);
+                    before.min(after)
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     // Draw: current line, selections, text, gutter, caret.
     let sel = doc.selection().clone();
-    for l in &laid {
+    for (li, l) in laid.iter().enumerate() {
         let row_rect = Rect::from_min_size(
             egui::pos2(rect.left(), l.origin.y),
             Vec2::new(rect.width(), l.height),
@@ -482,7 +517,36 @@ pub fn show(
         for r in sel.ranges() {
             paint_selection(&painter, l, r, doc, &m, c.bg_selected);
         }
+        if state.symbols.indent_guides
+            && let Some(cols) = guides.get(li)
+        {
+            // Step 103: a dotted guide at each indentation level of the line (a blank line takes
+            // its neighbours').
+            for k in 1..=*cols / tab.max(1) {
+                let x = l.origin.x + (k * tab.max(1)) as f32 * m.char_w
+                    - m.char_w * (tab.max(1) as f32)
+                    + 0.5;
+                if x > text_rect.left() {
+                    let mut y = l.origin.y;
+                    while y < l.origin.y + l.height {
+                        painter.vline(
+                            x,
+                            y..=(y + 1.5).min(l.origin.y + l.height),
+                            Stroke::new(1.0, c.border_subtle),
+                        );
+                        y += 3.0;
+                    }
+                }
+            }
+        }
         painter.galley(l.origin, l.galley.clone(), c.text_primary);
+        if state.symbols.spaces
+            || state.symbols.eol
+            || state.symbols.controls
+            || state.symbols.wrap_symbol
+        {
+            paint_symbols(&painter, l, doc, &m, &c, &state.symbols, state.wrap);
+        }
         if !state.preedit.is_empty() && l.line == caret_line {
             // `map` puts the caret after the composition; it starts that many chars before.
             let off = caret - l.start;
@@ -496,6 +560,19 @@ pub fn show(
                 l.origin.y + a.bottom() - 1.0,
                 Stroke::new(size::BORDER, c.accent),
             );
+        }
+    }
+    // Step 103: the edge lines at their columns (unwrapped text).
+    if !state.wrap {
+        for col in &state.symbols.edges {
+            let x = text_rect.left() + pad + *col as f32 * m.char_w - state.scroll_x;
+            if x > text_rect.left() && x < text_rect.right() {
+                painter.vline(
+                    x,
+                    text_rect.y_range(),
+                    Stroke::new(size::BORDER, c.border_strong),
+                );
+            }
         }
     }
     // The gutter over horizontally scrolled text.
@@ -727,6 +804,149 @@ fn visible_between(hidden: &[(usize, usize)], a: usize, b: usize) -> usize {
         })
         .sum();
     (b - a) - gone
+}
+
+/// Step 103: the name a control character is drawn as (C0, DEL, C1, the zero-width and direction
+/// marks, the BOM); `None` for any other character.
+pub fn control_name(ch: char) -> Option<&'static str> {
+    const C0: [&str; 32] = [
+        "NUL", "SOH", "STX", "ETX", "EOT", "ENQ", "ACK", "BEL", "BS", "HT", "LF", "VT", "FF", "CR",
+        "SO", "SI", "DLE", "DC1", "DC2", "DC3", "DC4", "NAK", "SYN", "ETB", "CAN", "EM", "SUB",
+        "ESC", "FS", "GS", "RS", "US",
+    ];
+    Some(match ch {
+        '\t' => return None,
+        c if (c as u32) < 32 => C0[c as usize],
+        '\u{7F}' => "DEL",
+        c if (0x80..=0x9F).contains(&(c as u32)) => "C1",
+        '\u{200B}' => "ZWSP",
+        '\u{200C}' => "ZWNJ",
+        '\u{200D}' => "ZWJ",
+        '\u{200E}' => "LRM",
+        '\u{200F}' => "RLM",
+        '\u{2060}' => "WJ",
+        '\u{FEFF}' => "BOM",
+        '\u{00AD}' => "SHY",
+        _ => return None,
+    })
+}
+
+/// Step 103: Show Symbol over a laid-out line: a dot for each space, an arrow for each tab, a box
+/// around each control character's name, the line's ending (CRLF, LF, CR, or the Unicode NEL, LS,
+/// PS), the wrap symbol at the end of each wrapped row.
+fn paint_symbols(
+    p: &egui::Painter,
+    l: &Laid,
+    doc: &Document,
+    m: &Metrics,
+    c: &Colors,
+    s: &crate::encoding::Symbols,
+    wrap: bool,
+) {
+    let ink = c.text_muted;
+    let line = doc.text().line(l.line);
+    let len = text::line_len(line);
+    let last = l.vis.map.len() - 1;
+    let mid = |off: usize| {
+        let r = l
+            .galley
+            .pos_from_cursor(CCursor::new(l.vis.map[off.min(last)]));
+        l.origin.y + r.center().y
+    };
+    for (off, ch) in line.chars().take(len).enumerate() {
+        let (x0, x1) = (x_of(l, off), x_of(l, off + 1));
+        match ch {
+            ' ' | '\u{A0}' | '\u{3000}' if s.spaces => {
+                p.circle_filled(
+                    egui::pos2((x0 + x1) / 2.0, mid(off)),
+                    (m.char_w * 0.1).max(1.0),
+                    ink,
+                );
+            }
+            '\t' if s.spaces => {
+                let y = mid(off);
+                let (a, b) = (x0 + m.char_w * 0.2, x1 - m.char_w * 0.2);
+                p.hline(a..=b, y, Stroke::new(1.0, ink));
+                let h = (m.char_w * 0.25).max(2.0);
+                p.line_segment(
+                    [egui::pos2(b - h, y - h), egui::pos2(b, y)],
+                    Stroke::new(1.0, ink),
+                );
+                p.line_segment(
+                    [egui::pos2(b - h, y + h), egui::pos2(b, y)],
+                    Stroke::new(1.0, ink),
+                );
+            }
+            _ if s.controls && control_name(ch).is_some() => {
+                let y = mid(off);
+                let r = Rect::from_min_max(
+                    egui::pos2(x0, y - m.row * 0.42),
+                    egui::pos2(x1, y + m.row * 0.42),
+                );
+                p.rect_stroke(r, 2.0, Stroke::new(1.0, ink), egui::StrokeKind::Inside);
+            }
+            _ => {}
+        }
+    }
+    if s.eol {
+        let ending: String = line.chars().skip(len).collect();
+        let name = match ending.as_str() {
+            "\r\n" => Some("CRLF"),
+            "\n" => Some("LF"),
+            "\r" => Some("CR"),
+            "\u{85}" => Some("NEL"),
+            "\u{2028}" => Some("LS"),
+            "\u{2029}" => Some("PS"),
+            _ => None,
+        };
+        if let Some(name) = name {
+            let x = x_of(l, len) + m.char_w * 0.3;
+            let y = mid(len);
+            let f = FontId::monospace((m.row * 0.55).max(8.0));
+            let g = p.layout_no_wrap(name.to_string(), f, ink);
+            let r = Rect::from_min_size(
+                egui::pos2(x, y - g.size().y / 2.0 - 1.0),
+                g.size() + egui::vec2(4.0, 2.0),
+            );
+            p.rect_stroke(r, 2.0, Stroke::new(1.0, ink), egui::StrokeKind::Inside);
+            p.galley(r.min + egui::vec2(2.0, 1.0), g, ink);
+        }
+    }
+    if s.wrap_symbol && wrap && l.galley.rows.len() > 1 {
+        let n = l.galley.rows.len();
+        for row in &l.galley.rows[..n - 1] {
+            let r = row.rect();
+            let x = l.origin.x + r.right() + 2.0;
+            let y = l.origin.y + r.center().y;
+            let h = (m.char_w * 0.3).max(2.0);
+            p.line_segment(
+                [egui::pos2(x + h, y - h), egui::pos2(x + h, y)],
+                Stroke::new(1.0, ink),
+            );
+            p.line_segment(
+                [egui::pos2(x + h, y), egui::pos2(x, y)],
+                Stroke::new(1.0, ink),
+            );
+            p.line_segment(
+                [egui::pos2(x, y), egui::pos2(x + h * 0.6, y - h * 0.6)],
+                Stroke::new(1.0, ink),
+            );
+        }
+    }
+}
+
+/// Step 103: the display columns of `line`'s leading whitespace (`None`: a blank line).
+fn indent_cols(line: &str, tab: usize) -> Option<usize> {
+    let mut col = 0;
+    for ch in line.chars() {
+        match ch {
+            ' ' => col += 1,
+            '\t' => col += tab - col % tab,
+            '\r' | '\n' => return None,
+            _ => return Some(col),
+        }
+    }
+    None
 }
 
 fn x_of(l: &Laid, off: usize) -> f32 {
@@ -1126,6 +1346,24 @@ impl ViewState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Step 103: control characters drawn as their names when asked.
+    #[test]
+    fn control_characters_have_names_when_shown() {
+        let v = VisualLine::build_with("a\u{0}b\u{200B}c\td", 4, None, true);
+        assert_eq!(v.text, "aNULbZWSPc  d");
+        assert_eq!(v.offset_of(1), 1);
+        assert_eq!(v.map[2], 4, "b after the three cells of NUL");
+        assert_eq!(
+            VisualLine::build("a\u{0}b", 4, None).text,
+            "a\u{0}b",
+            "off: as written"
+        );
+        assert_eq!(control_name('\u{1B}'), Some("ESC"));
+        assert_eq!(control_name('\u{7F}'), Some("DEL"));
+        assert_eq!(control_name('\t'), None);
+        assert_eq!(control_name('가'), None);
+    }
 
     #[test]
     fn tabs_expand_to_stops_and_map_both_ways() {

@@ -202,6 +202,61 @@ impl Document {
         self.history.state() != self.saved
     }
 
+    /// Step 103: there is something to save although the text did not change (a conversion to
+    /// another encoding or line ending): the document is dirty until it is saved.
+    pub fn mark_unsaved(&mut self) {
+        self.saved = u64::MAX;
+    }
+
+    /// Step 103: every line ending becomes `eol` (one undo step; marks and bookmarks stay on their
+    /// lines); `true` when something changed.
+    pub fn convert_eol(&mut self, eol: Eol) -> bool {
+        let target = eol.as_str();
+        let mut parts = Vec::new();
+        let mut i = 0usize;
+        let mut chars = self.text.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '\r' if chars.peek() == Some(&'\n') => {
+                    chars.next();
+                    if target != "\r\n" {
+                        parts.push((i, i + 2, target.to_string()));
+                    }
+                    i += 2;
+                    continue;
+                }
+                '\r' if target != "\r" => parts.push((i, i + 1, target.to_string())),
+                '\n' if target != "\n" => parts.push((i, i + 1, target.to_string())),
+                _ => {}
+            }
+            i += 1;
+        }
+        self.eol = eol;
+        if parts.is_empty() {
+            return false;
+        }
+        let keep = self.sel.clone();
+        self.change(parts, Kind::Other);
+        // The carets stay on their lines (as close as the new endings allow).
+        let n = self.len_chars();
+        let ranges = keep
+            .ranges()
+            .iter()
+            .map(|r| Range::point(r.head.min(n)))
+            .collect();
+        self.sel = Selection::new(ranges, keep.primary_index());
+        true
+    }
+
+    /// Step 103: the characters at char positions `at` become `with` (one undo step).
+    pub fn replace_chars(&mut self, at: &[usize], with: char) {
+        if at.is_empty() {
+            return;
+        }
+        let parts = at.iter().map(|p| (*p, *p + 1, with.to_string())).collect();
+        self.change(parts, Kind::Other);
+    }
+
     /// The current state is what is on disk now.
     pub fn mark_saved(&mut self) {
         self.saved = self.history.state();

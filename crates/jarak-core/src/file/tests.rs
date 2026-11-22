@@ -362,3 +362,200 @@ fn lossy_files_are_read_only_and_say_why() {
     assert_eq!(std::fs::read(&p).unwrap(), b"ok \xFF\xFE");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---- Step 103: every character set of the Encoding menu, reinterpreting, lossy conversion ----
+
+/// A sample in each character set's script (what the set can hold).
+fn sample(label: &str) -> &'static str {
+    match label {
+        "euc-kr" => "한글 텍스트, 漢字 ABC 123",
+        "shift_jis" | "euc-jp" | "iso-2022-jp" => "日本語のテキスト、カタカナ ABC",
+        "gbk" => "中文文本 简体 ABC",
+        "gb18030" => "中文 简体 € ABC",
+        "big5" => "中文繁體 ABC",
+        "windows-1251" | "iso-8859-5" | "ibm866" | "koi8-r" => "Привет, мир! ABC",
+        "koi8-u" => "Привіт, світе! ABC",
+        "windows-1252" => "Café, déjà vu — €",
+        "iso-8859-15" => "Café € œ Ÿ",
+        "windows-1250" | "iso-8859-2" => "Žluťoučký kůň úpěl",
+        "windows-1253" | "iso-8859-7" => "Καλημέρα κόσμε",
+        "windows-1254" => "Türkçe ğüşiöç İ",
+        "windows-1255" | "iso-8859-8" => "שלום עולם",
+        "windows-1256" | "iso-8859-6" => "مرحبا بالعالم",
+        "windows-1257" | "iso-8859-4" | "iso-8859-13" => "Ąčęėįšųūž",
+        "windows-1258" => "Viêt Đa ơ ư",
+        "windows-874" => "ภาษาไทย ABC",
+        _ => panic!("no sample for {label}"),
+    }
+}
+
+#[test]
+fn every_listed_character_set_round_trips_and_is_reinterpreted() {
+    for (_, _, name, label) in CHARSETS {
+        let enc = encoding_for_label(label).unwrap_or_else(|| panic!("{label}"));
+        let text = format!("{}\r\nline 2\r\n", sample(label));
+        let fmt = Format {
+            encoding: enc,
+            bom: false,
+        };
+        let bytes = encode(&text, fmt).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_ne!(bytes, text.as_bytes(), "{name}: not just UTF-8");
+        let d = decode_as(&bytes, fmt);
+        assert_eq!(d.text, text, "{name}");
+        assert!(d.lossless && !d.binary, "{name}");
+        assert_eq!(unmappable(&text, enc, 3).0, 0, "{name}");
+    }
+    assert_eq!(CHARSETS.len(), 28);
+}
+
+#[test]
+fn utf8_and_utf16_with_and_without_bom_are_reinterpreted() {
+    let text = "자락 ABC\n";
+    let utf8 = Format::utf8();
+    // As UTF-8: a BOM in the file is taken off and kept.
+    let with = [b"\xEF\xBB\xBF".as_slice(), text.as_bytes()].concat();
+    let d = decode_as(&with, utf8);
+    assert_eq!(
+        (d.text.as_str(), d.format.bom, d.lossless),
+        (text, true, true)
+    );
+    // As UTF-8-BOM without one in the file: same text, saving adds it.
+    let d = decode_as(text.as_bytes(), Format { bom: true, ..utf8 });
+    assert_eq!((d.text.as_str(), d.format.bom), (text, true));
+    for (enc, mark) in [
+        (TextEncoding::Utf16Le, b"\xFF\xFE".as_slice()),
+        (TextEncoding::Utf16Be, b"\xFE\xFF".as_slice()),
+    ] {
+        let fmt = Format {
+            encoding: enc,
+            bom: true,
+        };
+        let bytes = encode(text, fmt).unwrap();
+        assert!(bytes.starts_with(mark));
+        let d = decode_as(
+            &bytes,
+            Format {
+                encoding: enc,
+                bom: false,
+            },
+        );
+        assert_eq!(
+            (d.text.as_str(), d.format.bom, d.lossless),
+            (text, true, true),
+            "{enc:?}"
+        );
+    }
+    // The wrong reading of EUC-KR bytes as Windows-1252 is lossless but garbled; the right one
+    // gives the Korean back (what Reinterpret is for).
+    let kr = encoding_for_label("euc-kr").unwrap();
+    let bytes = encode(
+        "한글",
+        Format {
+            encoding: kr,
+            bom: false,
+        },
+    )
+    .unwrap();
+    let wrong = decode_as(
+        &bytes,
+        Format {
+            encoding: encoding_for_label("windows-1252").unwrap(),
+            bom: false,
+        },
+    );
+    assert_ne!(wrong.text, "한글");
+    assert_eq!(
+        decode_as(
+            &bytes,
+            Format {
+                encoding: kr,
+                bom: false
+            }
+        )
+        .text,
+        "한글"
+    );
+    // Bytes that are not UTF-8 read as UTF-8: replacement characters, not lossless.
+    let d = decode_as(&bytes, utf8);
+    assert!(!d.lossless && d.text.contains('\u{FFFD}'));
+}
+
+#[test]
+fn lossy_conversions_are_found_before_saving() {
+    let w1252 = encoding_for_label("windows-1252").unwrap();
+    let (n, first) = unmappable("abc 한글 é", w1252, 1);
+    assert_eq!((n, first), (2, vec![(4, '한')]));
+    assert_eq!(
+        unmappable("한글", TextEncoding::Utf8, 5).0,
+        0,
+        "UTF-8 holds everything"
+    );
+    assert_eq!(
+        unmappable("Привет", encoding_for_label("koi8-r").unwrap(), 5).0,
+        0
+    );
+    assert!(
+        encode(
+            "한글",
+            Format {
+                encoding: w1252,
+                bom: false
+            }
+        )
+        .is_err(),
+        "saving refuses it"
+    );
+}
+
+#[test]
+fn reinterpret_reads_the_file_again_in_another_encoding() {
+    let dir = std::env::temp_dir().join(format!("jarak-reinterpret-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("a.txt");
+    let kr = encoding_for_label("euc-kr").unwrap();
+    std::fs::write(
+        &p,
+        encode(
+            "한글\n",
+            Format {
+                encoding: kr,
+                bom: false,
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    // Opened with a Western fallback: the text is garbled.
+    let mut f =
+        FileDocument::open(&p, encoding_for_label("windows-1252").unwrap(), 1 << 20).unwrap();
+    assert_ne!(f.doc.text().to_string(), "한글\n");
+    f.reinterpret(
+        Format {
+            encoding: kr,
+            bom: false,
+        },
+        1 << 20,
+    )
+    .unwrap();
+    assert_eq!(f.doc.text().to_string(), "한글\n");
+    assert_eq!(f.format.encoding, kr);
+    assert!(!f.read_only && !f.doc.is_dirty());
+    assert_eq!(
+        std::fs::read(&p).unwrap(),
+        encode(
+            "한글\n",
+            Format {
+                encoding: kr,
+                bom: false
+            }
+        )
+        .unwrap(),
+        "the file is untouched"
+    );
+    let mut u = FileDocument::untitled();
+    assert!(
+        u.reinterpret(Format::utf8(), 1 << 20).is_err(),
+        "no file to read"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

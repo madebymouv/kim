@@ -1760,7 +1760,8 @@ fn mark_all_bookmarks_lines_clears_and_copies_marks() {
     h.run();
     assert_eq!(
         jarak_gui::clipboard::Clipboard::get_text(clip.as_ref()).as_deref(),
-        Some("TODO\r\nTODO\r\nTODO")
+        // Step 103: the text holds only LF line endings, so the document takes LF (as on open).
+        Some("TODO\nTODO\nTODO")
     );
     h.get_by_label("Clear marks").click();
     h.run();
@@ -4461,5 +4462,226 @@ fn the_manager_changes_shortcuts_and_removes_commands_and_html_opens_in_the_brow
         opener.0.lock().unwrap().last().cloned(),
         Some(format!("open:{}", d.join("page.html").display()))
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+// ---- Step 103: the Encoding menu, line endings, Show Symbol, binary content -------------------
+
+#[test]
+fn reinterpret_reads_the_bytes_again_and_asks_before_losing_changes() {
+    let d = temp("reinterpret");
+    let f = d.join("ja.txt");
+    let sjis = jarak_core::file::encoding_for_label("shift_jis").unwrap();
+    let bytes = jarak_core::file::encode(
+        "日本語\n",
+        jarak_core::file::Format {
+            encoding: sjis,
+            bom: false,
+        },
+    )
+    .unwrap();
+    std::fs::write(&f, &bytes).unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    assert_ne!(
+        doc_text(&h),
+        "日本語\n",
+        "the Korean fallback misreads Shift-JIS"
+    );
+    palette_run(&mut h, "Encoding: reinterpret as Japanese: Shift-JIS");
+    h.run();
+    assert_eq!(doc_text(&h), "日本語\n");
+    assert_eq!(h.state().tab().file.format.encoding, sjis);
+    assert!(!h.state().tab().file.read_only);
+    assert!(
+        h.query_by_label("Shift_JIS").is_some(),
+        "the status bar names it"
+    );
+    // With unsaved changes it asks first; Cancel keeps them.
+    text(&mut h, "x");
+    palette_run(&mut h, "Encoding: reinterpret as Japanese: EUC-JP");
+    h.run();
+    assert!(h.state().enc_question.is_some());
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert!(doc_text(&h).starts_with('x'));
+    palette_run(&mut h, "Encoding: reinterpret as Japanese: Shift-JIS");
+    h.run();
+    h.get_by_label("Read again").click();
+    h.run();
+    assert_eq!(doc_text(&h), "日本語\n", "read again, the typing gone");
+    assert_eq!(
+        std::fs::read(&f).unwrap(),
+        bytes,
+        "the file is never written by Reinterpret"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding() {
+    let d = temp("convert");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "Café 한글\n").unwrap();
+    let fs = f.display().to_string();
+    let (a, _) = app_with(&[fs.as_str()], Arc::default());
+    let mut h = harness(a);
+    h.run();
+    palette_run(
+        &mut h,
+        "Encoding: convert to Western European: Windows-1252",
+    );
+    h.run();
+    assert!(
+        h.query_by_label_contains("2 characters cannot be written")
+            .is_some()
+    );
+    assert!(
+        h.query_by_label_contains("U+D55C").is_some(),
+        "the first one named"
+    );
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert_eq!(
+        h.state().tab().file.format.encoding,
+        jarak_core::file::TextEncoding::Utf8,
+        "unchanged"
+    );
+    palette_run(
+        &mut h,
+        "Encoding: convert to Western European: Windows-1252",
+    );
+    h.run();
+    h.get_by_label("Replace and convert").click();
+    h.run();
+    assert_eq!(doc_text(&h), "Café ??\n");
+    assert!(h.state().tab().file.doc.is_dirty());
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    let w1252 = jarak_core::file::encoding_for_label("windows-1252").unwrap();
+    assert_eq!(
+        std::fs::read(&f).unwrap(),
+        jarak_core::file::encode(
+            "Café ??\n",
+            jarak_core::file::Format {
+                encoding: w1252,
+                bom: false
+            }
+        )
+        .unwrap()
+    );
+    // Without loss nothing is asked: UTF-16 LE BOM, saved with its BOM.
+    palette_run(&mut h, "Encoding: convert to UTF-16 LE BOM");
+    h.run();
+    assert!(h.state().enc_question.is_none());
+    key(&mut h, egui::Key::S, egui::Modifiers::CTRL);
+    assert!(std::fs::read(&f).unwrap().starts_with(&[0xFF, 0xFE]));
+    // The status bar's encoding opens the Encoding menu.
+    h.get_by_label("UTF-16 LE BOM").click();
+    h.run();
+    assert_eq!(
+        h.state().palette.as_ref().map(|p| p.query.as_str()),
+        Some("Encoding:")
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn line_endings_convert_and_new_documents_take_the_settings_encoding() {
+    let (mut h, d) = open_doc("eolconv", "a.txt", "a\r\nb\r\n");
+    palette_run(&mut h, "EOL: Unix (LF)");
+    h.run();
+    assert_eq!(doc_text(&h), "a\nb\n");
+    assert!(h.query_by_label("LF").is_some());
+    key(&mut h, egui::Key::Z, egui::Modifiers::CTRL);
+    assert_eq!(doc_text(&h), "a\r\nb\r\n", "one undo step");
+    // The status bar's line ending opens the EOL entries.
+    h.get_by_label("CRLF").click();
+    h.run();
+    assert_eq!(
+        h.state().palette.as_ref().map(|p| p.query.as_str()),
+        Some("EOL:")
+    );
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    palette_run(&mut h, "Encoding: new documents in UTF-8-BOM");
+    key(&mut h, egui::Key::N, egui::Modifiers::CTRL);
+    h.run();
+    assert!(h.state().tab().file.format.bom);
+    assert!(
+        h.query_by_label("UTF-8 BOM").is_some(),
+        "the status bar's name of it"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn show_symbol_settings_reach_the_view_and_binary_content_keeps_nul() {
+    use jarak_gui::clipboard::Clipboard as _;
+    let d = temp("symbols");
+    let f = d.join("a.txt");
+    std::fs::write(&f, "\tindented line\n    four spaces\n").unwrap();
+    let fs = f.display().to_string();
+    let (mut h, clip) = app_clip(&[fs.as_str()], Arc::default());
+    palette_run(&mut h, "Show all characters");
+    palette_run(&mut h, "Show the indent guides");
+    palette_run(&mut h, "Show the edge line");
+    h.run();
+    let s = &h.state().tab().view.symbols;
+    assert!(s.spaces && s.eol && s.controls && s.indent_guides);
+    assert_eq!(s.edges, vec![80]);
+    palette_run(&mut h, "Show all characters");
+    h.run();
+    assert!(!h.state().tab().view.symbols.spaces, "toggled off together");
+    // Binary content: NUL characters survive the copy and the paste.
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    text(&mut h, "a\u{0}b");
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::SHIFT);
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::SHIFT);
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::SHIFT);
+    palette_run(&mut h, "Copy binary content");
+    assert_eq!(clip.get_binary().as_deref(), Some("a\u{0}b"));
+    key(&mut h, egui::Key::End, egui::Modifiers::CTRL);
+    palette_run(&mut h, "Paste binary content");
+    assert!(
+        doc_text(&h).ends_with("a\u{0}ba\u{0}b"),
+        "{:?}",
+        doc_text(&h)
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Step 103: the encoding question and a view with every symbol on pass the UI audit's rules.
+#[test]
+fn the_encoding_question_and_the_symbols_pass_the_ui_audit_rules() {
+    let (mut h, d) = open_doc(
+        "audit103",
+        "a.rs",
+        "fn main() {\n\tlet s = \"한 \u{1}\";\n}\n",
+    );
+    palette_run(&mut h, "Show all characters");
+    palette_run(&mut h, "Show the indent guides");
+    palette_run(&mut h, "Show the edge line");
+    for screen in ["symbols", "encoding-question"] {
+        if screen == "encoding-question" {
+            palette_run(
+                &mut h,
+                "Encoding: convert to Western European: Windows-1252",
+            );
+        }
+        h.run();
+        kim_ui::inspect::force(true);
+        h.run();
+        let r = kim_ui::inspect::report(&h.ctx, "jarak", screen);
+        kim_ui::inspect::force(false);
+        let fails = kim_design::audit::audit(&r);
+        assert_eq!(
+            kim_design::audit::counts(&fails).2,
+            0,
+            "{screen}: {}",
+            kim_design::audit::render(&r, &fails, false)
+        );
+    }
+    assert!(h.state().enc_question.is_some());
     let _ = std::fs::remove_dir_all(&d);
 }

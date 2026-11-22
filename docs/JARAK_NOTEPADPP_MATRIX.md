@@ -4,7 +4,7 @@ Status: **current** (inventory, Step 84; Step 85 made `HELP-01`, `HELP-02` parti
 `HELP-06` supported; Step 86 `EDIT-01`, `EDIT-03` partial; Step 87 eleven file and encoding
 rows partial; Step 88 fourteen rows supported and six partial, `EDIT-18` and `UI-08` moved to
 Step 110; Step 89 `UI-07`, `JRK-01`, `JRK-02` supported; Step 90 `JRK-03`, `JRK-04` supported;
-Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
+Step 91 `JRK-05`, `JRK-06` supported; Step 92 `UI-10`, `JRK-07`…`JRK-11` supported; Step 93 the Window/View rows (`FILE-04`…`FILE-23` of it, `VIEWS-*`, `WIN-01/02`, `RUN-05`, `REL-01`, `UI-01`) supported; Step 94 the search and mark rows (`SRCH-01`…`SRCH-12`, `SRCH-15`, `SRCH-16`, `MARK-01`…`MARK-08`) supported and `AUTO-10` partial; Step 95 `SRCH-13`, `SRCH-14`, `FIF-01`…`FIF-07` supported; Step 96 `MULTI-01`…`MULTI-10`, `EDIT-04`, `EDIT-05` supported; Step 97 the line, sort, case, blank, edit-tool, digest and MIME rows (45) supported; Step 98 the LANG and CMT rows supported; Step 99 `FOLD-01`…`FOLD-06`, `VIEWS-11`, `SRCH-18`, `SRCH-19` and `LANG-08` supported; Step 100 `AUTO-01`…`AUTO-09` and `JRK-12` supported; Step 101 `MARK-09`…`MARK-15`, `VIEW-14`, `VIEW-15`, `VIEWS-09`, `JRK-13`, `EDIT-14` supported; Step 102 `MAC-01`…`MAC-07`, `RUN-01`…`RUN-04`, `EDIT-15`, `VIEW-05` supported; Step 103 `ENC-01`…`ENC-16`, `BLANK-08`, `VIEW-06`…`VIEW-11`, `UI-06` supported, `EDIT-12` partial — the Step that implements a row updates it in the same change) · Reference: **Notepad++ 8.9.x** (8.9.7 released
 2026-07; the user manual covers v8.x up to 8.9.9.1), official documentation read on 2026-11-22 ·
 Owner: mouv · Applies to: Jarak · Requirements: [JARAK_REQUIREMENTS](JARAK_REQUIREMENTS.md) ·
 Decision: [ADR 0102](adr/0102-jarak-fourth-kim-tool.md)
@@ -93,7 +93,7 @@ palette, the headless CLI) follow in §2.
 | EDIT-09 | Copy to clipboard: names and paths of all open documents | supported | `JARAK-FR-087` | 97 | T | Step 97: palette *Copy the names / paths of all open documents* (window test) |
 | EDIT-10 | Increase / decrease line indent (Tab, Shift+Tab) | supported | `JARAK-FR-085` | 88 | T | Step 88: Tab/Shift+Tab indent and unindent the selected lines, Tab inserts a tab otherwise (core tests, key test) |
 | EDIT-11 | Set read-only for the document / clear the file's read-only attribute | partial | `JARAK-FR-027` | 87 | T | Step 87: read-only files refused and lossy/binary documents read-only with a reason (tests); the menu commands come with Step 88 |
-| EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | planned | `JARAK-FR-027` | 103 | T | — |
+| EDIT-12 | Paste special: copy/cut/paste binary content (with NUL) | partial | `JARAK-FR-027` | 103 | T | Step 103: copy / cut / paste binary content keep NUL characters through a clipboard format of their own (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, memory clipboard); the real Windows clipboard is not tested yet (the maintainer is using the PC) |
 | EDIT-13 | Paste HTML / RTF clipboard content as source | planned | `JARAK-FR-087` | 110 | T | — |
 | EDIT-14 | On selection: open the selected path as a file / its folder | supported | `JARAK-FR-103` | 101 | T | Step 101: *Open the selected path* / *Show the selected path's folder*, relative to the document's folder (palette, Edit) |
 | EDIT-15 | On selection: search on the internet (explicit, configurable engine) | supported | `JARAK-FR-111` | 102 | T | Step 102: the selection or the word at the caret, `search_engine` in the settings (`$(QUERY)`, DuckDuckGo by default), only on the command (`run_commands_show_the_exact_line_and_run_only_on_the_button`) |
@@ -155,7 +155,7 @@ palette, the headless CLI) follow in §2.
 | BLANK-05 | Trim both and EOL to space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette (`lineops::tests`::every_blank_operation) |
 | BLANK-06 | TAB to space | supported | `JARAK-FR-085` | 97 | T | Step 97: palette, tab stops with wide characters two cells (`lineops::tests`::every_blank_operation) |
 | BLANK-07 | Space to TAB (all / leading) | supported | `JARAK-FR-085` | 97 | T | Step 97: palette, all or leading only (`lineops::tests`::every_blank_operation) |
-| BLANK-08 | EOL conversion: Windows (CR LF), Unix (LF), Macintosh (CR) | planned | `JARAK-FR-026` | 103 | T | — |
+| BLANK-08 | EOL conversion: Windows (CR LF), Unix (LF), Macintosh (CR) | supported | `JARAK-FR-026` | 103 | T | Step 103: Windows / Unix / Macintosh in one undo step, marks kept on their lines (`document::tests::line_endings_convert_in_one_undo_step`, `line_endings_convert_and_new_documents_take_the_settings_encoding`) |
 
 ### MULTI — Multi-editing, column mode and the Column Editor (sources E, P)
 
@@ -254,12 +254,12 @@ palette, the headless CLI) follow in §2.
 | VIEW-03 | Post-it mode (F12: borderless window) | planned | `JARAK-FR-036` | 110 | M | — |
 | VIEW-04 | Distraction-free mode | planned | `JARAK-FR-036` | 110 | M | — |
 | VIEW-05 | View the current file in a browser (explicit) | supported | `JARAK-FR-111` | 102 | T | Step 102: HTML, SVG and XML files in the default browser, others refused with the reason (`run_commands_show_the_exact_line_and_run_only_on_the_button`, `the_manager_changes_shortcuts_and_removes_commands_and_html_opens_in_the_browser`) |
-| VIEW-06 | Show spaces and tabs | planned | `JARAK-FR-037` | 103 | T | — |
-| VIEW-07 | Show end of line | planned | `JARAK-FR-037` | 103 | T | — |
-| VIEW-08 | Show non-printing and control characters, Unicode EOL | planned | `JARAK-FR-037` | 103 | T | — |
-| VIEW-09 | Show all characters | planned | `JARAK-FR-037` | 103 | T | — |
-| VIEW-10 | Show indent guide | planned | `JARAK-FR-037` | 103 | T | — |
-| VIEW-11 | Show wrap symbol | planned | `JARAK-FR-037` | 103 | T | — |
+| VIEW-06 | Show spaces and tabs | supported | `JARAK-FR-037` | 103 | T | Step 103: dots for spaces, arrows for tabs (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, UI audit `symbols`; real desktop pending) |
+| VIEW-07 | Show end of line | supported | `JARAK-FR-037` | 103 | T | Step 103: a CRLF / LF / CR / NEL / LS / PS tag after each line (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, UI audit `symbols`; real desktop pending) |
+| VIEW-08 | Show non-printing and control characters, Unicode EOL | supported | `JARAK-FR-037` | 103 | T | Step 103: control characters drawn as their names in a box, Unicode line endings tagged (`view::tests::control_characters_have_names_when_shown`, UI audit `symbols`) |
+| VIEW-09 | Show all characters | supported | `JARAK-FR-037` | 103 | T | Step 103: *Show all characters* toggles spaces, line endings and control characters together (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`) |
+| VIEW-10 | Show indent guide | supported | `JARAK-FR-037` | 103 | T | Step 103: dotted guides at each level, blank lines from their neighbours (UI audit `symbols`, headless audit test; real desktop pending) |
+| VIEW-11 | Show wrap symbol | supported | `JARAK-FR-037` | 103 | T | Step 103: a wrap arrow at the end of each wrapped row (UI audit `symbols`; real desktop pending) |
 | VIEW-12 | Zoom in / out / restore (Ctrl+wheel, Ctrl+Num+/-/) | supported | `JARAK-FR-034` | 88 | T | Step 88: Ctrl+=, Ctrl+-, Ctrl+0, Ctrl+wheel (window test) |
 | VIEW-13 | Word wrap | supported | `JARAK-FR-030` | 88 | T | Step 88: Alt+Z, wrapped selections and caret (window test; audited `editor-wrap` view) |
 | VIEW-14 | Hide lines | supported | `JARAK-FR-104` | 101 | T | Step 101: Alt+H, the mark above shows them again, *Show all hidden lines* (`navigate::tests::hidden_lines_hide_and_show_and_the_summary_counts`, `the_change_history_shows_in_the_margin_and_hidden_lines_come_back`) |
@@ -300,22 +300,22 @@ palette, the headless CLI) follow in §2.
 
 | ID | Feature (described in Jarak's words) | Status | Requirement | Step | Verify | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| ENC-01 | Interpret as ANSI (system code page) | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-02 | Interpret as UTF-8 | partial | `JARAK-FR-021` | 87 | T | Step 87: UTF-8 detected and saved byte for byte (corpus test, e2e); the menu comes with Step 103 |
-| ENC-03 | Interpret as UTF-8-BOM | partial | `JARAK-FR-021` | 87 | T | Step 87: UTF-8 BOM detected and kept (corpus test, e2e); the menu comes with Step 103 |
-| ENC-04 | Interpret as UTF-16 BE BOM / UTF-16 LE BOM | partial | `JARAK-FR-021` | 87 | T | Step 87: UTF-16 LE/BE with BOM detected and kept (corpus test, e2e); the menu comes with Step 103 |
-| ENC-05 | Character sets: Korean (EUC-KR / Windows-949) | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-06 | Character sets: Japanese (Shift-JIS, EUC-JP) | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-07 | Character sets: Chinese (GB2312/GBK, Big5) | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-08 | Character sets: Cyrillic (Windows-1251, KOI8-R, KOI8-U, ISO 8859-5) | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-09 | Character sets: Western and Central European (Windows-1252/1250, ISO 8859-1/2/15) | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-10 | Character sets: Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese, Thai | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-11 | Convert to ANSI | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-12 | Convert to UTF-8 / UTF-8-BOM | planned | `JARAK-FR-025` | 103 | T | — |
-| ENC-13 | Convert to UTF-16 BE BOM / UTF-16 LE BOM | planned | `JARAK-FR-025` | 103 | T | — |
+| ENC-01 | Interpret as ANSI (system code page) | supported | `JARAK-FR-025` | 103 | T | Step 103: *Reinterpret as ANSI* (the system code page) (palette, `reinterpret_reads_the_bytes_again_and_asks_before_losing_changes` for the path) |
+| ENC-02 | Interpret as UTF-8 | supported | `JARAK-FR-021` | 87 | T | Step 87: UTF-8 detected and saved byte for byte (corpus test, e2e); Step 103: *Reinterpret as UTF-8* in the Encoding menu (`file::tests::utf8_and_utf16_with_and_without_bom_are_reinterpreted`) |
+| ENC-03 | Interpret as UTF-8-BOM | supported | `JARAK-FR-021` | 87 | T | Step 87: UTF-8 BOM detected and kept (corpus test, e2e); Step 103: *Reinterpret as UTF-8-BOM* (`file::tests::utf8_and_utf16_with_and_without_bom_are_reinterpreted`) |
+| ENC-04 | Interpret as UTF-16 BE BOM / UTF-16 LE BOM | supported | `JARAK-FR-021` | 87 | T | Step 87: UTF-16 LE/BE with BOM detected and kept (corpus test, e2e); Step 103: *Reinterpret as UTF-16 BE / LE BOM* (`file::tests::utf8_and_utf16_with_and_without_bom_are_reinterpreted`) |
+| ENC-05 | Character sets: Korean (EUC-KR / Windows-949) | supported | `JARAK-FR-025` | 103 | T | Step 103: EUC-KR / Windows-949 round trip and reinterpret (`file::tests::every_listed_character_set_round_trips_and_is_reinterpreted`, `file::tests::utf8_and_utf16_with_and_without_bom_are_reinterpreted`, real `jarak info`) |
+| ENC-06 | Character sets: Japanese (Shift-JIS, EUC-JP) | supported | `JARAK-FR-025` | 103 | T | Step 103: Shift-JIS, EUC-JP, ISO-2022-JP round trips; Shift-JIS reinterpreted in the window (`every_listed_character_set_round_trips_and_is_reinterpreted`, `reinterpret_reads_the_bytes_again_and_asks_before_losing_changes`, real `jarak info`) |
+| ENC-07 | Character sets: Chinese (GB2312/GBK, Big5) | supported | `JARAK-FR-025` | 103 | T | Step 103: GB2312/GBK, GB18030, Big5 round trips (`every_listed_character_set_round_trips_and_is_reinterpreted`, real `jarak info`) |
+| ENC-08 | Character sets: Cyrillic (Windows-1251, KOI8-R, KOI8-U, ISO 8859-5) | supported | `JARAK-FR-025` | 103 | T | Step 103: Windows-1251, KOI8-R, KOI8-U, ISO 8859-5, OEM 866 round trips (`every_listed_character_set_round_trips_and_is_reinterpreted`, real `jarak info`) |
+| ENC-09 | Character sets: Western and Central European (Windows-1252/1250, ISO 8859-1/2/15) | supported | `JARAK-FR-025` | 103 | T | Step 103: Windows-1252 (ISO 8859-1 as WHATWG), ISO 8859-15, Windows-1250, ISO 8859-2 round trips; converting to Windows-1252 saved (`every_listed_character_set_round_trips_and_is_reinterpreted`, `convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding`) |
+| ENC-10 | Character sets: Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese, Thai | supported | `JARAK-FR-025` | 103 | T | Step 103: Greek, Turkish, Hebrew, Arabic, Baltic, Vietnamese (Windows-1258), Thai round trips (`every_listed_character_set_round_trips_and_is_reinterpreted`, real `jarak info`) |
+| ENC-11 | Convert to ANSI | supported | `JARAK-FR-025` | 103 | T | Step 103: *Convert to ANSI* with the lossy question (`convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding` for the path) |
+| ENC-12 | Convert to UTF-8 / UTF-8-BOM | supported | `JARAK-FR-025` | 103 | T | Step 103: *Convert to UTF-8 / UTF-8-BOM* (palette; `file::tests::utf8_and_utf16_with_and_without_bom_are_reinterpreted`) |
+| ENC-13 | Convert to UTF-16 BE BOM / UTF-16 LE BOM | supported | `JARAK-FR-025` | 103 | T | Step 103: *Convert to UTF-16 BE / LE BOM*, saved with its BOM (`convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding`) |
 | ENC-14 | Automatic encoding detection on open | partial | `JARAK-FR-021` | 87 | T | Step 87: BOM, UTF-8, UTF-16 without BOM, then the locale's legacy code page (tests, `jarak info`, e2e `step87`); shown in the status bar with Step 88 |
-| ENC-15 | Default encoding for new documents (setting) | planned | `JARAK-FR-021` | 87 | T | — |
-| ENC-16 | Status-bar encoding and EOL indicators (clickable) | partial | `JARAK-FR-035` | 88 | T, M | Step 88: encoding label and line ending (or Mixed EOL) in the status bar (window tests); clickable in Step 103 |
+| ENC-15 | Default encoding for new documents (setting) | supported | `JARAK-FR-021` | 87 | T | Step 103: *New documents in UTF-8 / UTF-8-BOM / ANSI* (setting `new_encoding`) (`line_endings_convert_and_new_documents_take_the_settings_encoding`) |
+| ENC-16 | Status-bar encoding and EOL indicators (clickable) | supported | `JARAK-FR-035` | 88 | T, M | Step 88: encoding label and line ending (or Mixed EOL) in the status bar (window tests); clickable in Step 103; Step 103: a click on the encoding or the line ending opens its entries (`convert_names_what_it_cannot_hold_and_saves_in_the_new_encoding`, `line_endings_convert_and_new_documents_take_the_settings_encoding`) |
 
 ### LANG — Language menu and syntax highlighting (sources L, P)
 
@@ -452,7 +452,7 @@ palette, the headless CLI) follow in §2.
 | UI-03 | Overwrite mode (Insert key) | supported | `JARAK-FR-031` | 88 | T | Step 88: Insert toggles overwrite; typing replaces the next grapheme, never a line break (core test, window test) |
 | UI-04 | Line number margin | supported | `JARAK-FR-030` | 88 | T, M | Step 88: line numbers, the caret's line brighter (audited views, real screenshots) |
 | UI-05 | Current line highlight | supported | `JARAK-FR-030` | 88 | T | Step 88: the caret's line highlighted (audited views) |
-| UI-06 | Vertical edge line(s) at configured columns | planned | `JARAK-FR-037` | 103 | T | — |
+| UI-06 | Vertical edge line(s) at configured columns | supported | `JARAK-FR-037` | 103 | T | Step 103: edge lines at `edge_columns` (80 by default) (`show_symbol_settings_reach_the_view_and_binary_content_keeps_nul`, UI audit `symbols`; real desktop pending) |
 | UI-07 | Clickable links (Ctrl+click) | supported | `JARAK-FR-046` | 89 | T | Step 89: links in the preview open with Ctrl+click only, web and mail only (window tests); a plain click explains |
 | UI-08 | Context menu in the text | planned | `JARAK-FR-031` | 110 | M | — |
 | UI-09 | Toolbar with icons | not intended | — | 88 | D | — |

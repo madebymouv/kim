@@ -428,3 +428,39 @@ fn overwrite_replaces_the_next_grapheme_but_not_the_line_break() {
     d.overwrite_text("a");
     assert_eq!(d.text().to_string(), "az", "a whole cluster is replaced");
 }
+
+/// Step 103: EOL conversion keeps bookmarks on their lines and is one undo step; converting marks
+/// the document unsaved.
+#[test]
+fn line_endings_convert_in_one_undo_step() {
+    let mut d = Document::from_text("a\r\nb\nc\rd");
+    d.bookmark_lines([2]);
+    assert!(d.convert_eol(Eol::Lf));
+    assert_eq!(d.text().to_string(), "a\nb\nc\nd");
+    assert_eq!(d.eol, Eol::Lf);
+    assert_eq!(
+        d.bookmarked_lines(),
+        vec![2],
+        "the bookmark stays on its line"
+    );
+    assert!(d.convert_eol(Eol::CrLf));
+    assert_eq!(d.text().to_string(), "a\r\nb\r\nc\r\nd");
+    assert!(!d.convert_eol(Eol::CrLf), "nothing to change");
+    d.undo();
+    assert_eq!(d.text().to_string(), "a\nb\nc\nd");
+    assert!(d.convert_eol(Eol::Cr));
+    assert_eq!(d.text().to_string(), "a\rb\rc\rd");
+    // A conversion with no text change still has to be saved.
+    let mut e = Document::from_text("x");
+    assert!(!e.is_dirty());
+    e.mark_unsaved();
+    assert!(e.is_dirty());
+    e.mark_saved();
+    assert!(!e.is_dirty());
+    // Replacing characters (unmappable ones before a lossy conversion): one undo step.
+    let mut f = Document::from_text("a한b글");
+    f.replace_chars(&[1, 3], '?');
+    assert_eq!(f.text().to_string(), "a?b?");
+    f.undo();
+    assert_eq!(f.text().to_string(), "a한b글");
+}

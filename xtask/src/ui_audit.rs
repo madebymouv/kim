@@ -167,6 +167,9 @@ fn runs(quick: bool, only: Option<&str>) -> Vec<Run> {
                 // Step 102: the Run dialog, the macros and commands.
                 "run",
                 "macros",
+                // Step 103: Show Symbol, the lossy-conversion question.
+                "symbols",
+                "encoding-question",
             ],
         ),
     ];
