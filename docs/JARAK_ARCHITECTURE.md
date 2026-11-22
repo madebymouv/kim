@@ -607,7 +607,7 @@ bars after the restart; first focused run PASS).
   the gutter; at most 200 000 marks per command.
 - **The find panel** (`find.rs`): a non-modal popover at the editor's top right with the pages
   Find, Replace and Mark, built from kim-ui components (segmented, text field, checkbox,
-  buttons), with Notepad++'s Alt mnemonics. Enter keeps the focus in the find box; F3 works there
+  buttons), with Notepad++'s Alt mnemonics (actions A R T M; options C W P B I D; modes N X G). Enter keeps the focus in the find box; F3 works there
   too; Esc closes and gives the focus back to the view. Highlight all paints the find text's
   matches on screen while the Find or Replace page is open. On Windows an Alt+letter chord also
   arrives as the letter's text; the window drops that text when it comes with the chord, so no
@@ -632,6 +632,9 @@ typing). UI audit views `find`, `replace`, `mark`, `incremental` (115 runs, 0 fa
 window's Mark and Replace pages, the file untouched, the history in the session). Real desktop
 (r94): Ctrl+F, Enter, Shift+Enter, Esc, Tab into the replace box, Alt+W and Alt+A (whole-word
 Replace All left `concat` alone), Ctrl+Z / Ctrl+Y, a Korean search, the Mark page with Alt+M, the
-incremental bar and select-and-find-next, checked byte for byte on disk; F3 itself was tested only
+incremental bar and select-and-find-next, checked byte for byte on disk; r94b drove every other
+option and mode with the panel's mnemonics — Regular expression, Extended (`\t`), match case,
+backward with wrapping, wrap off ("Not found"), Replace All in the selection and `.` matches
+newline — each checked on disk; F3 itself was tested only
 headless because F1/F3 are the global hotkeys of the maintainer's Noeul on that PC (one stray F3
 made a pin, closed again by its ID).

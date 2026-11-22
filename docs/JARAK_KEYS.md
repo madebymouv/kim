@@ -66,6 +66,9 @@ Ctrl+click on an image reference shows the image in Explorer.
 | Alt+A, Alt+R | In the panel: Replace All, Replace (Replace page) |
 | Alt+T, Alt+M | In the panel: Count, Mark All (Mark page) |
 | Alt+C, Alt+W | In the panel: match case, whole word |
+| Alt+P, Alt+B, Alt+I | In the panel: wrap around, backward, in selection |
+| Alt+N, Alt+X, Alt+G | In the panel: Normal, Extended, Regular expression mode |
+| Alt+D | In the panel: `.` matches newline |
 
 Marks, bookmarks of marked lines and the five token styles (*Style all occurrences of the token*,
 *Style one token*, *Clear style*, *Jump to the next / previous styled text*, *Copy the styled

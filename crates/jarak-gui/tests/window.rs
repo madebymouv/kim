@@ -1975,6 +1975,26 @@ fn the_find_panel_has_notepad_plus_plus_alt_mnemonics() {
         2,
         "Alt+M: mark all"
     );
+    // The options and modes.
+    let f0 = h.state().find.clone();
+    for k in [egui::Key::P, egui::Key::B, egui::Key::I, egui::Key::D] {
+        key(&mut h, k, egui::Modifiers::ALT);
+    }
+    let f = &h.state().find;
+    assert_eq!(
+        (f.wrap, f.backward, f.in_selection, f.dot_all),
+        (!f0.wrap, !f0.backward, !f0.in_selection, !f0.dot_all),
+        "Alt+P, Alt+B, Alt+I, Alt+D toggle"
+    );
+    use jarak_core::search::Mode;
+    for (k, m) in [
+        (egui::Key::G, Mode::Regex),
+        (egui::Key::X, Mode::Extended),
+        (egui::Key::N, Mode::Normal),
+    ] {
+        key(&mut h, k, egui::Modifiers::ALT);
+        assert_eq!(h.state().find.mode, m);
+    }
 }
 
 /// On Windows an Alt+letter chord also arrives as the letter's text (found in the real window):

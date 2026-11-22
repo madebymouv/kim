@@ -923,7 +923,9 @@ impl JarakApp {
             act = Some("close");
         }
         // The dialog's Alt mnemonics, as in Notepad++: Alt+A Replace All, Alt+R Replace, Alt+T
-        // Count, Alt+M Mark All, Alt+C match case, Alt+W whole word.
+        // Count, Alt+M Mark All, Alt+C match case, Alt+W whole word, Alt+P wrap around, Alt+B
+        // backward, Alt+I in selection, Alt+N / Alt+X / Alt+G the Normal / Extended / Regular
+        // expression mode, Alt+D `.` matches newline.
         use egui::Key as K;
         let mnemonic = ctx.input(|i| {
             i.events.iter().find_map(|e| match e {
@@ -936,7 +938,22 @@ impl JarakApp {
                     && !m.ctrl
                     && !m.command
                     && !m.shift
-                    && [K::A, K::R, K::T, K::M, K::C, K::W].contains(key) =>
+                    && [
+                        K::A,
+                        K::R,
+                        K::T,
+                        K::M,
+                        K::C,
+                        K::W,
+                        K::P,
+                        K::B,
+                        K::I,
+                        K::N,
+                        K::X,
+                        K::G,
+                        K::D,
+                    ]
+                    .contains(key) =>
                 {
                     Some(*key)
                 }
@@ -950,6 +967,13 @@ impl JarakApp {
             (Some(K::M), Page::Mark) => act = Some("mark"),
             (Some(K::C), _) => self.find.match_case ^= true,
             (Some(K::W), _) => self.find.whole_word ^= true,
+            (Some(K::P), _) => self.find.wrap ^= true,
+            (Some(K::B), _) => self.find.backward ^= true,
+            (Some(K::I), _) => self.find.in_selection ^= true,
+            (Some(K::N), _) => self.find.mode = Mode::Normal,
+            (Some(K::X), _) => self.find.mode = Mode::Extended,
+            (Some(K::G), _) => self.find.mode = Mode::Regex,
+            (Some(K::D), _) => self.find.dot_all ^= true,
             _ => {}
         }
         match act {
